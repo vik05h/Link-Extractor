@@ -1,6 +1,7 @@
 import os
 import sys
 import io
+import re
 import time
 import subprocess
 import threading
@@ -126,7 +127,7 @@ class LinkExtractorApp(ctk.CTk):
 
         badge = ctk.CTkLabel(
             title_row,
-            text="v2.5 ULTRA SPEED",
+            text="v2.6 FIX RELEASE",
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color="#0284C7",
             text_color="#FFFFFF",
@@ -137,7 +138,7 @@ class LinkExtractorApp(ctk.CTk):
 
         ctk.CTkLabel(
             title_box,
-            text="Paste a FitGirl pastebin URL. Converts all parts to TRUE direct download links (dl.fuckingfast.co) at maximum speed without browser download popups.",
+            text="Paste a FitGirl pastebin URL or fuckingfast URL. Converts all parts to TRUE direct download links (dl.fuckingfast.co) at maximum speed without browser download popups.",
             font=ctk.CTkFont(size=12),
             text_color="#94A3B8",
             wraplength=750,
@@ -153,7 +154,7 @@ class LinkExtractorApp(ctk.CTk):
 
         ctk.CTkLabel(
             input_layout,
-            text="Pastebin URL:",
+            text="Pastebin or FuckingFast URL:",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color="#E2E8F0"
         ).pack(anchor="w", pady=(0, 8))
@@ -163,7 +164,7 @@ class LinkExtractorApp(ctk.CTk):
 
         self.url_entry = ctk.CTkEntry(
             entry_row,
-            placeholder_text="e.g. https://paste.fitgirl-repacks.site/?4e9d5110a8fd8f09#JA22yHwq...",
+            placeholder_text="e.g. https://paste.fitgirl-repacks.site/?b9f42622ad62a88b#GvhWmbUo...",
             font=ctk.CTkFont(size=13),
             height=42,
             border_color="#475569",
@@ -323,27 +324,35 @@ class LinkExtractorApp(ctk.CTk):
     def _run_full_pipeline(self, pastebin_url):
         t_pipeline_start = time.time()
         try:
-            # Phase 1: Extract links from pastebin
-            self.after(0, lambda: self.set_status("Phase 1: Fetching Pastebin", 0.05, badge_color="#F59E0B"))
-            self.log(f"Phase 1: Fetching pastebin: {pastebin_url}")
+            # Check if user passed direct fuckingfast link(s) directly
+            if "fuckingfast.co" in pastebin_url:
+                self.log(f"Phase 1: Detected direct fuckingfast URL input")
+                raw_urls = re.findall(r'https?://[^\s,]+', pastebin_url)
+                self.pastebin_links = [u for u in raw_urls if "fuckingfast.co" in u]
+                if not self.pastebin_links:
+                    self.pastebin_links = [pastebin_url]
+            else:
+                # Phase 1: Extract links from pastebin page
+                self.after(0, lambda: self.set_status("Phase 1: Fetching Pastebin", 0.05, badge_color="#F59E0B"))
+                self.log(f"Phase 1: Fetching pastebin: {pastebin_url}")
 
-            with sync_playwright() as p:
-                browser = self._launch_browser(p, headless=True)
-                page = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-                ).new_page()
+                with sync_playwright() as p:
+                    browser = self._launch_browser(p, headless=True)
+                    page = browser.new_context(
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+                    ).new_page()
 
-                page.goto(pastebin_url, wait_until="networkidle")
-                time.sleep(1.5)
+                    page.goto(pastebin_url, wait_until="networkidle")
+                    time.sleep(1.5)
 
-                for a in page.query_selector_all("a"):
-                    href = a.get_attribute("href")
-                    if href and "fuckingfast.co" in href:
-                        if href not in self.pastebin_links:
-                            self.pastebin_links.append(href)
+                    for a in page.query_selector_all("a"):
+                        href = a.get_attribute("href")
+                        if href and "fuckingfast.co" in href:
+                            if href not in self.pastebin_links:
+                                self.pastebin_links.append(href)
 
-                browser.close()
+                    browser.close()
 
             count = len(self.pastebin_links)
             self.log(f"Phase 1 complete: found {count} links")
@@ -420,14 +429,20 @@ class LinkExtractorApp(ctk.CTk):
             try:
                 return p.chromium.launch(headless=True)
             except Exception:
-                driver_exe, driver_env = compute_driver_executable()
-                env = {**os.environ, **driver_env}
-                subprocess.run(
-                    [str(driver_exe), "install", "chromium"],
-                    env=env, capture_output=True,
-                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-                )
-                return p.chromium.launch(headless=True)
+                try:
+                    res = compute_driver_executable()
+                    if isinstance(res, tuple) and len(res) == 2:
+                        driver_exe, driver_cli = res
+                        subprocess.run(
+                            [str(driver_exe), str(driver_cli), "install", "chromium"],
+                            capture_output=True,
+                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                        )
+                except Exception as ex:
+                    self.log(f"Driver check warning: {ex}")
+                # Fallback to system chrome or edge if headless chromium launch fails
+                channel = detect_browser_channel()
+                return p.chromium.launch(headless=True, channel=channel)
         else:
             channel = detect_browser_channel()
             return p.chromium.launch(
