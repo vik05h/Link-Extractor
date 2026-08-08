@@ -1,0 +1,6 @@
+# Python & PyInstaller Build Artifacts
+build/
+*.spec
+resolved_direct_urls.txt
+__pycache__/
+*.pyc
