@@ -48,7 +48,7 @@ class LinkExtractorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("FitGirl Link Extractor - Auto Captcha & Direct Link Grabber")
+        self.title("FitGirl Link Extractor - High Speed Direct Link Grabber")
         self.geometry("900x700")
         self.minsize(750, 550)
 
@@ -72,9 +72,8 @@ class LinkExtractorApp(ctk.CTk):
 
         ctk.CTkLabel(
             header,
-            text="Paste a FitGirl pastebin URL. This app will automatically bypass Cloudflare Turnstile "
-                 "and extract TRUE direct download links (dl.fuckingfast.co) WITHOUT starting browser downloads. "
-                 "Simply copy and paste them into JDownloader 2!",
+            text="Paste a FitGirl pastebin URL. Converts all parts to TRUE direct download links "
+                 "(dl.fuckingfast.co) at high speed. Links copy automatically to JDownloader 2!",
             font=ctk.CTkFont(size=12),
             text_color="gray70",
             wraplength=800,
@@ -169,12 +168,11 @@ class LinkExtractorApp(ctk.CTk):
 
         self.copy_btn = ctk.CTkButton(
             bottom,
-            text="📋 Copy All Direct URLs to Clipboard",
+            text="📋 Copy Resolved URLs to Clipboard",
             command=self._copy_to_clipboard,
             font=ctk.CTkFont(size=13, weight="bold"),
             height=38,
-            fg_color="#2e7d32", hover_color="#1b5e20",
-            state="disabled"
+            fg_color="#2e7d32", hover_color="#1b5e20"
         )
         self.copy_btn.pack(side="right", padx=15, pady=15)
 
@@ -208,7 +206,6 @@ class LinkExtractorApp(ctk.CTk):
         self.cancel_requested = False
         self.start_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
-        self.copy_btn.configure(state="disabled")
         self.resolved_textbox.delete("1.0", "end")
         self.resolved_links = []
         self.pastebin_links = []
@@ -221,6 +218,7 @@ class LinkExtractorApp(ctk.CTk):
 
     # ── Full Pipeline ──
     def _run_full_pipeline(self, pastebin_url):
+        t_pipeline_start = time.time()
         try:
             # ── Phase 1: Extract links from pastebin ──
             self.after(0, lambda: self.set_progress("Phase 1: Fetching pastebin page...", 0.05, "#FFC107"))
@@ -234,7 +232,7 @@ class LinkExtractorApp(ctk.CTk):
                 ).new_page()
 
                 page.goto(pastebin_url, wait_until="networkidle")
-                time.sleep(2)
+                time.sleep(1.5)
 
                 for a in page.query_selector_all("a"):
                     href = a.get_attribute("href")
@@ -251,11 +249,11 @@ class LinkExtractorApp(ctk.CTk):
                 self._finish()
                 return
 
-            # ── Phase 2: Instant JS resolution via real browser ──
+            # ── Phase 2: Ultra Fast JS resolution via real browser ──
             self.after(0, lambda: self.set_progress(
                 f"Phase 2: Resolving 0/{count} links...", 0.1, "#2196F3"
             ))
-            self.log(f"Phase 2: Resolving {count} links to direct dl.fuckingfast.co URLs")
+            self.log(f"Phase 2: Resolving {count} links (high speed 100ms polling mode)")
 
             channel = detect_browser_channel()
             if not channel:
@@ -274,8 +272,6 @@ class LinkExtractorApp(ctk.CTk):
                 )
                 context = browser.new_context(viewport={"width": 1280, "height": 720})
                 context.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined });")
-
-                # Auto-close ad popups & cancel any file download if triggered
                 context.on("page", lambda pop: pop.close() if pop != context.pages[0] else None)
 
                 page = context.new_page()
@@ -290,22 +286,24 @@ class LinkExtractorApp(ctk.CTk):
                     self.after(0, lambda i=idx, n=part_name, f=frac: self.set_progress(
                         f"Phase 2: Resolving {i+1}/{count} - {n}", f, "#2196F3"
                     ))
-                    self.log(f"[{idx+1}/{count}] Resolving {part_name}...")
 
-                    direct_url = self._resolve_single_link_pure_js(page, ff_link)
+                    t0 = time.time()
+                    direct_url = self._resolve_single_link_ultra_fast(page, ff_link)
+                    elapsed = time.time() - t0
 
                     if direct_url:
                         self.resolved_links.append(direct_url)
-                        self.log(f"  ✅ GOT DIRECT URL: {direct_url[:80]}...")
+                        self.log(f"[{idx+1}/{count}] ⚡ Resolved {part_name} in {elapsed:.1f}s -> {direct_url[:65]}...")
                         self.after(0, lambda u=direct_url: self._append_resolved(u))
                     else:
-                        self.log(f"  ⚠️ Resolution timed out for {part_name}, skipping")
+                        self.log(f"[{idx+1}/{count}] ⚠️ Could not resolve {part_name}, skipping")
 
                 browser.close()
 
             # ── Complete ──
+            total_elapsed = time.time() - t_pipeline_start
             resolved_count = len(self.resolved_links)
-            self.after(0, lambda: self._on_pipeline_complete(resolved_count, count))
+            self.after(0, lambda: self._on_pipeline_complete(resolved_count, count, total_elapsed))
 
         except Exception as e:
             self.log(f"Pipeline error: {e}")
@@ -313,10 +311,9 @@ class LinkExtractorApp(ctk.CTk):
             self._finish()
 
     def _cancel_download(self, download):
-        """Immediately cancel any browser download to avoid filling disk."""
+        """Cancel browser download."""
         try:
             download.cancel()
-            self.log("  [Browser file download cancelled]")
         except:
             pass
 
@@ -341,8 +338,8 @@ class LinkExtractorApp(ctk.CTk):
                 args=['--disable-blink-features=AutomationControlled']
             )
 
-    def _resolve_single_link_pure_js(self, page, ff_url):
-        """Navigate to fuckingfast link, wait for Turnstile token, and perform JS fetch (no file download!)."""
+    def _resolve_single_link_ultra_fast(self, page, ff_url):
+        """Ultra-fast 100ms polling link resolution without button clicks or browser downloads."""
         direct_url = None
 
         def on_response(response):
@@ -358,11 +355,10 @@ class LinkExtractorApp(ctk.CTk):
 
         try:
             page.goto(ff_url, wait_until="domcontentloaded")
-            time.sleep(2)
 
-            # 1. Wait for Turnstile token
+            # 1. Fast polling every 100ms (max 6 seconds)
             token = ""
-            for i in range(12):
+            for _ in range(60):
                 if self.cancel_requested:
                     break
                 try:
@@ -372,25 +368,26 @@ class LinkExtractorApp(ctk.CTk):
                         break
                 except:
                     pass
-                time.sleep(1)
+                time.sleep(0.1)
 
+            # If token not ready yet, click iframe once & check for 3s
             if not token:
                 for frame in page.frames:
                     if "turnstile" in frame.url or "cloudflare" in frame.url:
                         try:
-                            frame.click("body", timeout=1500)
+                            frame.click("body", timeout=1000)
                         except:
                             pass
-                for i in range(8):
+                for _ in range(30):
                     try:
                         token = page.evaluate("() => window.turnstileToken || ''")
                         if token:
                             break
                     except:
                         pass
-                    time.sleep(1)
+                    time.sleep(0.1)
 
-            # 2. Pure JS fetch for /go endpoint — NO page.click() so NO file download starts in browser!
+            # 2. Immediate pure JS fetch (no page click, no browser download!)
             part_id = ff_url.split("fuckingfast.co/")[1].split("#")[0].strip("/")
             js_script = f"""
                 async () => {{
@@ -410,7 +407,7 @@ class LinkExtractorApp(ctk.CTk):
                 direct_url = res
 
         except Exception as e:
-            self.log(f"  Error resolving: {e}")
+            self.log(f"  Resolution error: {e}")
         finally:
             page.remove_listener("response", on_response)
 
@@ -419,21 +416,32 @@ class LinkExtractorApp(ctk.CTk):
     def _append_resolved(self, url):
         self.resolved_textbox.insert("end", f"{url}\n")
         self.resolved_textbox.see("end")
+        count = len(self.resolved_links)
+        self.count_label.configure(
+            text=f"✨ {count} direct URLs ready ({count}/{len(self.pastebin_links)})",
+            text_color="#4CAF50"
+        )
+        # Automatically save progress to text file
+        try:
+            with open("resolved_direct_urls.txt", "w", encoding="utf-8") as f:
+                f.write("\n".join(self.resolved_links))
+        except:
+            pass
 
-    def _on_pipeline_complete(self, resolved_count, total_count):
+    def _on_pipeline_complete(self, resolved_count, total_count, total_elapsed):
+        avg_s = total_elapsed / resolved_count if resolved_count > 0 else 0
         self.set_progress(
-            f"Successfully resolved {resolved_count}/{total_count} TRUE direct URLs!",
+            f"Done in {total_elapsed:.1f}s ({avg_s:.1f}s/link)! Resolved {resolved_count}/{total_count} URLs",
             1.0, "#4CAF50"
         )
-        self.log(f"Pipeline complete! {resolved_count}/{total_count} direct dl.fuckingfast.co URLs generated.")
+        self.log(f"🚀 Speed Pipeline Complete! {resolved_count}/{total_count} direct URLs in {total_elapsed:.1f}s ({avg_s:.1f}s per link).")
 
         if resolved_count > 0:
-            self.copy_btn.configure(state="normal")
             text = "\n".join(self.resolved_links)
             pyperclip.copy(text)
-            self.log("Direct URLs auto-copied to clipboard! Paste into JDownloader 2.")
+            self.log("All direct URLs auto-copied to clipboard! Saved to resolved_direct_urls.txt")
             self.count_label.configure(
-                text=f"✨ {resolved_count} direct URLs copied to clipboard!",
+                text=f"✨ All {resolved_count} direct URLs copied to clipboard & saved!",
                 text_color="#4CAF50"
             )
 
@@ -449,10 +457,10 @@ class LinkExtractorApp(ctk.CTk):
             text = "\n".join(self.resolved_links)
             pyperclip.copy(text)
             self.count_label.configure(
-                text=f"✨ {len(self.resolved_links)} direct URLs copied!",
+                text=f"✨ {len(self.resolved_links)} direct URLs copied to clipboard!",
                 text_color="#4CAF50"
             )
-            self.log("Copied all direct download URLs to clipboard.")
+            self.log(f"Copied {len(self.resolved_links)} direct download URLs to clipboard.")
 
 
 if __name__ == "__main__":
