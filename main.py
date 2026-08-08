@@ -127,7 +127,7 @@ class LinkExtractorApp(ctk.CTk):
 
         badge = ctk.CTkLabel(
             title_row,
-            text="v2.6 FIX RELEASE",
+            text="v2.5.1 HOTFIX",
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color="#0284C7",
             text_color="#FFFFFF",
@@ -138,7 +138,7 @@ class LinkExtractorApp(ctk.CTk):
 
         ctk.CTkLabel(
             title_box,
-            text="Paste a FitGirl pastebin URL or fuckingfast URL. Converts all parts to TRUE direct download links (dl.fuckingfast.co) at maximum speed without browser download popups.",
+            text="Paste a FitGirl pastebin or fuckingfast URL. Converts all parts to TRUE direct download links (dl.fuckingfast.co) at max speed.\nPatch: Fixed Playwright driver initialization crash & added direct host link parsing support.",
             font=ctk.CTkFont(size=12),
             text_color="#94A3B8",
             wraplength=750,
