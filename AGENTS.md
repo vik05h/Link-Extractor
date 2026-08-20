@@ -25,7 +25,9 @@ This document defines repository standards, architectural boundaries, runtime co
 
 | Module | Responsibility | Critical Constraints |
 | :--- | :--- | :--- |
-| [`main.py`](file:///c:/Code/link/main.py) | Flet Material 3 desktop UI, themes, navigation, and background worker coordination. | Never call `.update()` directly on unmounted controls from background threads; use `page.update()`. |
+| [`main.py`](file:///c:/Code/link/main.py) | Application entrypoint, Flet initialization, navigation rail, and screen switcher wiring. | Keep modular and minimal (< 150 lines); delegate screen layout and state to `ui/`. |
+| [`utils.py`](file:///c:/Code/link/utils.py) | Path resolution (`get_app_data_dir`, `get_export_dir`), settings I/O, and Win32 icon binding. | Never hardcode local paths or `%TEMP%` when frozen. |
+| [`ui/`](file:///c:/Code/link/ui/) | Modular UI package containing presets (`constants.py`), state models (`state.py`), and screen components (`screens/`). | Screens export clean builder functions; never mutate global state directly without `AppState` / `UIContext`. |
 | [`engine.py`](file:///c:/Code/link/engine.py) | Playwright asynchronous multi-tab worker pool & Cloudflare Turnstile bypass. | Share a single browser context across concurrent tabs to minimize memory footprint. Use detected browser channel (Chrome/Edge). |
 | [`scraper.py`](file:///c:/Code/link/scraper.py) | HTML parsing for FitGirl game pages, pastebins, and direct links. | Use `urllib.parse` and BeautifulSoup/lxml with defensive fallbacks for missing mirrors. |
 | [`validator.py`](file:///c:/Code/link/validator.py) | Rapid 1-byte HTTP Range GET requests to verify links and aggregate total repack sizes. | Always sanitize filenames extracted from `Content-Disposition`. |
@@ -44,7 +46,7 @@ python main.py
 
 ### Validate Syntax Across Modules
 ```powershell
-python -c "import main, engine, scraper, validator, history, integrations, updater; print('All modules OK')"
+python -c "import main, engine, scraper, validator, history, integrations, updater, utils; from ui import constants, state; from ui.screens import extractor, pipeline, history as hist_screen, settings; print('All modules OK')"
 ```
 
 ### Build Standalone Executable
