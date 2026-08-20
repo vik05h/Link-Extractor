@@ -1,70 +1,70 @@
-# ⚡ FitGirl Direct Link Extractor for JDownloader 2
+# ⚡ FitGirl Direct Link Extractor v3.0 — High Speed Direct Link Grabber
 
-A fast, lightweight Windows app that extracts multi-part download links from FitGirl pastebin pages, automatically passes Cloudflare verification in the background, and gives you **TRUE direct download links** (`dl.fuckingfast.co`) for JDownloader 2.
+A blazing-fast, lightweight Windows desktop app that extracts multi-part download links from FitGirl game pages & pastebins, automatically passes Cloudflare Turnstile verification using concurrent browser tabs, and outputs **TRUE direct download links** (`dl.fuckingfast.co`) for JDownloader 2 and IDM.
 
 No more skipped links or "External solver required" captcha blocks in JDownloader!
 
 ---
 
-## 🚀 Features
+## 🚀 What's New in v3.0
 
-- **Automated Cloudflare Bypass**: Auto-solves Turnstile challenges seamlessly using your installed browser (Edge/Chrome).
-- **No Browser Download Spam**: Resolves direct URLs silently in memory without downloading 2GB `.rar` files onto your drive.
-- **High Speed**: Resolves each link in ~5 seconds.
-- **Auto Clipboard & Save**: Direct URLs are automatically copied to your clipboard and saved to `resolved_direct_urls.txt`.
-- **JDownloader Ready**: Works instantly with JDownloader 2's LinkGrabber.
+- ⚡ **3x Concurrent Tab Pool**: Resolves 3 links in parallel inside a single browser instance — cutting extraction time from **~4 minutes down to ~1 minute** for a 40-part game!
+- 🎮 **Direct FitGirl Game Page Support**: Simply paste any FitGirl game URL (e.g. `https://fitgirl-repacks.site/black-myth-wukong/`). The tool automatically discovers and parses the FuckingFast mirror pastebin without manual hunting.
+- 🔁 **Automated 2-Pass Retry Engine**: Never lose a single game part again. If Cloudflare temporarily throttles a link, the engine automatically re-queues and retries failed parts with smart jitter backoff.
+- ⏱️ **Real-Time Speed & ETA Display**: Live progress reporting with per-part resolution speed (e.g. `1.8s/part`), active tab counter, and remaining time countdown.
+- 🧩 **Clean Modular Architecture**: Deep separation between `scraper.py` (page & pastebin parsing), `engine.py` (high-performance Playwright worker pool), and `main.py` (CustomTkinter GUI).
 
 ---
 
 ## 📖 Quick Tutorial
 
-### Step 1: Copy your Pastebin URL
-Paste your FitGirl pastebin link (e.g. `https://paste.fitgirl-repacks.site/?...`) into the input box.
+### Step 1: Enter Your URL
+Paste any of the following into the input box:
+- **FitGirl Game Page URL**: `https://fitgirl-repacks.site/black-myth-wukong/`
+- **FitGirl Pastebin URL**: `https://paste.fitgirl-repacks.site/?dc64365f494f3ba0#...`
+- **Direct FuckingFast Links**: `https://fuckingfast.co/...`
 
-<img width="1643" height="991" alt="1" src="https://github.com/user-attachments/assets/30bbfaed-2458-46e0-914e-76de963a2093" />
-<img width="1919" height="881" alt="2" src="https://github.com/user-attachments/assets/954a3f44-27ea-4feb-98b0-83b253c599c3" />
-
-
+The URL type is automatically detected in real-time!
 
 ---
 
 ### Step 2: Click "Extract & Resolve All"
-Click the **Extract & Resolve All** button to start the process.
-
-<img width="1051" height="781" alt="3" src="https://github.com/user-attachments/assets/b6b275b0-3cb5-408e-855a-5977efe729a1" />
-
+Click **Extract & Resolve All** to initiate the high-speed pipeline.
 
 ---
 
-### Step 3: Automatic Cloudflare Verification
-The app uses your system browser to automatically pass Cloudflare verification per link in ~5-8 seconds.
+### Step 3: Concurrent Cloudflare Resolution
+The engine launches concurrent browser tabs (default 3) to automatically pass Cloudflare Turnstile challenges in parallel (~1.5-2.0s effective per part).
 
 ---
 
-### Step 4: Direct URLs Generated
-Watch as `https://dl.fuckingfast.co/dl/...` direct URLs are generated in real-time. They auto-copy to your clipboard!
-
-
-<img width="871" height="448" alt="Screenshot 2026-08-08 140348" src="https://github.com/user-attachments/assets/4f96e27e-0d94-4242-9921-5f6b8a57f45c" />
+### Step 4: Direct URLs Auto-Copied & Saved
+Watch direct `https://dl.fuckingfast.co/dl/...` URLs stream into the results list in real-time. Upon completion, all links are automatically copied to your clipboard and saved to `resolved_direct_urls.txt`.
 
 ---
 
 ### Step 5: Paste into JDownloader 2
-Open **JDownloader 2**. LinkGrabber will grab the direct URLs automatically. Hit **Start Downloads** and enjoy max speed downloading with zero blocks!
-
-<img width="1001" height="716" alt="Screenshot 2026-08-08 141817" src="https://github.com/user-attachments/assets/9d61bfb9-0490-41aa-b2f1-50916420ce0f" />
+Open **JDownloader 2**. LinkGrabber will catch the clipboard direct URLs automatically. Click **Start Downloads** for max-speed downloading with zero captcha interruptions!
 
 ---
 
 ## 🛠️ How to Build from Source
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 pip install customtkinter playwright pyperclip pillow pyinstaller
 
-# Generate app icon & assets
+# 2. (Optional) Re-generate app icons
 python make_icon.py
 
-# Build single EXE
-pyinstaller --noconfirm --onefile --windowed --icon="app_icon.ico" --add-data "app_icon.png;." --add-data "app_icon.ico;." --add-data "icon_extract.png;." --add-data "icon_copy.png;." --add-data "icon_cancel.png;." --name "LinkExtractor_Single" main.py
+# 3. Build Single-File Standalone EXE
+pyinstaller LinkExtractor_Single.spec
 ```
+
+The compiled standalone executable will be located in the `dist/` directory.
+
+---
+
+## 🗺️ Project Roadmap
+
+See [PHASES.md](file:///c:/Code/link/PHASES.md) for full phase-by-phase development progress and future integrations (JDownloader Click'n'Load, HTTP HEAD validation, download history, and multi-hoster support).

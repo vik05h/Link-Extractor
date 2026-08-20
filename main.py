@@ -3,65 +3,43 @@ import sys
 import io
 import re
 import time
-import subprocess
+import asyncio
 import threading
 import multiprocessing
 import pyperclip
 import customtkinter as ctk
 from PIL import Image
 
-# Force Playwright to use the user's global browser cache
+# Ensure Playwright browser cache location
 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(
     os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
     "ms-playwright"
 )
 
-from playwright.sync_api import sync_playwright
-from playwright._impl._driver import compute_driver_executable
+import scraper
+from engine import ResolutionEngine, ResolvedLink, detect_browser_channel
 
 # Appearance setup
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
 
 
-def get_asset_path(filename):
+def get_asset_path(filename: str) -> str:
     """Helper to locate assets whether running from script or PyInstaller frozen bundle."""
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, "frozen", False):
         base_path = sys._MEIPASS
     else:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, filename)
 
 
-def detect_browser_channel():
-    """Detect installed browser (Edge or Chrome)."""
-    chrome_path = os.path.join(
-        os.environ.get("LOCALAPPDATA", ""),
-        "Google", "Chrome", "Application", "chrome.exe"
-    )
-    edge_path = os.path.join(
-        os.environ.get("PROGRAMFILES(X86)", os.environ.get("PROGRAMFILES", "")),
-        "Microsoft", "Edge", "Application", "msedge.exe"
-    )
-    edge_path_local = os.path.join(
-        os.environ.get("LOCALAPPDATA", ""),
-        "Microsoft", "Edge", "Application", "msedge.exe"
-    )
-
-    if os.path.exists(edge_path) or os.path.exists(edge_path_local):
-        return "msedge"
-    elif os.path.exists(chrome_path):
-        return "chrome"
-    return None
-
-
 class LinkExtractorApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("FitGirl Link Extractor - High Speed Direct Link Grabber")
-        self.geometry("1050x750")
-        self.minsize(850, 600)
+        self.title("FitGirl Direct Link Extractor v3.0 — High Speed Multi-Tab Grabber")
+        self.geometry("1080x780")
+        self.minsize(880, 620)
 
         # Set App Window Icon if exists
         icon_path = get_asset_path("app_icon.ico")
@@ -74,7 +52,7 @@ class LinkExtractorApp(ctk.CTk):
         self.pastebin_links = []
         self.resolved_links = []
         self.is_running = False
-        self.cancel_requested = False
+        self.cancel_event = None
 
         self._load_icons()
         self._create_ui()
@@ -91,14 +69,13 @@ class LinkExtractorApp(ctk.CTk):
             self.img_extract = ctk.CTkImage(Image.open(p_ext), size=(18, 18)) if os.path.exists(p_ext) else None
             self.img_copy = ctk.CTkImage(Image.open(p_copy), size=(18, 18)) if os.path.exists(p_copy) else None
             self.img_cancel = ctk.CTkImage(Image.open(p_can), size=(16, 16)) if os.path.exists(p_can) else None
-        except Exception as e:
+        except Exception:
             self.img_brand = None
             self.img_extract = None
             self.img_copy = None
             self.img_cancel = None
 
     def _create_ui(self):
-        # Main Outer Container Grid
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
 
@@ -127,7 +104,7 @@ class LinkExtractorApp(ctk.CTk):
 
         badge = ctk.CTkLabel(
             title_row,
-            text="v2.5.1 HOTFIX",
+            text="v3.0 SPEED BOOST",
             font=ctk.CTkFont(size=11, weight="bold"),
             fg_color="#0284C7",
             text_color="#FFFFFF",
@@ -138,10 +115,10 @@ class LinkExtractorApp(ctk.CTk):
 
         ctk.CTkLabel(
             title_box,
-            text="Paste a FitGirl pastebin or fuckingfast URL. Converts all parts to TRUE direct download links (dl.fuckingfast.co) at max speed.\nPatch: Fixed Playwright driver initialization crash & added direct host link parsing support.",
+            text="Directly paste FitGirl Game Pages, Pastebin URLs, or FuckingFast links.\nConverts all game parts to TRUE direct download links (dl.fuckingfast.co) via 3x concurrent browser tabs with auto-retry.",
             font=ctk.CTkFont(size=12),
             text_color="#94A3B8",
-            wraplength=750,
+            wraplength=780,
             justify="left"
         ).pack(anchor="w", pady=(4, 0))
 
@@ -152,25 +129,42 @@ class LinkExtractorApp(ctk.CTk):
         input_layout = ctk.CTkFrame(input_card, fg_color="transparent")
         input_layout.pack(fill="x", padx=20, pady=15)
 
+        # Label Row with detected type badge
+        label_row = ctk.CTkFrame(input_layout, fg_color="transparent")
+        label_row.pack(fill="x", pady=(0, 8))
+
         ctk.CTkLabel(
-            input_layout,
-            text="Pastebin or FuckingFast URL:",
+            label_row,
+            text="FitGirl Game URL, Pastebin, or FuckingFast URL:",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color="#E2E8F0"
-        ).pack(anchor="w", pady=(0, 8))
+        ).pack(side="left")
 
+        self.type_badge = ctk.CTkLabel(
+            label_row,
+            text="Auto-detecting URL",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            fg_color="#334155",
+            text_color="#94A3B8",
+            corner_radius=6,
+            padx=8, pady=1
+        )
+        self.type_badge.pack(side="right")
+
+        # Entry Row
         entry_row = ctk.CTkFrame(input_layout, fg_color="transparent")
         entry_row.pack(fill="x")
 
         self.url_entry = ctk.CTkEntry(
             entry_row,
-            placeholder_text="e.g. https://paste.fitgirl-repacks.site/?b9f42622ad62a88b#GvhWmbUo...",
+            placeholder_text="e.g. https://fitgirl-repacks.site/black-myth-wukong/ OR pastebin / fuckingfast URL",
             font=ctk.CTkFont(size=13),
             height=42,
             border_color="#475569",
             fg_color="#0F172A"
         )
         self.url_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        self.url_entry.bind("<KeyRelease>", self._on_url_changed)
 
         self.start_btn = ctk.CTkButton(
             entry_row,
@@ -185,7 +179,7 @@ class LinkExtractorApp(ctk.CTk):
         )
         self.start_btn.pack(side="right")
 
-        # Progress Row inside input card
+        # Progress & Live Stats Row
         self.progress_row = ctk.CTkFrame(input_layout, fg_color="transparent")
         self.progress_row.pack(fill="x", pady=(12, 0))
 
@@ -217,6 +211,18 @@ class LinkExtractorApp(ctk.CTk):
             state="disabled"
         )
         self.cancel_btn.pack(side="right")
+
+        # Live speed & ETA sub-bar
+        self.stats_row = ctk.CTkFrame(input_layout, fg_color="transparent")
+        self.stats_row.pack(fill="x", pady=(6, 0))
+
+        self.stats_label = ctk.CTkLabel(
+            self.stats_row,
+            text="⚡ Concurrency: 3 Parallel Tabs | 🔁 Auto-Retry: Enabled (2 Passes)",
+            font=ctk.CTkFont(size=11),
+            text_color="#64748B"
+        )
+        self.stats_label.pack(side="left")
 
         # ── 3. Main Results Display Tabs ──
         middle_card = ctk.CTkFrame(self, corner_radius=12, fg_color="#1E293B", border_width=1, border_color="#334155")
@@ -282,19 +288,32 @@ class LinkExtractorApp(ctk.CTk):
             compound="left",
             command=self._copy_to_clipboard,
             font=ctk.CTkFont(size=13, weight="bold"),
-            height=36, width=240,
+            height=36, width=250,
             fg_color="#059669", hover_color="#047857",
             corner_radius=8
         )
         self.copy_btn.pack(side="right")
 
+    # ── Real-time URL Detection ──
+    def _on_url_changed(self, event=None):
+        raw = self.url_entry.get().strip()
+        url_type = scraper.detect_url_type(raw)
+        if url_type == "fitgirl_game_page":
+            self.type_badge.configure(text="🎮 Game Page Detected", fg_color="#6366F1", text_color="#FFFFFF")
+        elif url_type == "fitgirl_pastebin":
+            self.type_badge.configure(text="📋 Pastebin Detected", fg_color="#0284C7", text_color="#FFFFFF")
+        elif url_type in ("fuckingfast_direct", "raw_links"):
+            self.type_badge.configure(text="⚡ Direct FuckingFast Links", fg_color="#10B981", text_color="#FFFFFF")
+        else:
+            self.type_badge.configure(text="Auto-detecting URL", fg_color="#334155", text_color="#94A3B8")
+
     # ── Logging & Status UI Updates ──
-    def log(self, msg):
+    def log(self, msg: str):
         ts = time.strftime("%H:%M:%S")
         self.log_textbox.insert("end", f"[{ts}] {msg}\n")
         self.log_textbox.see("end")
 
-    def set_status(self, text, fraction=None, badge_color="#10B981"):
+    def set_status(self, text: str, fraction: float = None, badge_color: str = "#10B981"):
         self.status_badge.configure(text=text, fg_color=badge_color)
         if fraction is not None:
             self.progress_bar.set(fraction)
@@ -307,249 +326,167 @@ class LinkExtractorApp(ctk.CTk):
             return
 
         self.is_running = True
-        self.cancel_requested = False
+        self.cancel_event = threading.Event()
         self.start_btn.configure(state="disabled")
         self.cancel_btn.configure(state="normal")
         self.resolved_textbox.delete("1.0", "end")
         self.resolved_links = []
         self.pastebin_links = []
 
-        threading.Thread(target=self._run_full_pipeline, args=(url,), daemon=True).start()
+        threading.Thread(target=self._run_pipeline, args=(url,), daemon=True).start()
 
     def _on_cancel(self):
-        self.cancel_requested = True
-        self.log("Cancellation requested by user.")
+        if self.cancel_event:
+            self.cancel_event.set()
+        self.log("🛑 Cancellation requested by user.")
 
-    # ── Pipeline Engine ──
-    def _run_full_pipeline(self, pastebin_url):
+    # ── Execution Pipeline ──
+    def _run_pipeline(self, input_url: str):
         t_pipeline_start = time.time()
         try:
-            # Check if user passed direct fuckingfast link(s) directly
-            if "fuckingfast.co" in pastebin_url:
-                self.log(f"Phase 1: Detected direct fuckingfast URL input")
-                raw_urls = re.findall(r'https?://[^\s,]+', pastebin_url)
-                self.pastebin_links = [u for u in raw_urls if "fuckingfast.co" in u]
-                if not self.pastebin_links:
-                    self.pastebin_links = [pastebin_url]
-            else:
-                # Phase 1: Extract links from pastebin page
-                self.after(0, lambda: self.set_status("Phase 1: Fetching Pastebin", 0.05, badge_color="#F59E0B"))
-                self.log(f"Phase 1: Fetching pastebin: {pastebin_url}")
+            url_type = scraper.detect_url_type(input_url)
+            self.log(f"Detected input type: {url_type}")
 
-                with sync_playwright() as p:
-                    browser = self._launch_browser(p, headless=True)
-                    page = browser.new_context(
-                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-                    ).new_page()
-
-                    page.goto(pastebin_url, wait_until="networkidle")
-                    time.sleep(1.5)
-
-                    for a in page.query_selector_all("a"):
-                        href = a.get_attribute("href")
-                        if href and "fuckingfast.co" in href:
-                            if href not in self.pastebin_links:
-                                self.pastebin_links.append(href)
-
-                    browser.close()
-
-            count = len(self.pastebin_links)
-            self.log(f"Phase 1 complete: found {count} links")
-            if count == 0:
-                self.after(0, lambda: self.set_status("No links found", badge_color="#EF4444"))
-                self._finish()
-                return
-
-            # Phase 2: Ultra Fast JS resolution via real browser
-            self.after(0, lambda: self.set_status(f"Resolving 0/{count}", 0.1, badge_color="#0284C7"))
-            self.log(f"Phase 2: Resolving {count} links (high speed 100ms polling mode)")
-
+            engine = ResolutionEngine(concurrency=3, max_retries=2)
             channel = detect_browser_channel()
             if not channel:
-                self.log("ERROR: No Chrome or Edge browser found.")
+                self.log("ERROR: No Chrome or Edge browser detected on system.")
                 self.after(0, lambda: self.set_status("No Browser Found", badge_color="#EF4444"))
                 self._finish()
                 return
 
-            self.log(f"Using system browser: {channel}")
+            self.log(f"Using system browser engine: {channel}")
 
-            with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=False,
-                    channel=channel,
-                    args=['--disable-blink-features=AutomationControlled']
+            # Phase 1: URL & Pastebin Resolution
+            if url_type in ("fuckingfast_direct", "raw_links"):
+                raw_urls = re.findall(r'https?://[^\s,]+', input_url)
+                self.pastebin_links = [u for u in raw_urls if "fuckingfast.co" in u]
+                if not self.pastebin_links:
+                    self.pastebin_links = [input_url]
+                self.log(f"Phase 1: Parsed {len(self.pastebin_links)} direct fuckingfast link(s)")
+
+            elif url_type == "fitgirl_game_page":
+                self.after(0, lambda: self.set_status("Scraping Game Page", 0.05, badge_color="#6366F1"))
+                self.log(f"Phase 1: Fetching FitGirl game page: {input_url}")
+
+                pastebins = scraper.extract_game_page_pastebins(input_url)
+                ff_pastebins = [p for p in pastebins if p["hoster"] == "FuckingFast"]
+
+                if not ff_pastebins:
+                    self.log(f"Warning: No explicit 'FuckingFast' mirror found. Found: {[p['hoster'] for p in pastebins]}")
+                    if pastebins:
+                        ff_pastebins = [pastebins[0]]
+
+                if not ff_pastebins:
+                    self.log("ERROR: No pastebin mirrors found on game page.")
+                    self.after(0, lambda: self.set_status("No Mirrors Found", badge_color="#EF4444"))
+                    self._finish()
+                    return
+
+                target_pastebin = ff_pastebins[0]["url"]
+                self.log(f"Found FuckingFast pastebin: {target_pastebin}")
+                self.after(0, lambda: self.set_status("Decrypting Pastebin", 0.1, badge_color="#F59E0B"))
+
+                self.pastebin_links = asyncio.run(
+                    engine.fetch_pastebin_links(target_pastebin, log_cb=self.log)
                 )
-                context = browser.new_context(viewport={"width": 1280, "height": 720})
-                context.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined });")
-                context.on("page", lambda pop: pop.close() if pop != context.pages[0] else None)
 
-                page = context.new_page()
-                page.on("download", lambda dl: self._cancel_download(dl))
+            else:  # fitgirl_pastebin or other pastebin
+                self.after(0, lambda: self.set_status("Decrypting Pastebin", 0.08, badge_color="#F59E0B"))
+                self.pastebin_links = asyncio.run(
+                    engine.fetch_pastebin_links(input_url, log_cb=self.log)
+                )
 
-                for idx, ff_link in enumerate(self.pastebin_links):
-                    if self.cancel_requested:
-                        break
+            total_links = len(self.pastebin_links)
+            self.log(f"Phase 1 complete: extracted {total_links} game parts")
 
-                    part_name = ff_link.split("#")[-1] if "#" in ff_link else ff_link.split("/")[-1]
-                    frac = 0.1 + (0.85 * (idx + 1) / count)
-                    self.after(0, lambda i=idx, f=frac: self.set_status(f"Resolving {i+1}/{count}", f, badge_color="#0284C7"))
+            if total_links == 0:
+                self.after(0, lambda: self.set_status("No Links Found", badge_color="#EF4444"))
+                self._finish()
+                return
 
-                    t0 = time.time()
-                    direct_url = self._resolve_single_link_ultra_fast(page, ff_link)
-                    elapsed = time.time() - t0
+            # Phase 2: High-Speed Multi-Tab Resolution
+            self.after(0, lambda: self.set_status(f"Resolving 0/{total_links}", 0.15, badge_color="#0284C7"))
 
-                    if direct_url:
-                        self.resolved_links.append(direct_url)
-                        self.log(f"[{idx+1}/{count}] ⚡ Resolved {part_name} in {elapsed:.1f}s -> {direct_url[:65]}...")
-                        self.after(0, lambda u=direct_url: self._append_resolved(u))
-                    else:
-                        self.log(f"[{idx+1}/{count}] ⚠️ Could not resolve {part_name}, skipping")
+            def on_progress(done_count, total_count, avg_speed, eta, active_tabs, part_name, direct_url, status):
+                frac = 0.15 + (0.80 * done_count / max(1, total_count))
+                eta_str = f"{int(eta)}s" if eta < 60 else f"{int(eta // 60)}m {int(eta % 60)}s"
+                status_text = f"Resolving {done_count}/{total_count}"
+                stats_text = f"⚡ Speed: {avg_speed:.1f}s/part | ⏱️ ETA: ~{eta_str} | 🌐 {active_tabs} tabs active"
 
-                browser.close()
+                self.after(0, lambda: self.set_status(status_text, frac, badge_color="#0284C7"))
+                self.after(0, lambda: self.stats_label.configure(text=stats_text))
 
-            # Complete
+                if direct_url and status == "resolved":
+                    self.after(0, lambda: self._append_resolved(direct_url, done_count, total_count))
+
+            def on_retry_pass(failed_count, current_attempt, max_attempts):
+                self.after(0, lambda: self.set_status(
+                    f"Retrying {failed_count} links (Pass {current_attempt}/{max_attempts})",
+                    badge_color="#F59E0B"
+                ))
+
+            # Run engine
+            results: list[ResolvedLink] = asyncio.run(
+                engine.resolve_all_async(
+                    urls=self.pastebin_links,
+                    on_progress=on_progress,
+                    on_log=self.log,
+                    on_retry_pass=on_retry_pass,
+                    cancel_event=self.cancel_event
+                )
+            )
+
+            # Process completion
             total_elapsed = time.time() - t_pipeline_start
-            resolved_count = len(self.resolved_links)
-            self.after(0, lambda: self._on_pipeline_complete(resolved_count, count, total_elapsed))
+            resolved_urls = [r.direct_url for r in results if r.direct_url]
+            self.resolved_links = resolved_urls
+
+            self.after(0, lambda: self._on_pipeline_complete(len(resolved_urls), total_links, total_elapsed))
 
         except Exception as e:
             self.log(f"Pipeline error: {e}")
             self.after(0, lambda: self.set_status("Error Occurred", badge_color="#EF4444"))
             self._finish()
 
-    def _cancel_download(self, download):
-        try:
-            download.cancel()
-        except:
-            pass
-
-    def _launch_browser(self, p, headless=True):
-        if headless:
-            try:
-                return p.chromium.launch(headless=True)
-            except Exception:
-                try:
-                    res = compute_driver_executable()
-                    if isinstance(res, tuple) and len(res) == 2:
-                        driver_exe, driver_cli = res
-                        subprocess.run(
-                            [str(driver_exe), str(driver_cli), "install", "chromium"],
-                            capture_output=True,
-                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-                        )
-                except Exception as ex:
-                    self.log(f"Driver check warning: {ex}")
-                # Fallback to system chrome or edge if headless chromium launch fails
-                channel = detect_browser_channel()
-                return p.chromium.launch(headless=True, channel=channel)
-        else:
-            channel = detect_browser_channel()
-            return p.chromium.launch(
-                headless=False,
-                channel=channel,
-                args=['--disable-blink-features=AutomationControlled']
-            )
-
-    def _resolve_single_link_ultra_fast(self, page, ff_url):
-        direct_url = None
-
-        def on_response(response):
-            nonlocal direct_url
-            if "/go" in response.url or "dl.fuckingfast.co" in response.url:
-                headers = dict(response.headers)
-                if "hx-redirect" in headers:
-                    direct_url = headers["hx-redirect"]
-                elif "location" in headers:
-                    direct_url = headers["location"]
-
-        page.on("response", on_response)
-
-        try:
-            page.goto(ff_url, wait_until="domcontentloaded")
-
-            token = ""
-            for _ in range(60):
-                if self.cancel_requested:
-                    break
-                try:
-                    token = page.evaluate("() => window.turnstileToken || ''")
-                    cleared = page.evaluate("() => window.dlCleared || false")
-                    if token or cleared:
-                        break
-                except:
-                    pass
-                time.sleep(0.1)
-
-            if not token:
-                for frame in page.frames:
-                    if "turnstile" in frame.url or "cloudflare" in frame.url:
-                        try:
-                            frame.click("body", timeout=1000)
-                        except:
-                            pass
-                for _ in range(30):
-                    try:
-                        token = page.evaluate("() => window.turnstileToken || ''")
-                        if token:
-                            break
-                    except:
-                        pass
-                    time.sleep(0.1)
-
-            part_id = ff_url.split("fuckingfast.co/")[1].split("#")[0].strip("/")
-            js_script = f"""
-                async () => {{
-                    const resp = await fetch('/f/{part_id}/go', {{
-                        method: 'POST',
-                        headers: {{
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'HX-Request': 'true'
-                        }},
-                        body: 'cf-turnstile-response=' + encodeURIComponent(window.turnstileToken || '')
-                    }});
-                    return resp.headers.get('HX-Redirect') || resp.headers.get('Location') || '';
-                }}
-            """
-            res = page.evaluate(js_script)
-            if res:
-                direct_url = res
-
-        except Exception as e:
-            self.log(f"  Resolution error: {e}")
-        finally:
-            page.remove_listener("response", on_response)
-
-        return direct_url
-
-    def _append_resolved(self, url):
-        self.resolved_textbox.insert("end", f"{url}\n")
+    def _append_resolved(self, direct_url: str, done_count: int, total_count: int):
+        self.resolved_textbox.insert("end", f"{direct_url}\n")
         self.resolved_textbox.see("end")
-        count = len(self.resolved_links)
-        total = len(self.pastebin_links)
+
+        # Update tab label
+        self.tabview.set("Direct Download URLs (0)")  # preserve focus
+        # Find tab button and update text if possible or update count label
         self.count_label.configure(
-            text=f"✨ {count}/{total} direct URLs resolved",
+            text=f"✨ {done_count}/{total_count} direct URLs resolved",
             text_color="#38BDF8"
         )
         try:
-            with open("resolved_direct_urls.txt", "w", encoding="utf-8") as f:
-                f.write("\n".join(self.resolved_links))
-        except:
+            with open("resolved_direct_urls.txt", "a", encoding="utf-8") as f:
+                f.write(f"{direct_url}\n")
+        except Exception:
             pass
 
-    def _on_pipeline_complete(self, resolved_count, total_count, total_elapsed):
+    def _on_pipeline_complete(self, resolved_count: int, total_count: int, total_elapsed: float):
         avg_s = total_elapsed / resolved_count if resolved_count > 0 else 0
-        self.set_status(f"Complete ({avg_s:.1f}s/link)", 1.0, badge_color="#10B981")
-        self.log(f"🚀 Speed Pipeline Complete! {resolved_count}/{total_count} direct URLs in {total_elapsed:.1f}s ({avg_s:.1f}s per link).")
+        self.set_status(f"Complete ({avg_s:.1f}s/part)", 1.0, badge_color="#10B981")
+        self.stats_label.configure(
+            text=f"🚀 Completed in {total_elapsed:.1f}s | Avg Speed: {avg_s:.1f}s/part | Success: {resolved_count}/{total_count}"
+        )
 
         if resolved_count > 0:
             text = "\n".join(self.resolved_links)
             pyperclip.copy(text)
-            self.log("All direct URLs auto-copied to clipboard! Saved to resolved_direct_urls.txt")
+            self.log(f"All {resolved_count} direct URLs saved to resolved_direct_urls.txt & copied to clipboard!")
             self.count_label.configure(
                 text=f"✨ All {resolved_count} direct URLs copied to clipboard & saved!",
                 text_color="#10B981"
             )
+            # Rewrite clean file
+            try:
+                with open("resolved_direct_urls.txt", "w", encoding="utf-8") as f:
+                    f.write(text + "\n")
+            except Exception:
+                pass
 
         self._finish()
 
