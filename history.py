@@ -7,10 +7,21 @@ import re
 from typing import List, Dict, Any, Optional
 
 
+def get_app_data_dir() -> str:
+    """Get persistent user data directory for database and configuration."""
+    if getattr(sys, 'frozen', False):
+        app_data = os.environ.get('APPDATA')
+        if app_data:
+            dir_path = os.path.join(app_data, 'FitGirlLinkExtractor')
+            os.makedirs(dir_path, exist_ok=True)
+            return dir_path
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
 def get_db_path() -> str:
     """Get location for history SQLite database."""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, "history.db")
+    return os.path.join(get_app_data_dir(), "history.db")
 
 
 class HistoryManager:

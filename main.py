@@ -35,21 +35,74 @@ LOGO_PRESETS = {
 }
 
 ANIMATION_PRESETS = {
+    "Fast Subtle Fade": {
+        "transition": ft.AnimatedSwitcherTransition.FADE,
+        "duration": 300,
+        "reverse_duration": 220,
+        "curve_in": ft.AnimationCurve.EASE_IN_OUT,
+        "curve_out": ft.AnimationCurve.EASE_IN_OUT
+    },
     "Instant (Snappy)": {
         "transition": ft.AnimatedSwitcherTransition.FADE,
         "duration": 0,
         "reverse_duration": 0,
         "curve_in": ft.AnimationCurve.LINEAR,
         "curve_out": ft.AnimationCurve.LINEAR
-    },
-    "Fast Subtle Fade": {
-        "transition": ft.AnimatedSwitcherTransition.FADE,
-        "duration": 180,
-        "reverse_duration": 140,
-        "curve_in": ft.AnimationCurve.EASE_IN_OUT,
-        "curve_out": ft.AnimationCurve.EASE_IN_OUT
     }
 }
+
+
+def get_app_data_dir() -> str:
+    """Get persistent user data directory for settings and history database."""
+    if getattr(sys, 'frozen', False):
+        app_data = os.environ.get('APPDATA')
+        if app_data:
+            dir_path = os.path.join(app_data, 'FitGirlLinkExtractor')
+            os.makedirs(dir_path, exist_ok=True)
+            return dir_path
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def get_resource_path(relative_path: str) -> str:
+    """Get absolute path to bundled resource (works in dev and PyInstaller single-file)."""
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path.replace("/", os.sep))
+
+
+def get_export_dir() -> str:
+    """Get user-friendly export directory (Downloads folder or app folder) dynamically across all OSes and drives."""
+    # 1. Cross-platform home directory detection via os.path.expanduser('~')
+    home_dir = os.path.expanduser("~")
+    downloads = os.path.join(home_dir, "Downloads")
+    if os.path.exists(downloads):
+        return downloads
+
+    # 2. Check Windows USERPROFILE environment variable if custom drive
+    user_profile = os.environ.get("USERPROFILE") or os.environ.get("HOME")
+    if user_profile:
+        dl = os.path.join(user_profile, "Downloads")
+        if os.path.exists(dl):
+            return dl
+        return user_profile
+
+    # 3. Fallback to application directory
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def open_folder_cross_platform(folder_path: str):
+    """Open folder in native file manager on Windows (Explorer), macOS (Finder), or Linux."""
+    try:
+        if sys.platform == "win32":
+            os.startfile(folder_path)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", folder_path], check=False)
+        else:
+            subprocess.run(["xdg-open", folder_path], check=False)
+    except Exception:
+        pass
 
 
 def load_settings() -> dict:
@@ -60,10 +113,10 @@ def load_settings() -> dict:
         "theme_seed": "Deep Violet",
         "theme_mode": "Dark",
         "logo_style": "Minimalist Cyber Link",
-        "animation_style": "Instant (Snappy)",
+        "animation_style": "Fast Subtle Fade",
         "headless": False
     }
-    settings_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+    settings_file = os.path.join(get_app_data_dir(), "settings.json")
     if os.path.exists(settings_file):
         try:
             with open(settings_file, "r", encoding="utf-8") as f:
@@ -75,7 +128,7 @@ def load_settings() -> dict:
 
 
 def save_settings(settings: dict):
-    settings_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+    settings_file = os.path.join(get_app_data_dir(), "settings.json")
     try:
         with open(settings_file, "w", encoding="utf-8") as f:
             json.dump(settings, f, indent=2)
@@ -174,12 +227,12 @@ def main(page: ft.Page):
     page.theme = ft.Theme(color_scheme_seed=seed_color)
 
     active_logo_name = settings.get("logo_style", "Minimalist Cyber Link")
-    active_logo_path = LOGO_PRESETS.get(active_logo_name, "assets/logo_minimal.png")
-    abs_logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), active_logo_path.replace("/", os.sep))
+    active_logo_rel = LOGO_PRESETS.get(active_logo_name, "assets/logo_minimal.png")
+    abs_logo_path = get_resource_path(active_logo_rel)
     page.window.icon = abs_logo_path
 
-    rail_logo = ft.Image(src=active_logo_path, width=38, height=38, border_radius=8, fit=ft.BoxFit.CONTAIN)
-    banner_logo = ft.Image(src=active_logo_path, width=30, height=30, border_radius=6, fit=ft.BoxFit.CONTAIN)
+    rail_logo = ft.Image(src=abs_logo_path, width=38, height=38, border_radius=8, fit=ft.BoxFit.CONTAIN)
+    banner_logo = ft.Image(src=abs_logo_path, width=30, height=30, border_radius=6, fit=ft.BoxFit.CONTAIN)
 
     # Runtime state
     state = {
@@ -462,21 +515,24 @@ def main(page: ft.Page):
             show_snack("No resolved links to export.", success=False)
             return
         safe_title = re.sub(r'[^a-zA-Z0-9_-]', '_', state["last_game_title"]).strip('_')
-        out_dir = os.path.dirname(os.path.abspath(__file__))
+        out_dir = get_export_dir()
+        os.makedirs(out_dir, exist_ok=True)
 
         if format_type == "txt":
             fp = os.path.join(out_dir, f"{safe_title}_direct_urls.txt")
             integrations.export_text(fp, state["resolved_links"], state["last_game_title"])
-            show_snack(f"Exported text file: {os.path.basename(fp)}")
+            show_snack(f"📁 Saved to Downloads: {os.path.basename(fp)}")
         elif format_type == "json":
             fp = os.path.join(out_dir, f"{safe_title}.json")
             size_str = state["last_val_summary"].total_size_str if state["last_val_summary"] else ""
             integrations.export_json(fp, state["last_game_title"], url_input.value.strip(), state["resolved_links"], size_str)
-            show_snack(f"Exported JSON file: {os.path.basename(fp)}")
+            show_snack(f"📁 Saved to Downloads: {os.path.basename(fp)}")
         elif format_type == "crawljob":
             fp = os.path.join(out_dir, f"{safe_title}.crawljob")
             integrations.export_crawljob(fp, state["resolved_links"], state["last_game_title"])
-            show_snack(f"Exported CrawlJob: {os.path.basename(fp)}")
+            show_snack(f"📁 Saved to Downloads: {os.path.basename(fp)}")
+
+        open_folder_cross_platform(out_dir)
 
     export_menu = ft.PopupMenuButton(
         icon=ft.Icons.SAVE_ALT,
@@ -889,11 +945,12 @@ def main(page: ft.Page):
     def on_logo_changed(logo_name: str):
         settings["logo_style"] = logo_name
         save_settings(settings)
-        new_path = LOGO_PRESETS.get(logo_name, "assets/logo_minimal.png")
-        rail_logo.src = new_path
-        banner_logo.src = new_path
-        abs_p = os.path.join(os.path.dirname(os.path.abspath(__file__)), new_path.replace("/", os.sep))
-        page.window.icon = abs_p
+        rel_path = LOGO_PRESETS.get(logo_name, "assets/logo_minimal.png")
+        abs_path = get_resource_path(rel_path)
+        rail_logo.src = abs_path
+        banner_logo.src = abs_path
+        page.window.icon = abs_path
+        apply_windows_native_icon("app_icon.ico")
         page.update()
         show_snack(f"Branding logo switched to {logo_name}!")
 
@@ -931,17 +988,14 @@ def main(page: ft.Page):
     def on_animation_changed(anim_name: str):
         settings["animation_style"] = anim_name
         save_settings(settings)
-        cfg = ANIMATION_PRESETS.get(anim_name, ANIMATION_PRESETS["Instant (Snappy)"])
-        screen_container.transition = cfg["transition"]
-        screen_container.duration = cfg["duration"]
-        screen_container.reverse_duration = cfg["reverse_duration"]
-        screen_container.switch_in_curve = cfg.get("curve_in", ft.AnimationCurve.EASE_OUT_CUBIC)
-        screen_container.switch_out_curve = cfg.get("curve_out", ft.AnimationCurve.EASE_IN_CUBIC)
-        screen_container.update()
-        show_snack(f"Tab transition set to {anim_name}!")
+        cfg = ANIMATION_PRESETS.get(anim_name, ANIMATION_PRESETS["Fast Subtle Fade"])
+        cur_screen = screens[state["active_screen"]]
+        screen_holder.content = create_screen_switcher(cfg, cur_screen)
+        screen_holder.update()
+        show_snack(f"Tab transition set to {anim_name} (Live Applied)!")
 
     anim_dropdown = ft.Dropdown(
-        value=settings.get("animation_style", "Instant (Snappy)"),
+        value=settings.get("animation_style", "Fast Subtle Fade"),
         options=[ft.dropdown.Option(text=name, key=name) for name in ANIMATION_PRESETS.keys()],
         width=220,
         dense=True,
@@ -1097,22 +1151,28 @@ def main(page: ft.Page):
     )
 
     # ── Main Layout with NavigationRail ──
-    active_anim_name = settings.get("animation_style", "Instant (Snappy)")
-    anim_cfg = ANIMATION_PRESETS.get(active_anim_name, ANIMATION_PRESETS["Instant (Snappy)"])
+    active_anim_name = settings.get("animation_style", "Fast Subtle Fade")
+    anim_cfg = ANIMATION_PRESETS.get(active_anim_name, ANIMATION_PRESETS["Fast Subtle Fade"])
 
     screens = [extractor_screen, history_screen, settings_screen]
 
-    screen_container = ft.AnimatedSwitcher(
-        content=ft.Container(
-            key="screen_0_init",
-            content=extractor_screen,
+    screen_container = None
+
+    def create_screen_switcher(cfg, cur_screen):
+        nonlocal screen_container
+        screen_container = ft.AnimatedSwitcher(
+            content=cur_screen,
+            transition=cfg["transition"],
+            duration=cfg["duration"],
+            reverse_duration=cfg["reverse_duration"],
+            switch_in_curve=cfg.get("curve_in", ft.AnimationCurve.EASE_IN_OUT),
+            switch_out_curve=cfg.get("curve_out", ft.AnimationCurve.EASE_IN_OUT),
             expand=True
-        ),
-        transition=anim_cfg["transition"],
-        duration=anim_cfg["duration"],
-        reverse_duration=anim_cfg["reverse_duration"],
-        switch_in_curve=anim_cfg.get("curve_in", ft.AnimationCurve.EASE_OUT_CUBIC),
-        switch_out_curve=anim_cfg.get("curve_out", ft.AnimationCurve.EASE_IN_CUBIC),
+        )
+        return screen_container
+
+    screen_holder = ft.Container(
+        content=create_screen_switcher(anim_cfg, extractor_screen),
         expand=True
     )
 
@@ -1124,11 +1184,7 @@ def main(page: ft.Page):
         elif idx == 1:
             refresh_history(search_input.value)
 
-        screen_container.content = ft.Container(
-            key=f"screen_{idx}_{time.time()}",
-            content=screens[idx],
-            expand=True
-        )
+        screen_container.content = screens[idx]
         screen_container.update()
 
     nav_rail = ft.NavigationRail(
@@ -1161,7 +1217,7 @@ def main(page: ft.Page):
         ft.Row([
             nav_rail,
             ft.VerticalDivider(width=1),
-            screen_container
+            screen_holder
         ], expand=True, spacing=0)
     )
 
