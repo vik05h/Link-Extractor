@@ -35,7 +35,8 @@ def load_settings() -> dict:
         "concurrency": 3,
         "auto_validate": True,
         "jd_port": 9666,
-        "theme_seed": "Deep Violet"
+        "theme_seed": "Deep Violet",
+        "headless": False
     }
     settings_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
     if os.path.exists(settings_file):
@@ -86,12 +87,13 @@ def main(page: ft.Page):
 
     # ── SnackBar Helper ──
     def show_snack(text: str, success: bool = True):
-        page.snack_bar = ft.SnackBar(
+        snack = ft.SnackBar(
             content=ft.Text(text, weight=ft.FontWeight.W_500),
             bgcolor=ft.Colors.GREEN_800 if success else ft.Colors.RED_800,
-            duration=3500
+            duration=3500,
+            open=True
         )
-        page.snack_bar.open = True
+        page.overlay.append(snack)
         page.update()
 
     # ── Update Checker Dialog ──
@@ -116,15 +118,15 @@ def main(page: ft.Page):
                     )
                 ], tight=True, width=480),
                 actions=[
-                    ft.TextButton("Later", on_click=lambda _: page.close(dlg)),
+                    ft.TextButton("Later", on_click=lambda _: page.pop_dialog()),
                     ft.FilledButton(
                         "Download Update",
                         icon=ft.Icons.DOWNLOAD,
-                        on_click=lambda _: (updater.open_release_page(release_info["download_url"]), page.close(dlg))
+                        on_click=lambda _: (updater.open_release_page(release_info["download_url"]), page.pop_dialog())
                     )
                 ]
             )
-            page.open(dlg)
+            page.show_dialog(dlg)
         else:
             dlg = ft.AlertDialog(
                 title=ft.Row([
@@ -132,9 +134,9 @@ def main(page: ft.Page):
                     ft.Text("You're Up to Date!", weight=ft.FontWeight.BOLD)
                 ]),
                 content=ft.Text(f"You are running the latest version ({updater.CURRENT_VERSION}).\nNo new updates found on GitHub."),
-                actions=[ft.FilledButton("OK", on_click=lambda _: page.close(dlg))]
+                actions=[ft.FilledButton("OK", on_click=lambda _: page.pop_dialog())]
             )
-            page.open(dlg)
+            page.show_dialog(dlg)
 
     # ═══════════════════════════════════════════════════════════════════
     # ── SCREEN 1: EXTRACTOR SCREEN ──
@@ -298,9 +300,9 @@ def main(page: ft.Page):
         icon=ft.Icons.SAVE_ALT,
         tooltip="Export URLs",
         items=[
-            ft.PopupMenuItem(content="Export as .txt", on_click=lambda _: on_export("txt")),
-            ft.PopupMenuItem(content="Export as .json", on_click=lambda _: on_export("json")),
-            ft.PopupMenuItem(content="Export as .crawljob", on_click=lambda _: on_export("crawljob")),
+            ft.PopupMenuItem(content=ft.Text("Export as .txt"), on_click=lambda _: on_export("txt")),
+            ft.PopupMenuItem(content=ft.Text("Export as .json"), on_click=lambda _: on_export("json")),
+            ft.PopupMenuItem(content=ft.Text("Export as .crawljob"), on_click=lambda _: on_export("crawljob")),
         ]
     )
 
@@ -612,7 +614,7 @@ def main(page: ft.Page):
                         ft.Text("No extraction records found.", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_400),
                         ft.Text("Resolved game links will automatically appear here.", size=12, color=ft.Colors.GREY_500)
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                    alignment=ft.alignment.center,
+                    alignment=ft.Alignment.CENTER,
                     padding=40
                 )
             )
@@ -644,7 +646,7 @@ def main(page: ft.Page):
                         )
                     )
                 )
-        history_list.update()
+        page.update()
 
     search_input.on_change = lambda e: refresh_history(search_input.value)
 
@@ -817,8 +819,8 @@ def main(page: ft.Page):
         if idx == 0:
             screen_container.content = extractor_screen
         elif idx == 1:
-            refresh_history(search_input.value)
             screen_container.content = history_screen
+            refresh_history(search_input.value)
         elif idx == 2:
             screen_container.content = settings_screen
         page.update()
