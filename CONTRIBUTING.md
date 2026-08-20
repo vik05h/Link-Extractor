@@ -1,10 +1,10 @@
-# 🤝 Contributing to FitGirl Direct Link Extractor
+# Contributing to FitGirl Direct Link Extractor
 
-Thank you for your interest in contributing! Whether you're fixing a bug, improving performance, adding new hoster decrypters, or refining the UI, your help is welcome.
+Thank you for your interest in contributing! Whether you are fixing a bug, improving performance, adding new hoster decrypters, or refining the UI, your help is welcome.
 
 ---
 
-## 📜 Code of Conduct & Ground Rules
+## Code of Conduct & Ground Rules
 
 1. **Non-Commercial Respect**: This project is licensed under **PolyForm Noncommercial 1.0.0**. Contributions must remain open, free, and non-commercial.
 2. **Attribution**: Author credits (`Vikash / @vik05h`) must be preserved in all documentation and UI components.
@@ -12,7 +12,7 @@ Thank you for your interest in contributing! Whether you're fixing a bug, improv
 
 ---
 
-## 🛠️ Local Development Setup
+## Local Development Setup
 
 ### 1. Prerequisites
 - **Python 3.10+** (Python 3.11 or 3.12 recommended)
@@ -51,7 +51,7 @@ python main.py
 
 ---
 
-## 📐 Architecture & Codebase Layout
+## Architecture & Codebase Layout
 
 ```
 Link-Extractor/
@@ -69,7 +69,7 @@ Link-Extractor/
 
 ---
 
-## 🧪 Testing Your Changes
+## Testing Your Changes
 
 Before submitting a Pull Request, please test your changes across the following workflows:
 
@@ -86,7 +86,7 @@ Before submitting a Pull Request, please test your changes across the following 
 
 ---
 
-## 🔀 Git Workflow & Pull Request Process
+## Git Workflow & Pull Request Process
 
 1. **Fork the Repo** and create a feature branch from `main`:
    ```bash
@@ -106,7 +106,7 @@ Before submitting a Pull Request, please test your changes across the following 
 
 ---
 
-## 💬 Questions & Support
+## Questions & Support
 
 Have an idea or need help? Open an issue on GitHub:
-👉 [https://github.com/vik05h/Link-Extractor/issues](https://github.com/vik05h/Link-Extractor/issues)
+[https://github.com/vik05h/Link-Extractor/issues](https://github.com/vik05h/Link-Extractor/issues)

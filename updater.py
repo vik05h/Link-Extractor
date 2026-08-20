@@ -11,12 +11,14 @@ FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 
 def parse_version(v_str: str) -> tuple:
-    """Parse version string like 'v3.1.0' or '3.1.0' into comparable tuple (3, 1, 0)."""
+    """Parse version string like 'v3.1.0' or '3.1' into comparable tuple (3, 1, 0)."""
     clean = v_str.strip().lstrip("vV")
     parts = []
     for p in clean.split("."):
         digits = "".join(c for c in p if c.isdigit())
         parts.append(int(digits) if digits else 0)
+    while len(parts) < 3:
+        parts.append(0)
     return tuple(parts)
 
 

@@ -1,10 +1,10 @@
-# 🧠 MEMORY.md — FitGirl Direct Link Extractor AI Agent Context & Knowledge Base
+# MEMORY.md — FitGirl Direct Link Extractor AI Agent Context & Knowledge Base
 
 > **AI Memory Persistence Document**: This file serves as the continuous long-term memory for AI coding assistants (Antigravity, Claude Code, Cursor, Copilot Workspace) working on this codebase. It documents architectural decisions, solved technical gotchas, domain constraints, and active roadmap status to eliminate AI amnesia across development sessions.
 
 ---
 
-## 📌 1. Project Overview & Identity
+## 1. Project Overview & Identity
 
 * **Project Name**: FitGirl Direct Link Extractor (`Link-Extractor`)
 * **Repository**: [https://github.com/vik05h/Link-Extractor](https://github.com/vik05h/Link-Extractor)
@@ -15,7 +15,7 @@
 
 ---
 
-## 🛠️ 2. Technology Stack & Runtime Dependencies
+## 2. Technology Stack & Runtime Dependencies
 
 | Component | Technology | Purpose |
 | :--- | :--- | :--- |
@@ -28,7 +28,7 @@
 
 ---
 
-## 🏛️ 3. Architecture & Dataflow
+## 3. Architecture & Dataflow
 
 ```mermaid
 graph TD
@@ -44,9 +44,9 @@ graph TD
 
 ---
 
-## ⚠️ 4. Solved Technical Gotchas & Critical Traps
+## 4. Solved Technical Gotchas & Critical Traps
 
-### 1. PyInstaller `%TEMP%` Wipe vs `%APPDATA%` Storage
+### 1. PyInstaller %TEMP% Wipe vs %APPDATA% Storage
 * **The Problem**: PyInstaller single-file binaries unpack into `%TEMP%/_MEIxxxxxx` on startup and delete the folder on exit. Using `os.path.dirname(__file__)` wiped `history.db` and `settings.json` on every app restart.
 * **The Solution**: All persistent state must use `get_app_data_dir()`, which resolves to `%APPDATA%\FitGirlLinkExtractor\` when frozen (`getattr(sys, 'frozen', False)`).
 
@@ -72,7 +72,7 @@ graph TD
 
 ---
 
-## 🔒 5. Security & Penetration Baseline
+## 5. Security & Penetration Baseline
 
 Automated security penetration testing ([`scratch/security_pen_test.py`](file:///c:/Code/link/scratch/security_pen_test.py)) validates the following 6 vectors:
 * **SSRF / Cloud Metadata Protection**: Blocks `169.254.169.254` and non-whitelisted domains.
@@ -85,15 +85,15 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 
 ---
 
-## 🗺️ 6. Project Roadmap & Milestone Tracker
+## 6. Project Roadmap & Milestone Tracker
 
 - [x] **Phase 1: High-Speed Direct Resolver** (Multi-tab Playwright concurrency, exponential backoff).
 - [x] **Phase 2: Modern Material 3 UI & Suite** (Flet M3, SQLite archive, JD2 push, EXE packaging).
-- [ ] **Phase 3: Firebase Community Cloud Cache** (Shared public link pool with 24-72h TTL, free-tier Firestore/RTDB, rate-limiting, and upvote/downvote verification — specifications in `PHASES.md`).
+- [ ] **Phase 3: Community Cloud Cache** (Shared public link pool with 24-72h TTL, free-tier Firestore/RTDB, rate-limiting, and upvote/downvote verification — specifications in `PHASES.md`).
 
 ---
 
-## 📝 7. AI Agent Guidelines for Future Work
+## 7. AI Agent Guidelines for Future Work
 
 1. **Always Maintain Author Credit**: Vikash (@vik05h) must remain in all legal/UI headers.
 2. **Never Hardcode System Paths**: Always use `get_app_data_dir()`, `get_resource_path()`, or `get_export_dir()`.

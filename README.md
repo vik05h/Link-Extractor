@@ -18,11 +18,11 @@
 
 ---
 
-## 💡 Why This Tool Exists
+## Why This Tool Exists
 
-When downloading large games (like *Black Myth: Wukong* with 195 parts or *Assassin's Creed* with 27 parts), navigating through pastebins and solving Cloudflare Turnstile captchas on every single part takes **30–45 minutes of tedious manual clicking**. 
+When downloading large games (such as Black Myth: Wukong with 195 parts or Assassin's Creed with 27 parts), navigating through pastebins and solving Cloudflare Turnstile captchas on every part takes 30–45 minutes of manual clicking.
 
-Furthermore, feeding raw `fuckingfast.co` links to JDownloader 2 often triggers captcha errors (`"External solver required"`) or confusing *"Deep link analysis"* prompts because direct tokens lack file extensions.
+Furthermore, feeding raw fuckingfast.co links to JDownloader 2 often triggers captcha errors or Deep Link Analysis prompts because direct tokens lack file extensions.
 
 **FitGirl Link Extractor automates the entire pipeline:**
 1. Paste a single FitGirl game page URL.
@@ -31,29 +31,29 @@ Furthermore, feeding raw `fuckingfast.co` links to JDownloader 2 often triggers 
 
 ---
 
-## ⚡ Key Highlights
+## Key Highlights
 
 ```mermaid
 graph LR
-    A[🎮 FitGirl Game Page URL] --> B[🔍 Scraper Module]
-    B --> C[📋 Decrypt Pastebin]
-    C --> D[⚡ Playwright Multi-Tab Pool]
-    D --> E[🛡️ Cloudflare Turnstile Bypass]
-    E --> F[🔍 1-Byte Range Validator]
-    F --> G[🚀 JDownloader 2 LinkGrabber]
-    F --> H[💾 SQLite History Archive]
+    A[FitGirl Game Page URL] --> B[Scraper Module]
+    B --> C[Decrypt Pastebin]
+    C --> D[Playwright Multi-Tab Pool]
+    D --> E[Cloudflare Turnstile Bypass]
+    E --> F[1-Byte Range Validator]
+    F --> G[JDownloader 2 LinkGrabber]
+    F --> H[SQLite History Archive]
 ```
 
-- ⚡ **Concurrent Tab Pool (3x–6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
-- 🎨 **Material 3 UI (Flutter Engine)**: Butter-smooth 60–120 FPS animations, Navigation Rail, live interactive DataTable, and 5 dynamic color palettes.
-- 🔍 **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using ultra-lightweight 1-byte HTTP range requests.
-- 🚀 **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
-- 📚 **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.
-- 🔄 **GitHub Releases Auto-Updater**: Built-in update checker that notifies you when new releases or binaries are published.
+- **Concurrent Tab Pool (3x–6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
+- **Material 3 UI (Flutter Engine)**: Smooth 60–120 FPS animations, Navigation Rail, live interactive DataTable, and 5 dynamic color palettes.
+- **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using lightweight 1-byte HTTP range requests.
+- **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
+- **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.
+- **GitHub Releases Auto-Updater**: Built-in update checker that notifies you when new releases or binaries are published.
 
 ---
 
-## 📊 Speed Benchmarks
+## Speed Benchmarks
 
 | Repack Game | Total Parts | Manual Browser Time | FitGirl Link Extractor (3 Tabs) | Time Saved |
 | :--- | :---: | :---: | :---: | :---: |
@@ -64,12 +64,12 @@ graph LR
 
 ---
 
-## 📖 Step-by-Step Visual Tutorial
+## Step-by-Step Visual Tutorial
 
 Follow this quick guide to resolve and download any FitGirl repack in seconds:
 
-### 1️⃣ Step 1: Paste Your Link & Auto-Detection
-Paste any FitGirl game page URL, Pastebin link, or direct FuckingFast URL. The smart detector immediately categorizes the link with glowing badges (🎮 *Game Page*, 📋 *Pastebin*, or ⚡ *Direct Links*).
+### Step 1: Paste Your Link & Auto-Detection
+Paste any FitGirl game page URL, Pastebin link, or direct FuckingFast URL. The smart detector immediately categorizes the link with detection badges (Game Page, Pastebin, or Direct Links).
 
 <p align="center">
   <img src="screenshots/step1.png" alt="Step 1: Paste Game URL and Auto-Detection" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
@@ -79,8 +79,8 @@ Paste any FitGirl game page URL, Pastebin link, or direct FuckingFast URL. The s
 
 ---
 
-### 2️⃣ Step 2: Multi-Tab Parallel Resolution
-Click **🚀 Extract & Resolve**. The Playwright multi-tab pool resolves multiple parts concurrently (~1.8s per part) and streams live progress into the dashboard.
+### Step 2: Multi-Tab Parallel Resolution
+Click **Extract & Resolve**. The Playwright multi-tab pool resolves multiple parts concurrently (~1.8s per part) and streams live progress into the dashboard.
 
 <p align="center">
   <img src="screenshots/step2.png" alt="Step 2: Multi-Tab Concurrency and Live Resolution" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
@@ -90,7 +90,7 @@ Click **🚀 Extract & Resolve**. The Playwright multi-tab pool resolves multipl
 
 ---
 
-### 3️⃣ Step 3: Verified Direct URLs & Repack Sizing
+### Step 3: Verified Direct URLs & Repack Sizing
 Inspect all extracted `dl.fuckingfast.co` URLs in the interactive DataTable, complete with part numbers, live sizes (e.g. `18/18 Parts (34.19 GB)`), and validation status.
 
 <p align="center">
@@ -101,20 +101,20 @@ Inspect all extracted `dl.fuckingfast.co` URLs in the interactive DataTable, com
 
 ---
 
-### 4️⃣ Step 4: 1-Click JDownloader 2 Push or File Export
-- Click **🚀 Push to JD2** to send the entire package directly into JDownloader 2 LinkGrabber with zero captcha prompts.
-- Click **💾 Export** to save `.txt`, `.json`, or `.crawljob` files directly to your **Downloads** folder.
+### Step 4: 1-Click JDownloader 2 Push or File Export
+- Click **Push to JD2** to send the entire package directly into JDownloader 2 LinkGrabber with zero captcha prompts.
+- Click **Export** to save `.txt`, `.json`, or `.crawljob` files directly to your **Downloads** folder.
 
 <p align="center">
   <img src="screenshots/step4.png" alt="Step 4: Push to JDownloader 2 and Export Menu" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
   <br>
-  <em>Figure 4: Seamless integration with JDownloader 2 and multi-format exports.</em>
+  <em>Figure 4: Integration with JDownloader 2 and multi-format exports.</em>
 </p>
 
 ---
 
-### 5️⃣ Step 5: Search & Re-Use Saved History
-Open the **History** tab (`🕘`) from the navigation rail to search past extractions, re-copy links, or re-push to JDownloader 2 at any time.
+### Step 5: Search & Re-Use Saved History
+Open the **History** tab from the navigation rail to search past extractions, re-copy links, or re-push to JDownloader 2 at any time.
 
 <p align="center">
   <img src="screenshots/step5.png" alt="Step 5: Searchable SQLite History Archive" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
@@ -124,7 +124,7 @@ Open the **History** tab (`🕘`) from the navigation rail to search past extrac
 
 ---
 
-## 🛠️ Installation & Quick Start
+## Installation & Quick Start
 
 ### Option A: Run from Source
 ```bash
@@ -142,7 +142,7 @@ playwright install chromium
 python main.py
 ```
 
-### Option B: Build Standalone `.exe`
+### Option B: Build Standalone .exe
 ```bash
 pyinstaller --noconsole --onefile --name "LinkExtractor" main.py
 ```
@@ -150,23 +150,23 @@ The compiled single-file binary will be generated in the `dist/` directory.
 
 ---
 
-## 🗺️ Project Roadmap
+## Project Roadmap
 
 See [PHASES.md](PHASES.md) for full phase-by-phase development progress:
-- ✅ **Phase 1**: Speed & Reliability Core (Multi-tab pool, 2-pass auto-retry).
-- ✅ **Phase 2**: Material 3 UI/UX, JDownloader 2 push, 1-byte validation, SQLite history.
-- 🟡 **Phase 3 (Next)**: Community Cloud Cache & Shared Link Hub (Firebase).
-- ⚪ **Phase 4**: Multi-hoster support (DataNodes, FileKeeper) & CLI automation.
+- **Phase 1**: Speed & Reliability Core (Multi-tab pool, 2-pass auto-retry).
+- **Phase 2**: Material 3 UI/UX, JDownloader 2 push, 1-byte validation, SQLite history.
+- **Phase 3 (Next)**: Community Cloud Cache & Shared Link Hub (Firebase).
+- **Phase 4**: Multi-hoster support (DataNodes, FileKeeper) & CLI automation.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions, bug reports, and feature suggestions are welcome! Please check [CONTRIBUTING.md](CONTRIBUTING.md) for local dev setup, coding standards, and PR guidelines.
 
 ---
 
-## 📜 License & Author Attribution
+## License & Author Attribution
 
 This project is licensed under the **PolyForm Noncommercial License 1.0.0** (and **CC BY-NC-SA 4.0**).
 
@@ -177,5 +177,5 @@ This project is licensed under the **PolyForm Noncommercial License 1.0.0** (and
 
 ---
 
-### ⚠️ Disclaimer
+### Disclaimer
 *This tool is created for educational automation and file archival assistance. It does not host, crack, or distribute copyrighted files.*
