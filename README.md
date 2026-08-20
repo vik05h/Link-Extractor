@@ -64,21 +64,63 @@ graph LR
 
 ---
 
-## 🎮 How to Use
+## 📖 Step-by-Step Visual Tutorial
 
-### 1. Paste Your Game URL
-Paste any FitGirl game page, pastebin, or raw FuckingFast link:
-```
-https://fitgirl-repacks.site/black-myth-wukong/
-```
-The app automatically detects the URL type and fetches mirror links.
+Follow this quick guide to resolve and download any FitGirl repack in seconds:
 
-### 2. Click "Extract & Resolve"
-The multi-tab engine opens concurrent worker tabs, passes Cloudflare Turnstile, and streams resolved direct links into the live table.
+### 1️⃣ Step 1: Paste Your Link & Auto-Detection
+Paste any FitGirl game page URL, Pastebin link, or direct FuckingFast URL. The smart detector immediately categorizes the link with glowing badges (🎮 *Game Page*, 📋 *Pastebin*, or ⚡ *Direct Links*).
 
-### 3. Push to JDownloader 2 or Copy
-- Click **🚀 Push to JD2** to send the entire package directly into JDownloader 2 LinkGrabber.
-- Or click **📋 Copy All** to paste into IDM, Aria2, or any other download manager.
+<p align="center">
+  <img src="screenshots/step1.png" alt="Step 1: Paste Game URL and Auto-Detection" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <br>
+  <em>Figure 1: URL input with real-time detection badge.</em>
+</p>
+
+---
+
+### 2️⃣ Step 2: Multi-Tab Parallel Resolution
+Click **🚀 Extract & Resolve**. The Playwright multi-tab pool resolves multiple parts concurrently (~1.8s per part) and streams live progress into the dashboard.
+
+<p align="center">
+  <img src="screenshots/step2.png" alt="Step 2: Multi-Tab Concurrency and Live Resolution" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <br>
+  <em>Figure 2: Real-time progress bar, worker stats, and direct links streaming.</em>
+</p>
+
+---
+
+### 3️⃣ Step 3: Verified Direct URLs & Repack Sizing
+Inspect all extracted `dl.fuckingfast.co` URLs in the interactive DataTable, complete with part numbers, live sizes (e.g. `18/18 Parts (34.19 GB)`), and validation status.
+
+<p align="center">
+  <img src="screenshots/step3.png" alt="Step 3: Direct URLs DataTable and Size Validation" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <br>
+  <em>Figure 3: Interactive DataTable showing direct URLs with verified file hashes.</em>
+</p>
+
+---
+
+### 4️⃣ Step 4: 1-Click JDownloader 2 Push or File Export
+- Click **🚀 Push to JD2** to send the entire package directly into JDownloader 2 LinkGrabber with zero captcha prompts.
+- Click **💾 Export** to save `.txt`, `.json`, or `.crawljob` files directly to your **Downloads** folder.
+
+<p align="center">
+  <img src="screenshots/step4.png" alt="Step 4: Push to JDownloader 2 and Export Menu" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <br>
+  <em>Figure 4: Seamless integration with JDownloader 2 and multi-format exports.</em>
+</p>
+
+---
+
+### 5️⃣ Step 5: Search & Re-Use Saved History
+Open the **History** tab (`🕘`) from the navigation rail to search past extractions, re-copy links, or re-push to JDownloader 2 at any time.
+
+<p align="center">
+  <img src="screenshots/step5.png" alt="Step 5: Searchable SQLite History Archive" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <br>
+  <em>Figure 5: SQLite history archive preserved permanently across app restarts.</em>
+</p>
 
 ---
 
