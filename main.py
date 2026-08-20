@@ -452,8 +452,10 @@ def main(page: ft.Page):
                 seg_val_label.value = f"Validation & Size ({total_size_str})"
                 log(f"Validation Complete: {val_summary.valid_count}/{val_summary.total_links} verified | Total Size: {total_size_str}")
 
-            # Save to SQLite History
-            if resolved_urls:
+            is_cancelled = bool(state["cancel_event"] and state["cancel_event"].is_set())
+
+            # Save to SQLite History ONLY if not cancelled and URLs were resolved
+            if resolved_urls and not is_cancelled:
                 history_mgr.add_record(
                     title=state["last_game_title"],
                     source_url=target_url,
@@ -466,11 +468,19 @@ def main(page: ft.Page):
 
             total_elapsed = time.time() - t_start
             avg_s = total_elapsed / len(resolved_urls) if resolved_urls else 0
-            status_chip.label.value = f"Complete ({avg_s:.1f}s/part)"
-            status_chip.leading.name = ft.Icons.CHECK_CIRCLE
-            stats_text.value = f"🚀 Completed in {total_elapsed:.1f}s | Avg Speed: {avg_s:.1f}s/part | Total Size: {total_size_str} | Success: {len(resolved_urls)}/{total_count}"
-            count_label.value = f"✨ {len(resolved_urls)} direct URLs ready ({total_size_str})"
-            show_snack(f"All {len(resolved_urls)} direct URLs resolved successfully!")
+
+            if is_cancelled:
+                status_chip.label.value = "Cancelled"
+                status_chip.leading.name = ft.Icons.CANCEL
+                stats_text.value = f"🛑 Extraction cancelled by user ({len(resolved_urls)}/{total_count} resolved)."
+                count_label.value = f"⚠️ Cancelled: {len(resolved_urls)}/{total_count} parts resolved"
+                show_snack("Extraction cancelled by user.", success=False)
+            else:
+                status_chip.label.value = f"Complete ({avg_s:.1f}s/part)"
+                status_chip.leading.name = ft.Icons.CHECK_CIRCLE
+                stats_text.value = f"🚀 Completed in {total_elapsed:.1f}s | Avg Speed: {avg_s:.1f}s/part | Total Size: {total_size_str} | Success: {len(resolved_urls)}/{total_count}"
+                count_label.value = f"✨ {len(resolved_urls)} direct URLs ready ({total_size_str})"
+                show_snack(f"All {len(resolved_urls)} direct URLs resolved successfully!")
 
         except Exception as ex:
             log(f"Pipeline error: {ex}")

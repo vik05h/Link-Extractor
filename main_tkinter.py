@@ -1154,8 +1154,9 @@ class LinkExtractorApp(ctk.CTk):
                 self.log(f"Validation Complete: {val_summary.valid_count}/{val_summary.total_links} verified | Total Size: {total_size_str}")
                 self.after(0, lambda: self._render_validation_view(val_summary))
 
-            # Save to SQLite History
-            if resolved_urls:
+            # Save to SQLite History ONLY if not cancelled
+            is_cancelled = bool(self.cancel_event and self.cancel_event.is_set())
+            if resolved_urls and not is_cancelled:
                 self.history_mgr.add_record(
                     title=self.last_game_title,
                     source_url=input_url,
