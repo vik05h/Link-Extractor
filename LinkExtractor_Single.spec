@@ -1,12 +1,29 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_all
 
+flet_datas, flet_binaries, flet_hiddenimports = collect_all('flet')
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
-    datas=[('app_icon.png', '.'), ('app_icon.ico', '.'), ('icon_extract.png', '.'), ('icon_copy.png', '.'), ('icon_cancel.png', '.')],
-    hiddenimports=['scraper', 'engine', 'theme_m3', 'validator', 'history', 'integrations', 'sqlite3'],
+    binaries=flet_binaries,
+    datas=[
+        ('assets', 'assets'),
+        ('app_icon.png', '.'),
+        ('app_icon.ico', '.')
+    ] + flet_datas,
+    hiddenimports=[
+        'scraper',
+        'engine',
+        'validator',
+        'history',
+        'integrations',
+        'updater',
+        'theme_m3',
+        'pyperclip',
+        'sqlite3',
+        'playwright'
+    ] + flet_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -22,7 +39,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='LinkExtractor_Single',
+    name='LinkExtractor',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -35,5 +52,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['app_icon.ico'],
+    icon='app_icon.ico',
+    version='file_version_info.txt'
 )

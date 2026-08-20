@@ -44,24 +44,10 @@ ANIMATION_PRESETS = {
     },
     "Fast Subtle Fade": {
         "transition": ft.AnimatedSwitcherTransition.FADE,
-        "duration": 220,
-        "reverse_duration": 180,
+        "duration": 180,
+        "reverse_duration": 140,
         "curve_in": ft.AnimationCurve.EASE_IN_OUT,
         "curve_out": ft.AnimationCurve.EASE_IN_OUT
-    },
-    "Fluid Scale": {
-        "transition": ft.AnimatedSwitcherTransition.SCALE,
-        "duration": 300,
-        "reverse_duration": 200,
-        "curve_in": ft.AnimationCurve.EASE_OUT_BACK,
-        "curve_out": ft.AnimationCurve.EASE_IN_CUBIC
-    },
-    "Subtle Rotation": {
-        "transition": ft.AnimatedSwitcherTransition.ROTATION,
-        "duration": 320,
-        "reverse_duration": 220,
-        "curve_in": ft.AnimationCurve.EASE_OUT_CUBIC,
-        "curve_out": ft.AnimationCurve.EASE_IN_CUBIC
     }
 }
 
@@ -72,6 +58,7 @@ def load_settings() -> dict:
         "auto_validate": True,
         "jd_port": 9666,
         "theme_seed": "Deep Violet",
+        "theme_mode": "Dark",
         "logo_style": "Minimalist Cyber Link",
         "animation_style": "Instant (Snappy)",
         "headless": False
@@ -96,17 +83,91 @@ def save_settings(settings: dict):
         pass
 
 
+def apply_windows_native_icon(ico_path="app_icon.ico"):
+    if sys.platform != "win32":
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    abs_ico = os.path.join(base_dir, ico_path)
+    if not os.path.exists(abs_ico):
+        abs_ico = os.path.abspath(ico_path)
+    if not os.path.exists(abs_ico):
+        return
+
+    WM_SETICON = 0x0080
+    ICON_SMALL = 0
+    ICON_BIG = 1
+    IMAGE_ICON = 1
+    LR_LOADFROMFILE = 0x00000010
+    LR_DEFAULTSIZE = 0x00000040
+    GCLP_HICON = -14
+    GCLP_HICONSM = -34
+
+    try:
+        user32 = ctypes.windll.user32
+        h_icon = user32.LoadImageW(None, abs_ico, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE)
+        if not h_icon:
+            return
+
+        def _apply_loop():
+            for _ in range(12):
+                time.sleep(0.3)
+                found = []
+
+                @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+                def enum_cb(hwnd, lparam):
+                    if user32.IsWindowVisible(hwnd):
+                        length = user32.GetWindowTextLengthW(hwnd)
+                        if length > 0:
+                            buf = ctypes.create_unicode_buffer(length + 1)
+                            user32.GetWindowTextW(hwnd, buf, length + 1)
+                            if "fitgirl direct link extractor" in buf.value.lower():
+                                found.append(hwnd)
+                    return True
+
+                user32.EnumWindows(enum_cb, 0)
+                for hwnd in found:
+                    user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, h_icon)
+                    user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_icon)
+                    try:
+                        if hasattr(user32, 'SetClassLongPtrW'):
+                            user32.SetClassLongPtrW(hwnd, GCLP_HICON, h_icon)
+                            user32.SetClassLongPtrW(hwnd, GCLP_HICONSM, h_icon)
+                        else:
+                            user32.SetClassLongW(hwnd, GCLP_HICON, h_icon)
+                            user32.SetClassLongW(hwnd, GCLP_HICONSM, h_icon)
+                    except Exception:
+                        pass
+                if found:
+                    break
+
+        threading.Thread(target=_apply_loop, daemon=True).start()
+    except Exception:
+        pass
+
+
 def main(page: ft.Page):
+    apply_windows_native_icon("app_icon.ico")
+
     page.title = f"FitGirl Direct Link Extractor {updater.CURRENT_VERSION} — Flutter High Speed Edition"
     page.window.width = 1180
     page.window.height = 840
     page.window.min_width = 960
     page.window.min_height = 680
-    page.theme_mode = ft.ThemeMode.DARK
     page.padding = 0
 
     settings = load_settings()
     history_mgr = HistoryManager()
+
+    mode_val = settings.get("theme_mode", "Dark")
+    if mode_val == "Light":
+        page.theme_mode = ft.ThemeMode.LIGHT
+    elif mode_val == "System":
+        page.theme_mode = ft.ThemeMode.SYSTEM
+    else:
+        page.theme_mode = ft.ThemeMode.DARK
 
     seed_name = settings.get("theme_seed", "Deep Violet")
     seed_color = THEME_PRESETS.get(seed_name, "#6750A4")
@@ -114,6 +175,9 @@ def main(page: ft.Page):
 
     active_logo_name = settings.get("logo_style", "Minimalist Cyber Link")
     active_logo_path = LOGO_PRESETS.get(active_logo_name, "assets/logo_minimal.png")
+    abs_logo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), active_logo_path.replace("/", os.sep))
+    page.window.icon = abs_logo_path
+
     rail_logo = ft.Image(src=active_logo_path, width=38, height=38, border_radius=8, fit=ft.BoxFit.CONTAIN)
     banner_logo = ft.Image(src=active_logo_path, width=30, height=30, border_radius=6, fit=ft.BoxFit.CONTAIN)
 
@@ -151,7 +215,7 @@ def main(page: ft.Page):
                 content=ft.Column([
                     ft.Text(f"Release: {release_info['name']}", weight=ft.FontWeight.W_600),
                     ft.Divider(),
-                    ft.Text("Changelog & Highlights:", size=12, color=ft.Colors.GREY_400),
+                    ft.Text("Changelog & Highlights:", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
                     ft.Container(
                         content=ft.Text(release_info["body"], size=12),
                         padding=10,
@@ -193,40 +257,96 @@ def main(page: ft.Page):
         content_padding=12
     )
 
-    url_badge = ft.Chip(
-        label=ft.Text("Auto-detecting URL", size=11, weight=ft.FontWeight.BOLD),
-        leading=ft.Icon(ft.Icons.AUTORENEW, size=14)
+    url_badge_text = ft.Text("Auto-detecting URL", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE_VARIANT)
+    url_badge_icon = ft.Icon(ft.Icons.AUTORENEW, size=14, color=ft.Colors.ON_SURFACE_VARIANT)
+    url_badge = ft.Container(
+        content=ft.Row([
+            url_badge_icon,
+            url_badge_text
+        ], spacing=6, tight=True),
+        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+        border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+        border_radius=20,
+        padding=ft.Padding.symmetric(horizontal=12, vertical=6)
     )
 
     def on_url_changed(e):
-        url_type = scraper.detect_url_type(url_input.value or "")
+        raw_val = (url_input.value or "").strip()
+        url_type = scraper.detect_url_type(raw_val)
         if url_type == "fitgirl_game_page":
-            url_badge.label.value = "🎮 Game Page Detected"
-            url_badge.leading.name = ft.Icons.SPORTS_ESPORTS
+            url_badge_text.value = "🎮 Game Page Detected"
+            url_badge_text.color = ft.Colors.GREEN_400
+            url_badge_icon.name = ft.Icons.SPORTS_ESPORTS
+            url_badge_icon.color = ft.Colors.GREEN_400
+            url_badge.bgcolor = ft.Colors.with_opacity(0.18, ft.Colors.GREEN_400)
+            url_badge.border = ft.Border.all(1, ft.Colors.with_opacity(0.6, ft.Colors.GREEN_400))
         elif url_type == "fitgirl_pastebin":
-            url_badge.label.value = "📋 Pastebin Detected"
-            url_badge.leading.name = ft.Icons.CONTENT_PASTE
+            url_badge_text.value = "📋 Pastebin Detected"
+            url_badge_text.color = ft.Colors.AMBER_400
+            url_badge_icon.name = ft.Icons.CONTENT_PASTE
+            url_badge_icon.color = ft.Colors.AMBER_400
+            url_badge.bgcolor = ft.Colors.with_opacity(0.18, ft.Colors.AMBER_400)
+            url_badge.border = ft.Border.all(1, ft.Colors.with_opacity(0.6, ft.Colors.AMBER_400))
         elif url_type in ("fuckingfast_direct", "raw_links"):
-            url_badge.label.value = "⚡ Direct FuckingFast Links"
-            url_badge.leading.name = ft.Icons.FLASH_ON
+            url_badge_text.value = "⚡ Direct FuckingFast Links"
+            url_badge_text.color = ft.Colors.CYAN_400
+            url_badge_icon.name = ft.Icons.FLASH_ON
+            url_badge_icon.color = ft.Colors.CYAN_400
+            url_badge.bgcolor = ft.Colors.with_opacity(0.18, ft.Colors.CYAN_400)
+            url_badge.border = ft.Border.all(1, ft.Colors.with_opacity(0.6, ft.Colors.CYAN_400))
         else:
-            url_badge.label.value = "Auto-detecting URL"
-            url_badge.leading.name = ft.Icons.AUTORENEW
-        url_badge.update()
+            url_badge_text.value = "Auto-detecting URL"
+            url_badge_text.color = ft.Colors.ON_SURFACE_VARIANT
+            url_badge_icon.name = ft.Icons.AUTORENEW
+            url_badge_icon.color = ft.Colors.ON_SURFACE_VARIANT
+            url_badge.bgcolor = ft.Colors.SURFACE_CONTAINER_HIGH
+            url_badge.border = ft.Border.all(1, ft.Colors.OUTLINE_VARIANT)
+        try:
+            url_badge.update()
+        except Exception:
+            page.update()
 
     url_input.on_change = on_url_changed
 
     start_btn = ft.FilledButton("Extract & Resolve", icon=ft.Icons.ROCKET_LAUNCH, height=44)
     cancel_btn = ft.OutlinedButton("Cancel", icon=ft.Icons.CANCEL, height=44, disabled=True)
 
-    status_chip = ft.Chip(
-        label=ft.Text("Ready", size=12, weight=ft.FontWeight.BOLD),
-        leading=ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=14)
+    status_chip_text = ft.Text("Ready", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE_VARIANT)
+    status_chip_icon = ft.Icon(ft.Icons.CHECK_CIRCLE_OUTLINE, size=14, color=ft.Colors.ON_SURFACE_VARIANT)
+    status_chip = ft.Container(
+        content=ft.Row([
+            status_chip_icon,
+            status_chip_text
+        ], spacing=6, tight=True),
+        bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+        border=ft.Border.all(1, ft.Colors.OUTLINE_VARIANT),
+        border_radius=20,
+        padding=ft.Padding.symmetric(horizontal=12, vertical=6)
     )
+
+    def set_status(text: str, icon=ft.Icons.CHECK_CIRCLE_OUTLINE, color=None):
+        status_chip_text.value = text
+        if icon:
+            status_chip_icon.name = icon
+        if color:
+            status_chip_text.color = color
+            status_chip_icon.color = color
+            status_chip.bgcolor = ft.Colors.with_opacity(0.18, color)
+            status_chip.border = ft.Border.all(1, ft.Colors.with_opacity(0.6, color))
+        else:
+            status_chip_text.color = ft.Colors.ON_SURFACE_VARIANT
+            status_chip_icon.color = ft.Colors.ON_SURFACE_VARIANT
+            status_chip.bgcolor = ft.Colors.SURFACE_CONTAINER_HIGH
+            status_chip.border = ft.Border.all(1, ft.Colors.OUTLINE_VARIANT)
+        try:
+            status_chip.update()
+        except Exception:
+            page.update()
+
     progress_bar = ft.ProgressBar(value=0, expand=True, border_radius=6)
     stats_text = ft.Text(
         f"⚡ Worker Pool: {settings.get('concurrency', 3)} Tabs | 🔁 Auto-Retry: 2 Passes | 🔍 Validation: {'Enabled' if settings.get('auto_validate', True) else 'Disabled'}",
-        size=11, color=ft.Colors.GREY_400
+        size=11, color=ft.Colors.ON_SURFACE_VARIANT
     )
 
     def update_stats_display():
@@ -267,7 +387,7 @@ def main(page: ft.Page):
 
     # Log text
     log_column = ft.ListView(
-        controls=[ft.Text("[Ready] Waiting for extraction input...", size=11, font_family="Consolas", color=ft.Colors.GREY_400)],
+        controls=[ft.Text("[Ready] Waiting for extraction input...", size=11, font_family="Consolas", color=ft.Colors.ON_SURFACE_VARIANT)],
         expand=True,
         auto_scroll=True,
         padding=10
@@ -275,8 +395,17 @@ def main(page: ft.Page):
 
     def log(msg: str):
         ts = time.strftime("%H:%M:%S")
-        log_column.controls.append(ft.Text(f"[{ts}] {msg}", size=11, font_family="Consolas"))
-        log_column.update()
+        log_column.controls.append(ft.Text(f"[{ts}] {msg}", size=11, font_family="Consolas", color=ft.Colors.ON_SURFACE_VARIANT))
+        try:
+            if results_view_container.content == log_column:
+                log_column.update()
+            else:
+                page.update()
+        except Exception:
+            try:
+                page.update()
+            except Exception:
+                pass
 
     # Material 3 Segmented Button for View Switching
     seg_urls_label = ft.Text("Direct URLs (0)")
@@ -308,7 +437,7 @@ def main(page: ft.Page):
     # Bottom Actions
     push_jd_btn = ft.FilledButton("Push to JD2", icon=ft.Icons.FAST_FORWARD, height=38)
     copy_all_btn = ft.FilledTonalButton("Copy All", icon=ft.Icons.COPY_ALL, height=38)
-    count_label = ft.Text("Paste a link above and click 'Extract & Resolve'", size=12, color=ft.Colors.GREY_400)
+    count_label = ft.Text("Paste a link above and click 'Extract & Resolve'", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
     def on_copy_all(e):
         if state["resolved_links"]:
@@ -375,8 +504,7 @@ def main(page: ft.Page):
             channel = detect_browser_channel()
             if not channel:
                 log("ERROR: No Chrome or Edge browser detected on system.")
-                status_chip.label.value = "No Browser Found"
-                status_chip.leading.name = ft.Icons.ERROR
+                set_status("No Browser Found", icon=ft.Icons.ERROR, color=ft.Colors.RED_400)
                 finish_pipeline()
                 return
 
@@ -388,8 +516,7 @@ def main(page: ft.Page):
                 state["last_game_title"] = "FuckingFast Direct Parts"
                 log(f"Phase 1: Parsed {len(state['pastebin_links'])} direct fuckingfast link(s)")
             elif url_type == "fitgirl_game_page":
-                status_chip.label.value = "Scraping Game Page..."
-                status_chip.update()
+                set_status("Scraping Game Page...", icon=ft.Icons.SEARCH, color=ft.Colors.AMBER_400)
                 log(f"Phase 1: Fetching FitGirl game page: {target_url}")
                 pastebins, game_title = scraper.extract_game_page_pastebins(target_url)
                 state["last_game_title"] = game_title or "FitGirl Repack"
@@ -398,17 +525,15 @@ def main(page: ft.Page):
                 ff_pastebins = [p for p in pastebins if p["hoster"] == "FuckingFast"] or (pastebins[:1] if pastebins else [])
                 if not ff_pastebins:
                     log("ERROR: No pastebin mirrors found.")
-                    status_chip.label.value = "No Mirrors Found"
+                    set_status("No Mirrors Found", icon=ft.Icons.ERROR, color=ft.Colors.RED_400)
                     finish_pipeline()
                     return
 
                 target_pastebin = ff_pastebins[0]["url"]
-                status_chip.label.value = "Decrypting Pastebin..."
-                status_chip.update()
+                set_status("Decrypting Pastebin...", icon=ft.Icons.LOCK_OPEN, color=ft.Colors.AMBER_400)
                 state["pastebin_links"] = asyncio.run(engine.fetch_pastebin_links(target_pastebin, log_cb=log))
             else:
-                status_chip.label.value = "Decrypting Pastebin..."
-                status_chip.update()
+                set_status("Decrypting Pastebin...", icon=ft.Icons.LOCK_OPEN, color=ft.Colors.AMBER_400)
                 state["pastebin_links"] = asyncio.run(engine.fetch_pastebin_links(target_url, log_cb=log))
                 state["last_game_title"] = "FitGirl Pastebin Download"
 
@@ -416,7 +541,7 @@ def main(page: ft.Page):
             log(f"Phase 1 complete: extracted {total_count} game parts")
 
             if total_count == 0:
-                status_chip.label.value = "No Links Found"
+                set_status("No Links Found", icon=ft.Icons.ERROR, color=ft.Colors.RED_400)
                 finish_pipeline()
                 return
 
@@ -429,18 +554,18 @@ def main(page: ft.Page):
                         cells=[
                             ft.DataCell(ft.Text(str(i + 1))),
                             ft.DataCell(ft.Text(p_name, size=12)),
-                            ft.DataCell(ft.Text("--", size=12, color=ft.Colors.GREY_400)),
+                            ft.DataCell(ft.Text("--", size=12, color=ft.Colors.ON_SURFACE_VARIANT)),
                             ft.DataCell(ft.Chip(label=ft.Text("Pending", size=10), leading=ft.Icon(ft.Icons.HOURGLASS_EMPTY, size=12))),
                             ft.DataCell(ft.IconButton(icon=ft.Icons.COPY, icon_size=16, tooltip="Copy Link", disabled=True))
                         ]
                     )
                 )
-            data_table.update()
+            page.update()
 
             def on_progress(done_count, total, avg_speed, eta, active_tabs, part_name, direct_url, status):
                 frac = done_count / max(1, total)
                 progress_bar.value = frac
-                status_chip.label.value = f"Resolving {done_count}/{total}"
+                set_status(f"Resolving {done_count}/{total}", icon=ft.Icons.AUTORENEW, color=ft.Colors.BLUE_400)
                 eta_str = f"{int(eta)}s" if eta < 60 else f"{int(eta // 60)}m {int(eta % 60)}s"
                 stats_text.value = f"⚡ Speed: {avg_speed:.1f}s/part | ⏱️ ETA: ~{eta_str} | 🌐 {active_tabs} tabs active"
 
@@ -458,8 +583,7 @@ def main(page: ft.Page):
                 page.update()
 
             def on_retry_pass(failed_cnt, cur_att, max_att):
-                status_chip.label.value = f"Retrying {failed_cnt} links (Pass {cur_att}/{max_att})"
-                status_chip.update()
+                set_status(f"Retrying {failed_cnt} links (Pass {cur_att}/{max_att})", icon=ft.Icons.REFRESH, color=ft.Colors.AMBER_400)
 
             results = asyncio.run(
                 engine.resolve_all_async(
@@ -479,8 +603,7 @@ def main(page: ft.Page):
             total_size_bytes = 0
 
             if settings.get("auto_validate", True) and resolved_urls and not (state["cancel_event"] and state["cancel_event"].is_set()):
-                status_chip.label.value = "Validating Links & Size..."
-                status_chip.update()
+                set_status("Validating Links & Size...", icon=ft.Icons.CHECKLIST, color=ft.Colors.CYAN_400)
                 log(f"Phase 3: Validating {len(resolved_urls)} direct URLs & computing exact download sizes...")
 
                 val_summary = validator.validate_links(resolved_urls, max_workers=15, cancel_event=state["cancel_event"])
@@ -523,22 +646,19 @@ def main(page: ft.Page):
             avg_s = total_elapsed / len(resolved_urls) if resolved_urls else 0
 
             if is_cancelled:
-                status_chip.label.value = "Cancelled"
-                status_chip.leading.name = ft.Icons.CANCEL
+                set_status("Cancelled", icon=ft.Icons.CANCEL, color=ft.Colors.RED_400)
                 stats_text.value = f"🛑 Extraction cancelled by user ({len(resolved_urls)}/{total_count} resolved)."
                 count_label.value = f"⚠️ Cancelled: {len(resolved_urls)}/{total_count} parts resolved"
                 show_snack("Extraction cancelled by user.", success=False)
             else:
-                status_chip.label.value = f"Complete ({avg_s:.1f}s/part)"
-                status_chip.leading.name = ft.Icons.CHECK_CIRCLE
+                set_status(f"Complete ({avg_s:.1f}s/part)", icon=ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN_400)
                 stats_text.value = f"🚀 Completed in {total_elapsed:.1f}s | Avg Speed: {avg_s:.1f}s/part | Total Size: {total_size_str} | Success: {len(resolved_urls)}/{total_count}"
                 count_label.value = f"✨ {len(resolved_urls)} direct URLs ready ({total_size_str})"
                 show_snack(f"All {len(resolved_urls)} direct URLs resolved successfully!")
 
         except Exception as ex:
             log(f"Pipeline error: {ex}")
-            status_chip.label.value = "Error Occurred"
-            status_chip.leading.name = ft.Icons.ERROR
+            set_status("Error Occurred", icon=ft.Icons.ERROR, color=ft.Colors.RED_400)
         finally:
             finish_pipeline()
 
@@ -553,7 +673,7 @@ def main(page: ft.Page):
         start_btn.disabled = True
         cancel_btn.disabled = False
         progress_bar.value = None
-        status_chip.label.value = "Starting Engine..."
+        set_status("Starting Engine...", icon=ft.Icons.AUTORENEW, color=ft.Colors.BLUE_400)
         page.update()
 
         threading.Thread(target=run_pipeline_thread, args=(target,), daemon=True).start()
@@ -562,7 +682,7 @@ def main(page: ft.Page):
         if state["cancel_event"]:
             state["cancel_event"].set()
         log("🛑 Cancellation requested by user.")
-        status_chip.label.value = "Cancelling..."
+        set_status("Cancelling...", icon=ft.Icons.CANCEL, color=ft.Colors.AMBER_400)
         cancel_btn.disabled = True
         page.update()
 
@@ -596,7 +716,7 @@ def main(page: ft.Page):
                         ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
                         ft.Text(
                             "Directly paste FitGirl Game Pages, Pastebin URLs, or FuckingFast links. Converts all parts to direct dl.fuckingfast.co URLs via concurrent tabs with auto-retry and JDownloader 2 push.",
-                            size=12, color=ft.Colors.GREY_300
+                            size=12, color=ft.Colors.ON_SURFACE_VARIANT
                         )
                     ], spacing=6),
                     padding=16
@@ -675,9 +795,9 @@ def main(page: ft.Page):
             history_list.controls.append(
                 ft.Container(
                     content=ft.Column([
-                        ft.Icon(ft.Icons.HISTORY, size=48, color=ft.Colors.GREY_600),
-                        ft.Text("No extraction records found.", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.GREY_400),
-                        ft.Text("Resolved game links will automatically appear here.", size=12, color=ft.Colors.GREY_500)
+                        ft.Icon(ft.Icons.HISTORY, size=48, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text("No extraction records found.", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text("Resolved game links will automatically appear here.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
                     ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                     alignment=ft.Alignment.CENTER,
                     padding=40
@@ -772,8 +892,33 @@ def main(page: ft.Page):
         new_path = LOGO_PRESETS.get(logo_name, "assets/logo_minimal.png")
         rail_logo.src = new_path
         banner_logo.src = new_path
+        abs_p = os.path.join(os.path.dirname(os.path.abspath(__file__)), new_path.replace("/", os.sep))
+        page.window.icon = abs_p
         page.update()
         show_snack(f"Branding logo switched to {logo_name}!")
+
+    def on_mode_changed(mode_name: str):
+        settings["theme_mode"] = mode_name
+        save_settings(settings)
+        if mode_name == "Light":
+            page.theme_mode = ft.ThemeMode.LIGHT
+        elif mode_name == "System":
+            page.theme_mode = ft.ThemeMode.SYSTEM
+        else:
+            page.theme_mode = ft.ThemeMode.DARK
+        page.update()
+        show_snack(f"Switched to {mode_name} Mode!")
+
+    theme_mode_btn = ft.SegmentedButton(
+        selected=[settings.get("theme_mode", "Dark")],
+        allow_multiple_selection=False,
+        on_change=lambda e: on_mode_changed(list(e.control.selected)[0]),
+        segments=[
+            ft.Segment(value="Dark", label=ft.Text("Dark"), icon=ft.Icon(ft.Icons.DARK_MODE)),
+            ft.Segment(value="Light", label=ft.Text("Light"), icon=ft.Icon(ft.Icons.LIGHT_MODE)),
+            ft.Segment(value="System", label=ft.Text("System"), icon=ft.Icon(ft.Icons.SETTINGS_SYSTEM_DAYDREAM)),
+        ]
+    )
 
     logo_dropdown = ft.Dropdown(
         value=settings.get("logo_style", "Minimalist Cyber Link"),
@@ -851,7 +996,7 @@ def main(page: ft.Page):
                 content=ft.Container(
                     content=ft.Column([
                         ft.Text("Engine & Customization Preferences", size=18, weight=ft.FontWeight.BOLD),
-                        ft.Text("Configure Material 3 color themes, worker tab concurrency, validation, and JDownloader 2 integration.", size=12, color=ft.Colors.GREY_400)
+                        ft.Text("Configure Material 3 color themes, worker tab concurrency, validation, and JDownloader 2 integration.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
                     ]),
                     padding=16
                 )
@@ -859,34 +1004,43 @@ def main(page: ft.Page):
             ft.Card(
                 content=ft.Container(
                     content=ft.Column([
-                        # 1. Theme Color
+                        # 1. Theme Brightness Mode (Dark / Light / System)
+                        ft.Row([
+                            ft.Column([
+                                ft.Text("Appearance & Theme Mode:", size=13, weight=ft.FontWeight.BOLD),
+                                ft.Text("Toggle between Dark Mode, Light Mode, or follow Windows System setting.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                            ]),
+                            theme_mode_btn
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        # 2. Theme Palette Color
                         ft.Row([
                             ft.Column([
                                 ft.Text("Material 3 Theme Palette Preset:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Choose dynamic seed color (Deep Violet, Emerald, Sapphire, Amber, Rose).", size=11, color=ft.Colors.GREY_400)
+                                ft.Text("Choose dynamic seed color (Deep Violet, Emerald, Sapphire, Amber, Rose).", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             theme_dropdown
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 2. App Logo & Branding
+                        # 3. App Logo & Branding
                         ft.Row([
                             ft.Column([
                                 ft.Text("Application Logo & Branding Theme:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Switch between Minimalist Cyber Link and Retro Arcade Cartridge.", size=11, color=ft.Colors.GREY_400)
+                                ft.Text("Switch between Minimalist Cyber Link and Retro Arcade Cartridge.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             logo_dropdown
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 3. Tab Transition Animation
+                        # 4. Tab Transition Animation
                         ft.Row([
                             ft.Column([
                                 ft.Text("Tab Switch Animation Effect:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Choose between Instant (Snappy 0ms), Fast Subtle Fade, Fluid Scale, and Rotation.", size=11, color=ft.Colors.GREY_400)
+                                ft.Text("Choose between Instant (Snappy 0ms) and Fast Subtle Fade (180ms).", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             anim_dropdown
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 2. Concurrency
+                        # 5. Concurrency
                         ft.Row([
                             ft.Column([
                                 ft.Text("Worker Tab Concurrency (Parallel Resolution):", size=13, weight=ft.FontWeight.BOLD),
@@ -895,20 +1049,20 @@ def main(page: ft.Page):
                             ft.Container(content=concur_slider, width=220)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 3. Auto-Validation
+                        # 6. Auto-Validation
                         ft.Row([
                             ft.Column([
                                 ft.Text("Auto-Validate Links & Calculate Repack Size:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Runs rapid 1-byte Range checks to compute total download size and verify live filenames.", size=11, color=ft.Colors.GREY_400)
+                                ft.Text("Runs rapid 1-byte Range checks to compute total download size and verify live filenames.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             val_switch
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 4. JD2 Port
+                        # 7. JD2 Port
                         ft.Row([
                             ft.Column([
                                 ft.Text("JDownloader 2 Local CNL Port:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Default port for JDownloader 2 Click'n'Load / FlashGot web API is 9666.", size=11, color=ft.Colors.GREY_400)
+                                ft.Text("Default port for JDownloader 2 Click'n'Load / FlashGot web API is 9666.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             ft.Row([
                                 jd_port_field,
@@ -916,20 +1070,20 @@ def main(page: ft.Page):
                             ])
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 5. Check for Updates
+                        # 8. Check for Updates
                         ft.Row([
                             ft.Column([
                                 ft.Text(f"Application Version & Updates ({updater.CURRENT_VERSION}):", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Check GitHub Releases for the latest patches, features, and binary builds.", size=11, color=ft.Colors.GREY_400)
+                                ft.Text("Check GitHub Releases for the latest patches, features, and binary builds.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             ft.FilledButton("Check for Updates", icon=ft.Icons.SYSTEM_UPDATE, on_click=show_update_dialog)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 6. About & Author Credits
+                        # 9. About & Author Credits
                         ft.Row([
                             ft.Column([
                                 ft.Text("Original Author & Open Source License:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Developed by Vikash (@vik05h) • Licensed under PolyForm Noncommercial 1.0.0 (Free for personal use; no commercial use).", size=11, color=ft.Colors.GREY_400)
+                                ft.Text("Developed by Vikash (@vik05h) • Licensed under PolyForm Noncommercial 1.0.0 (Free for personal use; no commercial use).", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             ft.TextButton("GitHub Repo", icon=ft.Icons.OPEN_IN_NEW, on_click=lambda _: updater.open_release_page("https://github.com/vik05h/Link-Extractor"))
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
@@ -946,8 +1100,14 @@ def main(page: ft.Page):
     active_anim_name = settings.get("animation_style", "Instant (Snappy)")
     anim_cfg = ANIMATION_PRESETS.get(active_anim_name, ANIMATION_PRESETS["Instant (Snappy)"])
 
+    screens = [extractor_screen, history_screen, settings_screen]
+
     screen_container = ft.AnimatedSwitcher(
-        content=extractor_screen,
+        content=ft.Container(
+            key="screen_0_init",
+            content=extractor_screen,
+            expand=True
+        ),
         transition=anim_cfg["transition"],
         duration=anim_cfg["duration"],
         reverse_duration=anim_cfg["reverse_duration"],
@@ -960,14 +1120,16 @@ def main(page: ft.Page):
         idx = e.control.selected_index
         state["active_screen"] = idx
         if idx == 0:
-            screen_container.content = extractor_screen
             update_stats_display()
         elif idx == 1:
-            screen_container.content = history_screen
             refresh_history(search_input.value)
-        elif idx == 2:
-            screen_container.content = settings_screen
-        page.update()
+
+        screen_container.content = ft.Container(
+            key=f"screen_{idx}_{time.time()}",
+            content=screens[idx],
+            expand=True
+        )
+        screen_container.update()
 
     nav_rail = ft.NavigationRail(
         selected_index=0,
@@ -1005,4 +1167,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.run(main)
+    ft.run(main, assets_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"))
