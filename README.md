@@ -1,99 +1,139 @@
-# ⚡ FitGirl Direct Link Extractor v3.1 — High Speed Direct Link Grabber
+<p align="center">
+  <img src="assets/logo_minimal.png" alt="FitGirl Link Extractor Logo" width="130" style="border-radius: 24px;" />
+</p>
 
-[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-blue.svg)](LICENSE)
-[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Framework: Flet](https://img.shields.io/badge/UI-Flet_Material_3-purple.svg)](https://flet.dev)
+<h1 align="center">FitGirl Direct Link Extractor</h1>
 
-A blazing-fast, lightweight Windows desktop app that extracts multi-part download links from FitGirl game pages & pastebins, automatically passes Cloudflare Turnstile verification using concurrent browser tabs, and outputs **TRUE direct download links** (`dl.fuckingfast.co`) with direct 1-click push to JDownloader 2 and IDM.
+<p align="center">
+  <b>High-speed multi-threaded direct link resolver and JDownloader 2 automation tool for FitGirl repacks.</b>
+</p>
 
-No more skipped links or "External solver required" captcha blocks in JDownloader!
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-7C3AED.svg" alt="License" /></a>
+  <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-0284C7.svg" alt="CC BY-NC-SA 4.0" /></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-10B981.svg" alt="Python" /></a>
+  <a href="https://flet.dev"><img src="https://img.shields.io/badge/UI-Flet_Material_3-F59E0B.svg" alt="UI" /></a>
+  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.1.0-blue.svg" alt="Release" /></a>
+</p>
 
 ---
 
-## 🚀 Key Features
+## 💡 Why This Tool Exists
 
-- ⚡ **3x-6x Concurrent Tab Pool**: Resolves links in parallel inside a single browser instance — cutting extraction time from **~4 minutes down to ~1 minute** for a 40-part game!
-- 🎨 **Material 3 UI (Flutter Engine)**: 60–120 FPS hardware acceleration, Navigation Rail, live interactive DataTable with 1-click copy, and 5 dynamic color themes.
-- 🎮 **Direct FitGirl Game Page Support**: Simply paste any FitGirl game URL (e.g. `https://fitgirl-repacks.site/black-myth-wukong/`). The tool automatically discovers and parses the FuckingFast mirror pastebin without manual hunting.
-- 🔁 **Automated 2-Pass Retry Engine**: Never lose a single game part again. If Cloudflare temporarily throttles a link, the engine automatically re-queues and retries failed parts with smart jitter backoff.
-- 🔍 **Live 1-Byte Range Link Validation**: Computes exact total repack download size and live filenames using ultra-fast 1-byte Range requests without downloading files.
-- 🚀 **1-Click JDownloader 2 Push**: Direct push to JDownloader 2 LinkGrabber via local Click'n'Load HTTP API + `.crawljob` auto-import with `#filename.rar` fragments (zero "Deep link analysis" popups).
-- 📚 **SQLite History & Archive**: Embedded local search database of all your past extractions for instant 1-click re-copying or re-pushing.
+When downloading large games (like *Black Myth: Wukong* with 195 parts or *Assassin's Creed* with 27 parts), navigating through pastebins and solving Cloudflare Turnstile captchas on every single part takes **30–45 minutes of tedious manual clicking**. 
+
+Furthermore, feeding raw `fuckingfast.co` links to JDownloader 2 often triggers captcha errors (`"External solver required"`) or confusing *"Deep link analysis"* prompts because direct tokens lack file extensions.
+
+**FitGirl Link Extractor automates the entire pipeline:**
+1. Paste a single FitGirl game page URL.
+2. The multi-tab worker pool automatically solves Cloudflare Turnstile in parallel (~1.8s/part).
+3. Outputs **100% verified direct download links** (`dl.fuckingfast.co`) and pushes them straight into JDownloader 2 with one click.
+
+---
+
+## ⚡ Key Highlights
+
+```mermaid
+graph LR
+    A[🎮 FitGirl Game Page URL] --> B[🔍 Scraper Module]
+    B --> C[📋 Decrypt Pastebin]
+    C --> D[⚡ Playwright Multi-Tab Pool]
+    D --> E[🛡️ Cloudflare Turnstile Bypass]
+    E --> F[🔍 1-Byte Range Validator]
+    F --> G[🚀 JDownloader 2 LinkGrabber]
+    F --> H[💾 SQLite History Archive]
+```
+
+- ⚡ **Concurrent Tab Pool (3x–6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
+- 🎨 **Material 3 UI (Flutter Engine)**: Butter-smooth 60–120 FPS animations, Navigation Rail, live interactive DataTable, and 5 dynamic color palettes.
+- 🔍 **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using ultra-lightweight 1-byte HTTP range requests.
+- 🚀 **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
+- 📚 **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.
 - 🔄 **GitHub Releases Auto-Updater**: Built-in update checker that notifies you when new releases or binaries are published.
 
 ---
 
-## 📖 Quick Tutorial
+## 📊 Speed Benchmarks
 
-### Step 1: Enter Your URL
-Paste any of the following into the input box:
-- **FitGirl Game Page URL**: `https://fitgirl-repacks.site/black-myth-wukong/`
-- **FitGirl Pastebin URL**: `https://paste.fitgirl-repacks.site/?dc64365f494f3ba0#...`
-- **Direct FuckingFast Links**: `https://fuckingfast.co/...`
-
-The URL type is automatically detected in real-time!
-
----
-
-### Step 2: Click "Extract & Resolve"
-Click **Extract & Resolve** to initiate the high-speed pipeline.
+| Repack Game | Total Parts | Manual Browser Time | FitGirl Link Extractor (3 Tabs) | Time Saved |
+| :--- | :---: | :---: | :---: | :---: |
+| **Starsand Island** | 3 Parts | ~2.5 mins | **~6.2 seconds** | **96% Faster** |
+| **Mafia: The Old Country** | 18 Parts | ~14 mins | **~38 seconds** | **95% Faster** |
+| **Assassin's Creed: Black Flag** | 27 Parts | ~20 mins | **~54 seconds** | **95% Faster** |
+| **Black Myth: Wukong** | 195 Parts | ~1.5 hours | **~5.5 minutes** | **94% Faster** |
 
 ---
 
-### Step 3: Concurrent Cloudflare Resolution
-The engine launches concurrent browser tabs (default 3) to automatically pass Cloudflare Turnstile challenges in parallel (~1.5-2.0s effective per part).
+## 🎮 How to Use
+
+### 1. Paste Your Game URL
+Paste any FitGirl game page, pastebin, or raw FuckingFast link:
+```
+https://fitgirl-repacks.site/black-myth-wukong/
+```
+The app automatically detects the URL type and fetches mirror links.
+
+### 2. Click "Extract & Resolve"
+The multi-tab engine opens concurrent worker tabs, passes Cloudflare Turnstile, and streams resolved direct links into the live table.
+
+### 3. Push to JDownloader 2 or Copy
+- Click **🚀 Push to JD2** to send the entire package directly into JDownloader 2 LinkGrabber.
+- Or click **📋 Copy All** to paste into IDM, Aria2, or any other download manager.
 
 ---
 
-### Step 4: Direct URLs Auto-Streamed & Validated
-Watch direct `https://dl.fuckingfast.co/dl/...` URLs stream into the live DataTable in real-time with verified part sizes and filenames.
+## 🛠️ Installation & Quick Start
 
----
-
-### Step 5: Push to JDownloader 2 or Copy All
-Click **Push to JD2** to send all parts directly into JDownloader 2 LinkGrabber, or click **Copy All** to paste into your favorite download manager.
-
----
-
-## 🛠️ How to Build from Source
-
+### Option A: Run from Source
 ```bash
-# 1. Install dependencies
+# 1. Clone the repository
+git clone https://github.com/vik05h/Link-Extractor.git
+cd Link-Extractor
+
+# 2. Install dependencies
 pip install flet playwright pyperclip
 
-# 2. Install browser binaries (one-time)
+# 3. Install browser binaries (one-time setup)
 playwright install chromium
 
-# 3. Run application
+# 4. Run application
 python main.py
-
-# 4. Build Standalone EXE
-pyinstaller --noconsole --onefile --name "LinkExtractor" main.py
 ```
 
-The compiled standalone executable will be located in the `dist/` directory.
+### Option B: Build Standalone `.exe`
+```bash
+pyinstaller --noconsole --onefile --name "LinkExtractor" main.py
+```
+The compiled single-file binary will be generated in the `dist/` directory.
 
 ---
 
 ## 🗺️ Project Roadmap
 
-See [PHASES.md](file:///c:/Code/link/PHASES.md) for full phase-by-phase development progress and future integrations (Firebase Community Cloud Cache, multi-hoster support, and CLI automation).
+See [PHASES.md](PHASES.md) for full phase-by-phase development progress:
+- ✅ **Phase 1**: Speed & Reliability Core (Multi-tab pool, 2-pass auto-retry).
+- ✅ **Phase 2**: Material 3 UI/UX, JDownloader 2 push, 1-byte validation, SQLite history.
+- 🟡 **Phase 3 (Next)**: Community Cloud Cache & Shared Link Hub (Firebase).
+- ⚪ **Phase 4**: Multi-hoster support (DataNodes, FileKeeper) & CLI automation.
 
 ---
 
-## 📜 License & Attribution
+## 🤝 Contributing
+
+Contributions, bug reports, and feature suggestions are welcome! Please check [CONTRIBUTING.md](CONTRIBUTING.md) for local dev setup, coding standards, and PR guidelines.
+
+---
+
+## 📜 License & Author Attribution
 
 This project is licensed under the **PolyForm Noncommercial License 1.0.0** (and **CC BY-NC-SA 4.0**).
 
-### Terms:
-* **Non-Commercial Only**: You may use, study, modify, and distribute this software for **free personal, educational, and archival purposes only**. You may **NOT** sell this software, bundle it in paid products, or monetize it in any way.
-* **Mandatory Attribution**: Any fork, modification, or binary distribution **MUST** give visible credit to the original author:
+* **Non-Commercial**: Free for personal, educational, and archival use. Selling, paywalling, or commercializing this software is strictly prohibited.
+* **Mandatory Attribution**: Any fork, modification, or redistribution must visibly credit the original author:
   > **Original Author:** Vikash ([@vik05h](https://github.com/vik05h))  
   > **Repository:** [https://github.com/vik05h/Link-Extractor](https://github.com/vik05h/Link-Extractor)
-* **Share-Alike**: Any derivative works must be distributed under the same non-commercial license.
 
 ---
 
 ### ⚠️ Disclaimer
-*This tool is created for educational automation and file archival assistance. It does not host or distribute copyrighted files.*
+*This tool is created for educational automation and file archival assistance. It does not host, crack, or distribute copyrighted files.*

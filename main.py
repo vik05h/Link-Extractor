@@ -29,6 +29,42 @@ THEME_PRESETS = {
     "Rose": "#F43F5E"
 }
 
+LOGO_PRESETS = {
+    "Minimalist Cyber Link": "assets/logo_minimal.png",
+    "Retro Arcade Cartridge": "assets/logo_arcade.png"
+}
+
+ANIMATION_PRESETS = {
+    "Instant (Snappy)": {
+        "transition": ft.AnimatedSwitcherTransition.FADE,
+        "duration": 0,
+        "reverse_duration": 0,
+        "curve_in": ft.AnimationCurve.LINEAR,
+        "curve_out": ft.AnimationCurve.LINEAR
+    },
+    "Fast Subtle Fade": {
+        "transition": ft.AnimatedSwitcherTransition.FADE,
+        "duration": 220,
+        "reverse_duration": 180,
+        "curve_in": ft.AnimationCurve.EASE_IN_OUT,
+        "curve_out": ft.AnimationCurve.EASE_IN_OUT
+    },
+    "Fluid Scale": {
+        "transition": ft.AnimatedSwitcherTransition.SCALE,
+        "duration": 300,
+        "reverse_duration": 200,
+        "curve_in": ft.AnimationCurve.EASE_OUT_BACK,
+        "curve_out": ft.AnimationCurve.EASE_IN_CUBIC
+    },
+    "Subtle Rotation": {
+        "transition": ft.AnimatedSwitcherTransition.ROTATION,
+        "duration": 320,
+        "reverse_duration": 220,
+        "curve_in": ft.AnimationCurve.EASE_OUT_CUBIC,
+        "curve_out": ft.AnimationCurve.EASE_IN_CUBIC
+    }
+}
+
 
 def load_settings() -> dict:
     default_settings = {
@@ -36,6 +72,8 @@ def load_settings() -> dict:
         "auto_validate": True,
         "jd_port": 9666,
         "theme_seed": "Deep Violet",
+        "logo_style": "Minimalist Cyber Link",
+        "animation_style": "Instant (Snappy)",
         "headless": False
     }
     settings_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
@@ -73,6 +111,11 @@ def main(page: ft.Page):
     seed_name = settings.get("theme_seed", "Deep Violet")
     seed_color = THEME_PRESETS.get(seed_name, "#6750A4")
     page.theme = ft.Theme(color_scheme_seed=seed_color)
+
+    active_logo_name = settings.get("logo_style", "Minimalist Cyber Link")
+    active_logo_path = LOGO_PRESETS.get(active_logo_name, "assets/logo_minimal.png")
+    rail_logo = ft.Image(src=active_logo_path, width=38, height=38, border_radius=8, fit=ft.BoxFit.CONTAIN)
+    banner_logo = ft.Image(src=active_logo_path, width=30, height=30, border_radius=6, fit=ft.BoxFit.CONTAIN)
 
     # Runtime state
     state = {
@@ -182,9 +225,19 @@ def main(page: ft.Page):
     )
     progress_bar = ft.ProgressBar(value=0, expand=True, border_radius=6)
     stats_text = ft.Text(
-        f"⚡ Worker Pool: {settings.get('concurrency', 3)} Tabs | 🔁 Auto-Retry: 2 Passes | 🔍 Validation: Enabled",
+        f"⚡ Worker Pool: {settings.get('concurrency', 3)} Tabs | 🔁 Auto-Retry: 2 Passes | 🔍 Validation: {'Enabled' if settings.get('auto_validate', True) else 'Disabled'}",
         size=11, color=ft.Colors.GREY_400
     )
+
+    def update_stats_display():
+        if not state["is_running"]:
+            c = settings.get("concurrency", 3)
+            v = "Enabled" if settings.get("auto_validate", True) else "Disabled"
+            stats_text.value = f"⚡ Worker Pool: {c} Tabs | 🔁 Auto-Retry: 2 Passes | 🔍 Validation: {v}"
+            try:
+                stats_text.update()
+            except Exception:
+                pass
 
     # ── Interactive DataTable for Resolved Links ──
     data_table = ft.DataTable(
@@ -525,12 +578,14 @@ def main(page: ft.Page):
     cancel_btn.on_click = cancel_pipeline
 
     extractor_screen = ft.Container(
+        key="screen_extractor",
         content=ft.Column([
             # Top Banner Card
             ft.Card(
                 content=ft.Container(
                     content=ft.Column([
                         ft.Row([
+                            banner_logo,
                             ft.Text("FitGirl Direct Link Extractor", size=20, weight=ft.FontWeight.BOLD),
                             ft.Container(
                                 content=ft.Text("⚡ TURBO SPEED ENGINE", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
@@ -538,7 +593,7 @@ def main(page: ft.Page):
                                 border_radius=12,
                                 padding=ft.Padding.symmetric(horizontal=10, vertical=4)
                             ),
-                        ]),
+                        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
                         ft.Text(
                             "Directly paste FitGirl Game Pages, Pastebin URLs, or FuckingFast links. Converts all parts to direct dl.fuckingfast.co URLs via concurrent tabs with auto-retry and JDownloader 2 push.",
                             size=12, color=ft.Colors.GREY_300
@@ -661,6 +716,7 @@ def main(page: ft.Page):
     search_input.on_change = lambda e: refresh_history(search_input.value)
 
     history_screen = ft.Container(
+        key="screen_history",
         content=ft.Column([
             ft.Card(
                 content=ft.Container(
@@ -710,6 +766,43 @@ def main(page: ft.Page):
         on_select=lambda e: on_theme_changed(e.control.value)
     )
 
+    def on_logo_changed(logo_name: str):
+        settings["logo_style"] = logo_name
+        save_settings(settings)
+        new_path = LOGO_PRESETS.get(logo_name, "assets/logo_minimal.png")
+        rail_logo.src = new_path
+        banner_logo.src = new_path
+        page.update()
+        show_snack(f"Branding logo switched to {logo_name}!")
+
+    logo_dropdown = ft.Dropdown(
+        value=settings.get("logo_style", "Minimalist Cyber Link"),
+        options=[ft.dropdown.Option(text=name, key=name) for name in LOGO_PRESETS.keys()],
+        width=220,
+        dense=True,
+        on_select=lambda e: on_logo_changed(e.control.value)
+    )
+
+    def on_animation_changed(anim_name: str):
+        settings["animation_style"] = anim_name
+        save_settings(settings)
+        cfg = ANIMATION_PRESETS.get(anim_name, ANIMATION_PRESETS["Instant (Snappy)"])
+        screen_container.transition = cfg["transition"]
+        screen_container.duration = cfg["duration"]
+        screen_container.reverse_duration = cfg["reverse_duration"]
+        screen_container.switch_in_curve = cfg.get("curve_in", ft.AnimationCurve.EASE_OUT_CUBIC)
+        screen_container.switch_out_curve = cfg.get("curve_out", ft.AnimationCurve.EASE_IN_CUBIC)
+        screen_container.update()
+        show_snack(f"Tab transition set to {anim_name}!")
+
+    anim_dropdown = ft.Dropdown(
+        value=settings.get("animation_style", "Instant (Snappy)"),
+        options=[ft.dropdown.Option(text=name, key=name) for name in ANIMATION_PRESETS.keys()],
+        width=220,
+        dense=True,
+        on_select=lambda e: on_animation_changed(e.control.value)
+    )
+
     concur_slider = ft.Slider(
         min=1, max=6, divisions=5,
         value=settings.get("concurrency", 3),
@@ -723,12 +816,18 @@ def main(page: ft.Page):
         settings["concurrency"] = val
         save_settings(settings)
         concur_label.update()
+        update_stats_display()
 
     concur_slider.on_change = on_concur_changed
 
+    def on_val_switch_changed(e):
+        settings["auto_validate"] = e.control.value
+        save_settings(settings)
+        update_stats_display()
+
     val_switch = ft.Switch(
         value=settings.get("auto_validate", True),
-        on_change=lambda e: (settings.update({"auto_validate": e.control.value}), save_settings(settings))
+        on_change=on_val_switch_changed
     )
 
     jd_port_field = ft.TextField(
@@ -746,6 +845,7 @@ def main(page: ft.Page):
             show_snack(f"⚠️ Could not connect to JDownloader 2 on port {port}.", success=False)
 
     settings_screen = ft.Container(
+        key="screen_settings",
         content=ft.Column([
             ft.Card(
                 content=ft.Container(
@@ -766,6 +866,24 @@ def main(page: ft.Page):
                                 ft.Text("Choose dynamic seed color (Deep Violet, Emerald, Sapphire, Amber, Rose).", size=11, color=ft.Colors.GREY_400)
                             ]),
                             theme_dropdown
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        # 2. App Logo & Branding
+                        ft.Row([
+                            ft.Column([
+                                ft.Text("Application Logo & Branding Theme:", size=13, weight=ft.FontWeight.BOLD),
+                                ft.Text("Switch between Minimalist Cyber Link and Retro Arcade Cartridge.", size=11, color=ft.Colors.GREY_400)
+                            ]),
+                            logo_dropdown
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        # 3. Tab Transition Animation
+                        ft.Row([
+                            ft.Column([
+                                ft.Text("Tab Switch Animation Effect:", size=13, weight=ft.FontWeight.BOLD),
+                                ft.Text("Choose between Instant (Snappy 0ms), Fast Subtle Fade, Fluid Scale, and Rotation.", size=11, color=ft.Colors.GREY_400)
+                            ]),
+                            anim_dropdown
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
                         # 2. Concurrency
@@ -825,10 +943,16 @@ def main(page: ft.Page):
     )
 
     # ── Main Layout with NavigationRail ──
+    active_anim_name = settings.get("animation_style", "Instant (Snappy)")
+    anim_cfg = ANIMATION_PRESETS.get(active_anim_name, ANIMATION_PRESETS["Instant (Snappy)"])
+
     screen_container = ft.AnimatedSwitcher(
         content=extractor_screen,
-        transition=ft.AnimatedSwitcherTransition.FADE,
-        duration=250,
+        transition=anim_cfg["transition"],
+        duration=anim_cfg["duration"],
+        reverse_duration=anim_cfg["reverse_duration"],
+        switch_in_curve=anim_cfg.get("curve_in", ft.AnimationCurve.EASE_OUT_CUBIC),
+        switch_out_curve=anim_cfg.get("curve_out", ft.AnimationCurve.EASE_IN_CUBIC),
         expand=True
     )
 
@@ -837,6 +961,7 @@ def main(page: ft.Page):
         state["active_screen"] = idx
         if idx == 0:
             screen_container.content = extractor_screen
+            update_stats_display()
         elif idx == 1:
             screen_container.content = history_screen
             refresh_history(search_input.value)
@@ -850,7 +975,7 @@ def main(page: ft.Page):
         min_width=80,
         min_extended_width=180,
         leading=ft.Container(
-            content=ft.Icon(ft.Icons.FLASH_ON, size=32, color=seed_color),
+            content=rail_logo,
             padding=ft.Padding.only(top=16, bottom=16)
         ),
         group_alignment=-0.9,
