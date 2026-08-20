@@ -1,21 +1,62 @@
-MIT License
+PolyForm Noncommercial License 1.0.0
 
-Copyright (c) 2026 Vikash
+Copyright (c) 2026 Vikash (https://github.com/vik05h/Link-Extractor)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+--------------------------------------------------------------------------------
+1. PERMITTED PURPOSE & GRANT OF RIGHTS
+--------------------------------------------------------------------------------
+Subject to the terms of this license, the Licensor grants you a non-exclusive,
+worldwide, royalty-free license to use, copy, modify, distribute, and display
+the Software for Noncommercial Purposes only.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+"Noncommercial Purpose" means any use of the Software that is not intended for,
+nor directed towards, commercial advantage, monetary compensation, or financial
+gain.
 
+--------------------------------------------------------------------------------
+2. MANDATORY ATTRIBUTION REQUIREMENT
+--------------------------------------------------------------------------------
+You must give appropriate credit to the original author (Vikash) in all copies,
+forks, derivative works, and binary distributions of the Software:
+
+  a) Source Code: You must retain this entire license text and the original
+     copyright notice in all copies or substantial portions of the Software.
+
+  b) User Interface (UI): Any distribution of the Software containing a graphical
+     or command-line interface must visibly display:
+     "Original Author: Vikash (@vik05h) — https://github.com/vik05h/Link-Extractor"
+     in its About section, settings screen, or footer.
+
+  c) Documentation: You must include a prominent link back to the original
+     repository (https://github.com/vik05h/Link-Extractor) in your README or
+     associated documentation.
+
+--------------------------------------------------------------------------------
+3. COMMERCIAL RESTRICTIONS
+--------------------------------------------------------------------------------
+You may NOT:
+  - Sell, rent, lease, or monetize the Software or any derivative work.
+  - Require payments, donations, or subscriptions to access the Software or any
+    feature within it.
+  - Bundle the Software into commercial products, paid software suites, or
+    ad-supported installers/adware.
+  - Charge fees for hosted instances or API services derived from this Software.
+
+--------------------------------------------------------------------------------
+4. SHARE-ALIKE / DERIVATIVE WORKS
+--------------------------------------------------------------------------------
+If you remix, transform, or build upon this Software, you must distribute your
+modifications or derivative works under this same PolyForm Noncommercial License
+1.0.0 (or Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+License - CC BY-NC-SA 4.0).
+
+--------------------------------------------------------------------------------
+5. DISCLAIMER OF WARRANTY & LIMITATION OF LIABILITY
+--------------------------------------------------------------------------------
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.

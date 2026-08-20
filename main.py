@@ -805,6 +805,15 @@ def main(page: ft.Page):
                                 ft.Text("Check GitHub Releases for the latest patches, features, and binary builds.", size=11, color=ft.Colors.GREY_400)
                             ]),
                             ft.FilledButton("Check for Updates", icon=ft.Icons.SYSTEM_UPDATE, on_click=show_update_dialog)
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        # 6. About & Author Credits
+                        ft.Row([
+                            ft.Column([
+                                ft.Text("Original Author & Open Source License:", size=13, weight=ft.FontWeight.BOLD),
+                                ft.Text("Developed by Vikash (@vik05h) • Licensed under PolyForm Noncommercial 1.0.0 (Free for personal use; no commercial use).", size=11, color=ft.Colors.GREY_400)
+                            ]),
+                            ft.TextButton("GitHub Repo", icon=ft.Icons.OPEN_IN_NEW, on_click=lambda _: updater.open_release_page("https://github.com/vik05h/Link-Extractor"))
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     ], spacing=12),
                     padding=20
