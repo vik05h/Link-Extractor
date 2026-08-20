@@ -70,11 +70,7 @@ class ResolutionEngine:
 
     async def _launch_browser(self, p) -> Browser:
         channel = detect_browser_channel()
-        launch_args = [
-            "--disable-blink-features=AutomationControlled",
-            "--no-sandbox",
-            "--disable-infobars"
-        ]
+        launch_args = ["--disable-blink-features=AutomationControlled"]
 
         if channel:
             try:
@@ -125,6 +121,7 @@ class ResolutionEngine:
             await page.goto(ff_url, wait_until="domcontentloaded", timeout=30000)
 
             # Wait for turnstile token or dlCleared
+            token = ""
             for _ in range(60):
                 if cancel_event and cancel_event.is_set():
                     break
@@ -138,20 +135,14 @@ class ResolutionEngine:
                 await asyncio.sleep(0.1)
 
             # If token not present, try clicking the Cloudflare turnstile checkbox frame
-            token = ""
-            try:
-                token = await page.evaluate("() => window.turnstileToken || ''")
-            except Exception:
-                pass
-
             if not token:
                 for frame in page.frames:
                     if "turnstile" in frame.url or "cloudflare" in frame.url:
                         try:
-                            await frame.click("body", timeout=1000)
+                            await frame.click("body", timeout=1200)
                         except Exception:
                             pass
-                for _ in range(30):
+                for _ in range(35):
                     if cancel_event and cancel_event.is_set():
                         break
                     try:
@@ -194,7 +185,7 @@ class ResolutionEngine:
 
     async def fetch_pastebin_links(self, pastebin_url: str, log_cb: Optional[Callable[[str], None]] = None) -> List[str]:
         """
-        Fetch and decrypt a FitGirl pastebin page using headless browser.
+        Fetch and decrypt a FitGirl pastebin page using browser context.
         """
         import scraper
 
@@ -203,13 +194,8 @@ class ResolutionEngine:
 
         async with async_playwright() as p:
             browser = await self._launch_browser(p)
-            context = await browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/128.0.0.0 Safari/537.36"
-                )
-            )
+            context = await browser.new_context(viewport={"width": 1280, "height": 720})
+            await context.add_init_script("Object.defineProperty(navigator, 'webdriver', { get: () => undefined });")
             page = await context.new_page()
             await page.goto(pastebin_url, wait_until="networkidle", timeout=45000)
             await asyncio.sleep(1.5)
@@ -229,11 +215,6 @@ class ResolutionEngine:
     ) -> List[ResolvedLink]:
         """
         Resolve a list of fuckingfast.co URLs concurrently with automatic retries.
-
-        Callbacks:
-          on_progress(completed_count, total_count, avg_speed_sec, eta_sec, active_tabs, part_name, direct_url, status)
-          on_log(message: str)
-          on_retry_pass(failed_count, current_attempt, max_retries)
         """
         if not urls:
             return []
@@ -289,8 +270,7 @@ class ResolutionEngine:
                     log(f"🔁 Auto-Retry Pass {current_attempt}/{self.max_retries + 1}: Retrying {len(pending_indices)} failed links...")
                     if on_retry_pass:
                         on_retry_pass(len(pending_indices), current_attempt, self.max_retries + 1)
-                    # Small jitter delay between retry passes
-                    await asyncio.sleep(random.uniform(1.0, 2.5))
+                    await asyncio.sleep(random.uniform(1.0, 2.0))
 
                 queue = asyncio.Queue()
                 for idx in pending_indices:
@@ -323,7 +303,7 @@ class ResolutionEngine:
                             log(f"⚠️ [Tab {worker_id}] Failed {item.part_name} ({elapsed:.1f}s)")
 
                         resolved_so_far = sum(1 for r in results if r.status == "resolved")
-                        avg_speed = (sum(completed_durations) / len(completed_durations)) if completed_durations else 5.0
+                        avg_speed = (sum(completed_durations) / len(completed_durations)) if completed_durations else 4.0
                         remaining_links = total_count - resolved_so_far
                         eta = (remaining_links * avg_speed) / max(1, self.concurrency)
 

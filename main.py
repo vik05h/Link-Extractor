@@ -44,7 +44,6 @@ def load_settings() -> dict:
     """Load settings from local settings.json or return defaults."""
     default_settings = {
         "concurrency": 3,
-        "headless": False,
         "auto_validate": True,
         "jd_port": 9666,
         "auto_push_jd": False
@@ -257,7 +256,6 @@ class LinkExtractorApp(ctk.CTk):
         if not self.is_animating:
             return
         self.spinner_idx = (self.spinner_idx + 1) % len(self.spinner_frames)
-        # update badge spinner if running
         self.after(120, self._spin_loop)
 
     # ═══════════════════════════════════════════════════════════════════
@@ -803,7 +801,7 @@ class LinkExtractorApp(ctk.CTk):
 
         ctk.CTkLabel(
             header_layout,
-            text="Configure browser worker pool parallelism, background visibility, and JDownloader 2 port settings.",
+            text="Configure browser worker pool parallelism, link validation, and JDownloader 2 port settings.",
             font=ctk.CTkFont(family=m3.FONT_TEXT, size=12),
             text_color=m3.TEXT_SECONDARY
         ).pack(anchor="w", pady=(2, 0))
@@ -830,7 +828,7 @@ class LinkExtractorApp(ctk.CTk):
 
         ctk.CTkLabel(
             concur_info,
-            text="Worker Tab Concurrency (Speed vs Bot Detection):",
+            text="Worker Tab Concurrency (Parallel Resolution):",
             font=ctk.CTkFont(family=m3.FONT_TEXT, size=13, weight="bold"),
             text_color=m3.TEXT_PRIMARY
         ).pack(anchor="w")
@@ -855,40 +853,7 @@ class LinkExtractorApp(ctk.CTk):
         self.concur_slider.set(self.settings.get("concurrency", 3))
         self.concur_slider.pack(side="right")
 
-        # 2. Headless Mode Switch
-        head_row = ctk.CTkFrame(card_layout, fg_color="transparent")
-        head_row.pack(fill="x", pady=12)
-
-        head_info = ctk.CTkFrame(head_row, fg_color="transparent")
-        head_info.pack(side="left", fill="both")
-
-        ctk.CTkLabel(
-            head_info,
-            text="Headless Browser Mode (Silent Background):",
-            font=ctk.CTkFont(family=m3.FONT_TEXT, size=13, weight="bold"),
-            text_color=m3.TEXT_PRIMARY
-        ).pack(anchor="w")
-
-        ctk.CTkLabel(
-            head_info,
-            text="Run browser silently without displaying windows. (Keep disabled if Turnstile blocks)",
-            font=ctk.CTkFont(family=m3.FONT_TEXT, size=11),
-            text_color=m3.TEXT_TERTIARY
-        ).pack(anchor="w")
-
-        self.headless_switch = ctk.CTkSwitch(
-            head_row,
-            text="",
-            command=self._save_current_settings,
-            progress_color=m3.PRIMARY,
-            button_color=m3.ON_PRIMARY,
-            button_hover_color=m3.PRIMARY_HOVER
-        )
-        if self.settings.get("headless", False):
-            self.headless_switch.select()
-        self.headless_switch.pack(side="right")
-
-        # 3. Auto-Validate Links Switch
+        # 2. Auto-Validate Links Switch
         val_row = ctk.CTkFrame(card_layout, fg_color="transparent")
         val_row.pack(fill="x", pady=12)
 
@@ -921,7 +886,7 @@ class LinkExtractorApp(ctk.CTk):
             self.val_switch.select()
         self.val_switch.pack(side="right")
 
-        # 4. JDownloader 2 Port Entry
+        # 3. JDownloader 2 Port Entry
         jd_row = ctk.CTkFrame(card_layout, fg_color="transparent")
         jd_row.pack(fill="x", pady=12)
 
@@ -969,7 +934,6 @@ class LinkExtractorApp(ctk.CTk):
 
         self.settings = {
             "concurrency": int(round(self.concur_slider.get())),
-            "headless": bool(self.headless_switch.get()),
             "auto_validate": bool(self.val_switch.get()),
             "jd_port": port,
             "auto_push_jd": self.settings.get("auto_push_jd", False)
@@ -1036,9 +1000,9 @@ class LinkExtractorApp(ctk.CTk):
             self.log(f"Detected input type: {url_type}")
 
             concurrency = self.settings.get("concurrency", 3)
-            headless = self.settings.get("headless", False)
 
-            engine = ResolutionEngine(concurrency=concurrency, max_retries=2, headless=headless)
+            # Link resolution must run in visible browser mode to pass Cloudflare Turnstile
+            engine = ResolutionEngine(concurrency=concurrency, max_retries=2, headless=False)
             channel = detect_browser_channel()
             if not channel:
                 self.log("ERROR: No Chrome or Edge browser detected on system.")
@@ -1046,7 +1010,7 @@ class LinkExtractorApp(ctk.CTk):
                 self._finish()
                 return
 
-            self.log(f"Using system browser engine: {channel} (Headless: {headless})")
+            self.log(f"Using system browser engine: {channel}")
 
             # Phase 1: URL & Pastebin Resolution
             if url_type in ("fuckingfast_direct", "raw_links"):
