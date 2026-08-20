@@ -1,7 +1,46 @@
-# Python & PyInstaller Build Artifacts
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Virtual Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# PyInstaller & Build Artifacts
 build/
 dist/
-*.spec
+*.manifest
+
+# User Data, Databases & Local Runtime Files
+history.db
+history.db-journal
+history.db-wal
+history.db-shm
+*.db
+*.sqlite
+*.sqlite3
+settings.json
 resolved_direct_urls.txt
-__pycache__/
-*.pyc
+*_direct_urls.txt
+*.crawljob
+*.log
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
