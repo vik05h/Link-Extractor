@@ -70,6 +70,10 @@ graph TD
 * **The Problem**: Hardcoding `C:\Users\...` breaks on custom drive layouts (`D:\`, `E:\`) and non-Windows systems.
 * **The Solution**: Use `os.path.expanduser("~")/Downloads` with `%USERPROFILE%` fallback and `open_folder_cross_platform()` (`os.startfile` on Windows, `open` on macOS, `xdg-open` on Linux).
 
+### 7. Modular UI Architecture & Package Boundaries
+* **The Pattern**: Monolithic UI code in `main.py` is decomposed into a dedicated `ui/` package (`ui/constants.py`, `ui/state.py`, `ui/screens/extractor.py`, `ui/screens/pipeline.py`, `ui/screens/history.py`, `ui/screens/settings.py`) with shared system helpers in `utils.py`.
+* **The Solution**: `main.py` serves strictly as the application entrypoint (< 150 lines) managing window initialization, navigation rails, and animated switcher wiring. All screen state is coordinated via `AppState` and `UIContext` without circular dependencies.
+
 ---
 
 ## 5. Security & Penetration Baseline
