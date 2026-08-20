@@ -9,8 +9,8 @@ This document tracks current milestones, active implementation status, and upcom
 | Phase | Description | Status | Target Version |
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | **Speed & Reliability Core** | 🟢 **Completed** | `v3.0.0` |
-| **Phase 2** | **Quality of Life & Integrations** | ⚪ Planned | `v3.1.0` |
-| **Phase 3** | **Multi-Hoster & Advanced Automation** | ⚪ Planned | `v3.2.0` |
+| **Phase 2** | **Material 3 UI/UX & Advanced Integrations** | 🟢 **Completed** | `v3.1.0` |
+| **Phase 3** | **Multi-Hoster & Universal Automation** | ⚪ Planned | `v3.2.0` |
 
 ---
 
@@ -40,27 +40,30 @@ This document tracks current milestones, active implementation status, and upcom
 
 ---
 
-## ⚪ Phase 2: Quality of Life & Integrations (v3.1.0)
+## 🟢 Phase 2: Material 3 UI/UX & Advanced Integrations (v3.1.0) — COMPLETED
 
-**Goal:** Seamless workflow with JDownloader 2 and robust link validation.
+**Goal:** Material 3 design overhaul with Navigation Rail, JDownloader 2 one-click push, async link validation, and SQLite history archive.
 
-- [ ] **2.1 Live Link Validation**
-  - [ ] Rapid asynchronous `HTTP HEAD` verification of generated `dl.fuckingfast.co` links.
-  - [ ] Verify `Content-Length` and HTTP 200/302 status before presenting links to the user.
-- [ ] **2.2 Download History & Local Cache**
-  - [ ] Embedded SQLite database storing past extractions (Game title, timestamp, resolved URLs).
-  - [ ] Instant export and replay of past resolutions.
-- [ ] **2.3 Headless Mode Toggle**
-  - [ ] GUI switch to run background browser invisibly vs. visible window.
-- [ ] **2.4 JDownloader 2 Direct Integration**
-  - [ ] Click-to-push direct links into JDownloader 2 via local Click'n'Load (CNL2 / port 9666).
-  - [ ] Watch folder `.crawljob` auto-generation.
-- [ ] **2.5 Extended Export Formats**
-  - [ ] Export as `.txt`, `.json`, `.dlc`, and `.crawljob`.
+- [x] **2.1 Material 3 (M3) Design System & Navigation Rail**
+  - [x] Expressive Violet & Indigo Dark theme tokens in `theme_m3.py` (`#141218` Surface, `#D0BCFF` Primary, `#4F378B` Container, `#4ADE80` Tertiary).
+  - [x] Left M3 Navigation Rail with 3 screens: ⚡ **Extractor**, 📚 **History & Archive**, ⚙️ **Settings & Tweaks**.
+  - [x] M3 Segmented button controls, pill badges, and elevated tonal cards.
+- [x] **2.2 Live Link Validation & Total Size Calculation**
+  - [x] Rapid concurrent `HTTP HEAD` verification in `validator.py` with 12 parallel workers.
+  - [x] `Content-Length` aggregation and total repack size calculation (e.g. `94.20 GB across 195 parts`).
+- [x] **2.3 SQLite History Archive & Saved Downloads**
+  - [x] Local SQLite database (`history.db`) in `history.py` with instant search.
+  - [x] 1-click re-copy, re-push to JDownloader 2, and single-record deletion.
+- [x] **2.4 JDownloader 2 Direct One-Click Push**
+  - [x] Local Click'n'Load (CNL2 / FlashGot on port 9666) integration in `integrations.py`.
+  - [x] One-click push straight into JDownloader 2 LinkGrabber.
+- [x] **2.5 Extended Exporters & Preferences**
+  - [x] Export to `.crawljob` (JDownloader watch folder), `.json`, and `.txt`.
+  - [x] Dynamic settings: worker concurrency slider (1–6 tabs), Headless browser mode toggle, and auto-validation toggle.
 
 ---
 
-## ⚪ Phase 3: Multi-Hoster & Advanced Automation (v3.2.0)
+## ⚪ Phase 3: Multi-Hoster & Universal Automation (v3.2.0)
 
 **Goal:** Universal repack link extraction across all mirror providers.
 

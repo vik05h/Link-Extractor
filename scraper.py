@@ -1,4 +1,5 @@
 import re
+import html
 import urllib.request
 import urllib.parse
 from typing import List, Dict, Tuple, Optional, Callable
@@ -48,11 +49,46 @@ def detect_url_type(raw_input: str) -> str:
     return "unknown"
 
 
-def extract_game_page_pastebins(game_url: str) -> List[Dict[str, str]]:
+def clean_title_text(raw_text: str) -> str:
+    """Clean HTML entities and normalize smart quotes/dashes."""
+    text = html.unescape(raw_text)
+    text = text.replace('\u2019', "'").replace('\u2018', "'")
+    text = text.replace('\u2013', "–").replace('\u2014', "—")
+    text = text.replace('&#8217;', "'").replace('&#8211;', "–").replace('&#8212;', "—")
+    text = text.replace('&amp;', '&')
+    return text.strip()
+
+
+def extract_game_title(url: str, page_html: Optional[str] = None) -> str:
+    """Extract human-readable game title from FitGirl URL or page HTML with full entity unescaping."""
+    if page_html:
+        h1_match = re.search(r'<h1[^>]*class=[\x22\x27]entry-title[\x22\x27][^>]*>(.*?)</h1>', page_html, re.IGNORECASE | re.DOTALL)
+        if h1_match:
+            raw_text = re.sub(r'<[^>]+>', '', h1_match.group(1))
+            clean = clean_title_text(raw_text)
+            if clean:
+                return clean
+
+        title_match = re.search(r'<title>(.*?)</title>', page_html, re.IGNORECASE)
+        if title_match:
+            t = clean_title_text(title_match.group(1)).split('- FitGirl')[0].split('|')[0].strip()
+            if t:
+                return t
+
+    # Fallback to URL path slug
+    parsed = urllib.parse.urlparse(url)
+    slug = parsed.path.strip('/').split('/')[-1]
+    if slug:
+        words = [w.capitalize() for w in re.split(r'[-_]', slug) if w]
+        return " ".join(words)
+    return "FitGirl Repack"
+
+
+def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], str]:
     """
-    Fetch a FitGirl game page and extract all pastebin links with hoster names.
-    Returns a list of dicts:
-      [{'hoster': 'FuckingFast', 'url': 'https://paste.fitgirl-repacks.site/?...#...', 'label': '...'}, ...]
+    Fetch a FitGirl game page and extract all pastebin links with hoster names and game title.
+    Returns:
+      (pastebin_list, game_title)
     """
     # Normalize URL
     if not game_url.startswith("http://") and not game_url.startswith("https://"):
@@ -72,17 +108,23 @@ def extract_game_page_pastebins(game_url: str) -> List[Dict[str, str]]:
 
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8", errors="ignore")
+            content_bytes = resp.read()
+            # Try utf-8 first, fallback to windows-1252 / latin-1
+            try:
+                page_html = content_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                page_html = content_bytes.decode("windows-1252", errors="ignore")
     except Exception as e:
         raise RuntimeError(f"Failed to fetch FitGirl game page: {e}")
 
+    game_title = extract_game_title(game_url, page_html)
     results = []
-    # Pattern matching <li> items with pastebin links and hoster labels
+
     pattern = r'<a[^>]+href=[\x22\x27](https?://paste\.fitgirl-repacks\.site/[^\x22\x27]+)[\x22\x27][^>]*>(.*?)</a>'
-    matches = re.findall(pattern, html, re.IGNORECASE | re.DOTALL)
+    matches = re.findall(pattern, page_html, re.IGNORECASE | re.DOTALL)
 
     for url, raw_label in matches:
-        clean_label = re.sub(r'<[^>]+>', '', raw_label).strip()
+        clean_label = clean_title_text(re.sub(r'<[^>]+>', '', raw_label))
         hoster = "Unknown"
         if "fuckingfast" in clean_label.lower():
             hoster = "FuckingFast"
@@ -101,9 +143,8 @@ def extract_game_page_pastebins(game_url: str) -> List[Dict[str, str]]:
             "label": clean_label
         })
 
-    # If no <li> matches found, search for any pastebin link in the page
     if not results:
-        raw_pastes = re.findall(r'https?://paste\.fitgirl-repacks\.site/[^\s\x22\x27<>]+', html)
+        raw_pastes = re.findall(r'https?://paste\.fitgirl-repacks\.site/[^\s\x22\x27<>]+', page_html)
         for url in raw_pastes:
             results.append({
                 "hoster": "FuckingFast" if "fuckingfast" in url.lower() else "Pastebin",
@@ -111,7 +152,7 @@ def extract_game_page_pastebins(game_url: str) -> List[Dict[str, str]]:
                 "label": "FitGirl Pastebin"
             })
 
-    return results
+    return results, game_title
 
 
 def extract_links_from_pastebin_html(page_content: str) -> List[str]:
