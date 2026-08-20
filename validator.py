@@ -1,11 +1,10 @@
 import os
 import re
-import time
 import urllib.request
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import List, Optional, Callable, Dict, Any, Union
+from typing import List, Optional, Callable, Tuple
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
 
@@ -13,29 +12,29 @@ import threading
 class ValidatedLink:
     index: int
     url: str
-    is_valid: bool = False
-    status_code: int = 0
-    content_length: int = 0
+    filename: str = "Unknown"
+    content_length_bytes: int = 0
     content_length_str: str = "0 B"
-    filename: str = ""
-    error_message: Optional[str] = None
+    status_code: int = 0
+    is_valid: bool = False
+    error: Optional[str] = None
 
 
 @dataclass
 class ValidationSummary:
     total_links: int = 0
     valid_count: int = 0
-    invalid_count: int = 0
+    failed_count: int = 0
     total_bytes: int = 0
     total_size_str: str = "0 B"
     links: List[ValidatedLink] = field(default_factory=list)
 
 
 def format_bytes(num_bytes: int) -> str:
-    """Format bytes into human-readable string (KB, MB, GB, TB)."""
+    """Format bytes into human-readable B, KB, MB, GB, TB string."""
     if num_bytes <= 0:
         return "0 B"
-    units = ["B", "KB", "MB", "GB", "TB"]
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
     i = 0
     val = float(num_bytes)
     while val >= 1024.0 and i < len(units) - 1:
@@ -61,61 +60,53 @@ def validate_single_url(index: int, url: str, timeout: float = 12.0) -> Validate
 
     result = ValidatedLink(index=index, url=url)
 
-    # Fallback filename from URL
+    # Fallback filename from URL or fragment
     parsed = urllib.parse.urlparse(url)
-    path_name = os.path.basename(parsed.path)
-    result.filename = path_name or f"part_{index+1}.rar"
+    clean_url = url.split("#")[0]
+    fallback_name = parsed.fragment or os.path.basename(parsed.path) or f"part_{index+1}.rar"
+    result.filename = fallback_name
 
-    req = urllib.request.Request(url, headers=headers)
+    req = urllib.request.Request(clean_url, headers=headers)
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             result.status_code = resp.status
-            result.is_valid = resp.status in (200, 206, 301, 302, 303, 307, 308)
+            result.is_valid = resp.status in (200, 206)
 
-            # 1. Parse total size from Content-Range (e.g. "bytes 0-0/211526980")
-            cr = resp.headers.get("Content-Range", "")
-            if cr and "/" in cr:
-                total_part = cr.split("/")[-1].strip()
-                if total_part.isdigit():
-                    result.content_length = int(total_part)
-                    result.content_length_str = format_bytes(result.content_length)
+            # 1. Parse exact filename from Content-Disposition header
+            disp = resp.headers.get("Content-Disposition", "")
+            if disp:
+                # Check for RFC 5987 UTF-8 filename*=UTF-8''filename.ext
+                utf8_match = re.search(r"filename\*=UTF-8''([^;]+)", disp, re.IGNORECASE)
+                if utf8_match:
+                    result.filename = urllib.parse.unquote(utf8_match.group(1))
+                else:
+                    # Standard filename="filename.ext"
+                    fn_match = re.search(r'filename=["\x27]?([^"\x27;]+)["\x27]?', disp, re.IGNORECASE)
+                    if fn_match:
+                        result.filename = fn_match.group(1).strip()
 
-            # Fallback to Content-Length if 200 OK without range
-            if result.content_length == 0:
-                cl = resp.headers.get("Content-Length")
-                if cl and cl.isdigit() and int(cl) > 1:
-                    result.content_length = int(cl)
-                    result.content_length_str = format_bytes(result.content_length)
+            # 2. Parse total repack file size from Content-Range or Content-Length
+            cr_header = resp.headers.get("Content-Range", "")
+            if cr_header:
+                cr_match = re.search(r'/(\d+)', cr_header)
+                if cr_match:
+                    result.content_length_bytes = int(cr_match.group(1))
+                    result.content_length_str = format_bytes(result.content_length_bytes)
 
-            # 2. Parse Filename from Content-Disposition
-            cd = resp.headers.get("Content-Disposition", "")
-            if cd:
-                fn_match = re.search(r'filename\*?=(?:UTF-8\'\')?([^\x22\x27;]+)', cd, re.IGNORECASE)
-                if fn_match:
-                    clean_fn = urllib.parse.unquote(fn_match.group(1).strip('\x22\x27'))
-                    if clean_fn:
-                        result.filename = clean_fn
+            if result.content_length_bytes == 0:
+                cl_header = resp.headers.get("Content-Length", "")
+                if cl_header and cl_header.isdigit() and int(cl_header) > 1:
+                    result.content_length_bytes = int(cl_header)
+                    result.content_length_str = format_bytes(result.content_length_bytes)
 
-    except urllib.error.HTTPError as e:
-        result.status_code = e.code
-        result.error_message = f"HTTP {e.code}"
-        # Fallback to HEAD request if server rejects Range header
-        try:
-            head_req = urllib.request.Request(url, headers={"User-Agent": headers["User-Agent"]}, method="HEAD")
-            with urllib.request.urlopen(head_req, timeout=timeout) as head_resp:
-                result.status_code = head_resp.status
-                result.is_valid = head_resp.status in (200, 206, 301, 302, 303, 307, 308)
-                cl = head_resp.headers.get("Content-Length")
-                if cl and cl.isdigit():
-                    result.content_length = int(cl)
-                    result.content_length_str = format_bytes(result.content_length)
-        except Exception:
-            result.is_valid = False
-
-    except Exception as e:
+    except urllib.error.HTTPError as he:
+        result.status_code = he.code
+        result.error = f"HTTP {he.code}"
         result.is_valid = False
-        result.error_message = str(e)
+    except Exception as e:
+        result.error = str(e)
+        result.is_valid = False
 
     return result
 
@@ -123,23 +114,21 @@ def validate_single_url(index: int, url: str, timeout: float = 12.0) -> Validate
 def validate_links(
     urls: List[str],
     max_workers: int = 15,
-    on_progress: Optional[Callable[[int, int, int, str], None]] = None,
+    on_progress: Optional[Callable[[int, int, ValidatedLink], None]] = None,
     cancel_event: Optional[threading.Event] = None
 ) -> ValidationSummary:
     """
-    Validate a list of URLs concurrently using ThreadPoolExecutor.
-    Callbacks:
-      on_progress(validated_count, total_count, total_bytes_so_far, current_total_size_str)
+    Concurrently validate all direct download links and calculate total repack size.
+    Uses 1-byte Range GET requests (only 1 byte per part used).
     """
+    summary = ValidationSummary(total_links=len(urls))
     if not urls:
-        return ValidationSummary()
+        return summary
 
-    total = len(urls)
-    results = [None] * total
-    total_bytes = 0
-    validated_count = 0
+    results: List[Optional[ValidatedLink]] = [None] * len(urls)
+    completed_count = 0
 
-    with ThreadPoolExecutor(max_workers=min(max_workers, total)) as executor:
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_idx = {
             executor.submit(validate_single_url, idx, url): idx
             for idx, url in enumerate(urls)
@@ -151,32 +140,23 @@ def validate_links(
 
             idx = future_to_idx[future]
             try:
-                res = future.result()
-                results[idx] = res
-                if res.is_valid:
-                    total_bytes += res.content_length
+                item = future.result()
+                results[idx] = item
+                completed_count += 1
+
+                if on_progress:
+                    on_progress(completed_count, len(urls), item)
+
             except Exception as e:
-                results[idx] = ValidatedLink(index=idx, url=urls[idx], is_valid=False, error_message=str(e))
+                err_item = ValidatedLink(index=idx, url=urls[idx], error=str(e))
+                results[idx] = err_item
 
-            validated_count += 1
-            if on_progress:
-                on_progress(validated_count, total, total_bytes, format_bytes(total_bytes))
+    # Assemble summary
+    final_links = [r for r in results if r is not None]
+    summary.links = final_links
+    summary.valid_count = sum(1 for r in final_links if r.is_valid)
+    summary.failed_count = sum(1 for r in final_links if not r.is_valid)
+    summary.total_bytes = sum(r.content_length_bytes for r in final_links if r.is_valid)
+    summary.total_size_str = format_bytes(summary.total_bytes)
 
-    # Fill any uncompleted items if cancelled
-    valid_links = []
-    for i, r in enumerate(results):
-        if r is None:
-            r = ValidatedLink(index=i, url=urls[i], is_valid=False, error_message="Cancelled")
-        valid_links.append(r)
-
-    valid_count = sum(1 for r in valid_links if r.is_valid)
-    invalid_count = total - valid_count
-
-    return ValidationSummary(
-        total_links=total,
-        valid_count=valid_count,
-        invalid_count=invalid_count,
-        total_bytes=total_bytes,
-        total_size_str=format_bytes(total_bytes),
-        links=valid_links
-    )
+    return summary

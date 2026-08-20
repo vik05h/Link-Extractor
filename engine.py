@@ -61,6 +61,7 @@ class ResolutionEngine:
       - Automated retry queue for dropped/timed-out links
       - Real-time ETA and per-link speed metrics
       - Memory-efficient tab reuse
+      - Instant cancellation handling without UI deadlocks
     """
 
     def __init__(self, concurrency: int = 3, max_retries: int = 2, headless: bool = False):
@@ -103,6 +104,9 @@ class ResolutionEngine:
         """
         Navigate to a fuckingfast.co URL, wait for Cloudflare Turnstile token, and extract direct download URL.
         """
+        if cancel_event and cancel_event.is_set():
+            return None, 0.0
+
         direct_url = None
 
         def on_response(response):
@@ -124,7 +128,7 @@ class ResolutionEngine:
             token = ""
             for _ in range(60):
                 if cancel_event and cancel_event.is_set():
-                    break
+                    return None, time.time() - t0
                 try:
                     token = await page.evaluate("() => window.turnstileToken || ''")
                     cleared = await page.evaluate("() => window.dlCleared || false")
@@ -135,7 +139,7 @@ class ResolutionEngine:
                 await asyncio.sleep(0.1)
 
             # If token not present, try clicking the Cloudflare turnstile checkbox frame
-            if not token:
+            if not token and not (cancel_event and cancel_event.is_set()):
                 for frame in page.frames:
                     if "turnstile" in frame.url or "cloudflare" in frame.url:
                         try:
@@ -144,7 +148,7 @@ class ResolutionEngine:
                             pass
                 for _ in range(35):
                     if cancel_event and cancel_event.is_set():
-                        break
+                        return None, time.time() - t0
                     try:
                         token = await page.evaluate("() => window.turnstileToken || ''")
                         if token:
@@ -152,6 +156,9 @@ class ResolutionEngine:
                     except Exception:
                         pass
                     await asyncio.sleep(0.1)
+
+            if cancel_event and cancel_event.is_set():
+                return None, time.time() - t0
 
             # Execute fetch to /go endpoint
             part_id = ff_url.split("fuckingfast.co/")[1].split("#")[0].strip("/")
@@ -179,6 +186,11 @@ class ResolutionEngine:
             pass
         finally:
             page.remove_listener("response", on_response)
+
+        if direct_url and "#" in ff_url:
+            part_hash = ff_url.split("#", 1)[1]
+            if part_hash and "#" not in direct_url:
+                direct_url = f"{direct_url}#{part_hash}"
 
         elapsed = time.time() - t0
         return direct_url, elapsed
@@ -214,7 +226,7 @@ class ResolutionEngine:
         cancel_event: Optional[Union[threading.Event, asyncio.Event]] = None
     ) -> List[ResolvedLink]:
         """
-        Resolve a list of fuckingfast.co URLs concurrently with automatic retries.
+        Resolve a list of fuckingfast.co URLs concurrently with automatic retries and clean cancellation.
         """
         if not urls:
             return []
@@ -263,7 +275,7 @@ class ResolutionEngine:
 
             while pending_indices and current_attempt <= (self.max_retries + 1):
                 if cancel_event and cancel_event.is_set():
-                    log("Resolution cancelled by user.")
+                    log("Resolution stopped (cancellation received).")
                     break
 
                 if current_attempt > 1:
@@ -293,6 +305,10 @@ class ResolutionEngine:
                         direct_url, elapsed = await self._resolve_single_link(page, item.original_url, cancel_event)
                         item.elapsed_sec = elapsed
 
+                        if cancel_event and cancel_event.is_set():
+                            item.status = "cancelled"
+                            break
+
                         if direct_url:
                             item.direct_url = direct_url
                             item.status = "resolved"
@@ -319,16 +335,15 @@ class ResolutionEngine:
                                 item.status
                             )
 
-                        queue.task_done()
-
                 workers = [
                     asyncio.create_task(worker(i + 1, pages[i]))
                     for i in range(active_workers)
                 ]
 
-                await queue.join()
-                for w in workers:
-                    w.cancel()
+                await asyncio.gather(*workers, return_exceptions=True)
+
+                if cancel_event and cancel_event.is_set():
+                    break
 
                 # Find which links are still failed
                 pending_indices = [i for i, r in enumerate(results) if r.status != "resolved"]
@@ -339,7 +354,10 @@ class ResolutionEngine:
         total_elapsed = time.time() - t_start
         resolved_count = sum(1 for r in results if r.status == "resolved")
         avg_per_link = total_elapsed / resolved_count if resolved_count > 0 else 0
-        log(f"🚀 Speed Pipeline Finished: {resolved_count}/{total_count} resolved in {total_elapsed:.1f}s (Avg {avg_per_link:.1f}s/part)!")
+        if not (cancel_event and cancel_event.is_set()):
+            log(f"🚀 Speed Pipeline Finished: {resolved_count}/{total_count} resolved in {total_elapsed:.1f}s (Avg {avg_per_link:.1f}s/part)!")
+        else:
+            log(f"🛑 Pipeline Cancelled: {resolved_count}/{total_count} resolved before cancellation.")
 
         return results
 

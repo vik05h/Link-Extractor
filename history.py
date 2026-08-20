@@ -3,6 +3,7 @@ import sys
 import json
 import sqlite3
 import time
+import re
 from typing import List, Dict, Any, Optional
 
 
@@ -43,6 +44,20 @@ class HistoryManager:
             """)
             conn.commit()
 
+    def _ensure_url_hashes(self, urls: List[str], title: str) -> List[str]:
+        """Ensure all URLs have #filename.rar fragments."""
+        safe_title = re.sub(r'[^a-zA-Z0-9_-]', '_', title).strip('_') or "FitGirl_Repack"
+        formatted = []
+        for i, u in enumerate(urls):
+            clean = u.strip()
+            if not clean:
+                continue
+            if "#" in clean:
+                formatted.append(clean)
+            else:
+                formatted.append(f"{clean}#{safe_title}.part{i+1:03d}.rar")
+        return formatted
+
     def add_record(
         self,
         title: str,
@@ -55,7 +70,8 @@ class HistoryManager:
     ) -> int:
         """Add a new extraction record to database."""
         clean_title = title.strip() or "FitGirl Repack Download"
-        urls_json = json.dumps(urls or [])
+        formatted_urls = self._ensure_url_hashes(urls or [], clean_title)
+        urls_json = json.dumps(formatted_urls)
         now_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
         with self._get_connection() as conn:
@@ -94,7 +110,8 @@ class HistoryManager:
             for r in rows:
                 item = dict(r)
                 try:
-                    item["urls"] = json.loads(item["urls_json"])
+                    raw_urls = json.loads(item["urls_json"])
+                    item["urls"] = self._ensure_url_hashes(raw_urls, item["title"])
                 except Exception:
                     item["urls"] = []
                 results.append(item)
@@ -109,7 +126,8 @@ class HistoryManager:
             if row:
                 item = dict(row)
                 try:
-                    item["urls"] = json.loads(item["urls_json"])
+                    raw_urls = json.loads(item["urls_json"])
+                    item["urls"] = self._ensure_url_hashes(raw_urls, item["title"])
                 except Exception:
                     item["urls"] = []
                 return item
