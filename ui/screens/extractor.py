@@ -62,10 +62,10 @@ def check_and_start_pipeline(ctx: UIContext, state: AppState, e=None):
                             cover_control,
                             ft.Column([
                                 ft.Text(game_data.get("title", "Game Repack"), size=14, weight=ft.FontWeight.BOLD, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
-                                ft.Text(f"📅 Synced: {game_data.get('local_time', 'Recently')}", size=11, color=ft.Colors.PRIMARY, weight=ft.FontWeight.W_500),
-                                ft.Text(f"📦 {game_data.get('total_parts', 0)} Parts  •  💾 {game_data.get('total_size_str', '0 B')}", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(f"Synced: {game_data.get('local_time', 'Recently')}", size=11, color=ft.Colors.PRIMARY, weight=ft.FontWeight.W_500),
+                                ft.Text(f"{game_data.get('total_parts', 0)} Parts  •  {game_data.get('total_size_str', '0 B')}", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
                                 ft.Container(
-                                    content=ft.Text(f"⚡ Status: {freshness.upper()} ({game_data.get('age_str', 'recent')})", size=10, weight=ft.FontWeight.BOLD, color=f_color),
+                                    content=ft.Text(f"Status: {freshness.upper()} ({game_data.get('age_str', 'recent')})", size=10, weight=ft.FontWeight.BOLD, color=f_color),
                                     padding=ft.Padding.symmetric(horizontal=6, vertical=2),
                                     bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
                                     border_radius=6
@@ -81,8 +81,8 @@ def check_and_start_pipeline(ctx: UIContext, state: AppState, e=None):
                     width=460
                 ),
                 actions=[
-                    ft.OutlinedButton("🔄 Resolve Fresh & Update", icon=ft.Icons.REFRESH, on_click=on_resolve_fresh),
-                    ft.FilledButton("⚡ Use Instant Links", icon=ft.Icons.BOLT, on_click=on_use_community)
+                    ft.OutlinedButton("Resolve Fresh & Update", icon=ft.Icons.REFRESH, on_click=on_resolve_fresh),
+                    ft.FilledButton("Use Instant Links", icon=ft.Icons.BOLT, on_click=on_use_community)
                 ]
             )
             ctx.page.show_dialog(dlg)

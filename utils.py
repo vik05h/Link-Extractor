@@ -74,7 +74,7 @@ def load_settings() -> Dict[str, Any]:
         "check_updates_on_startup": True,
         "last_seen_version": None,
         "community_auto_share": True,
-        "community_firebase_url": "https://fitgirl-community-hub-default-rtdb.firebaseio.com"
+        "community_firebase_url": "https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app"
     }
     settings_file = os.path.join(get_app_data_dir(), "settings.json")
     if os.path.exists(settings_file):

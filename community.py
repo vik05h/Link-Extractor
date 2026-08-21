@@ -10,23 +10,10 @@ from typing import List, Dict, Any, Optional, Tuple
 
 import validator
 
-DEFAULT_FIREBASE_URL = "https://fitgirl-community-hub-default-rtdb.firebaseio.com"
+DEFAULT_FIREBASE_URL = "https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app"
 
 # Built-in local offline fallback repository for initial offline experience
 DEMO_COMMUNITY_DATA = {
-    "black-myth-wukong": {
-        "slug": "black-myth-wukong",
-        "title": "Black Myth: Wukong – Digital Deluxe Edition",
-        "image_url": "https://fitgirl-repacks.site/wp-content/uploads/2024/08/black-myth-wukong.jpg",
-        "source_url": "https://fitgirl-repacks.site/black-myth-wukong/",
-        "timestamp_utc": "2026-08-21T10:30:00Z",
-        "total_parts": 28,
-        "resolved_count": 28,
-        "total_size_str": "128.4 GB",
-        "total_size_bytes": 137868000000,
-        "status": "fresh",
-        "uploader": "Vikash (@vik05h)"
-    },
     "elden-ring-shadow-of-the-erdtree": {
         "slug": "elden-ring-shadow-of-the-erdtree",
         "title": "ELDEN RING: Shadow of the Erdtree Edition",
@@ -69,9 +56,6 @@ DEMO_COMMUNITY_DATA = {
 }
 
 DEMO_COMMUNITY_URLS = {
-    "black-myth-wukong": [
-        f"https://dl.fuckingfast.co/dl/bmw_part{i:02d}#Black_Myth_Wukong.part{i:02d}.rar" for i in range(1, 29)
-    ],
     "elden-ring-shadow-of-the-erdtree": [
         f"https://dl.fuckingfast.co/dl/er_sote_part{i:02d}#Elden_Ring_SOTE.part{i:02d}.rar" for i in range(1, 15)
     ],
@@ -363,19 +347,25 @@ def check_link_health(direct_url: str) -> Tuple[bool, str]:
 
     clean_url = direct_url.split("#")[0].strip()
     try:
-        val_res = validator.validate_single_link(clean_url, timeout=5)
+        val_res = validator.validate_single_url(0, clean_url, timeout=8.0)
         if val_res.is_valid:
-            return True, f"Active ({val_res.content_length_str})"
+            size_txt = val_res.content_length_str if val_res.content_length_bytes > 0 else "Active"
+            return True, size_txt
         else:
-            return False, f"Expired ({val_res.status_code or 'Timeout'})"
+            return False, f"HTTP {val_res.status_code or 'Timeout'}"
     except Exception as e:
         return False, f"Error: {e}"
 
 
 def test_firebase_connection(firebase_url: Optional[str] = None) -> Tuple[bool, str]:
     """Test connection to Firebase Realtime Database endpoint."""
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    endpoint = f"{base_url}/.json?shallow=true"
+    raw_url = (firebase_url or DEFAULT_FIREBASE_URL).strip()
+    if not raw_url.startswith("http://") and not raw_url.startswith("https://"):
+        raw_url = "https://" + raw_url
+    base_url = raw_url.rstrip("/")
+
+    # Check games_meta endpoint directly
+    endpoint = f"{base_url}/games_meta.json?shallow=true"
 
     try:
         req = urllib.request.Request(
@@ -383,21 +373,13 @@ def test_firebase_connection(firebase_url: Optional[str] = None) -> Tuple[bool, 
             headers={"User-Agent": "FitGirlLinkExtractor/3.2.0"},
             method="GET"
         )
-        with urllib.request.urlopen(req, timeout=4.0) as resp:
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
             if resp.status in (200, 204):
                 return True, "Firebase Cloud endpoint is online and reachable!"
             return False, f"Firebase returned status code {resp.status}"
     except urllib.error.HTTPError as he:
         if he.code in (401, 403):
-            # Permission denied on root shallow check is common, try games_meta
-            try:
-                sub_endpoint = f"{base_url}/games_meta.json?shallow=true"
-                sub_req = urllib.request.Request(sub_endpoint, headers={"User-Agent": "FitGirlLinkExtractor/3.2.0"})
-                with urllib.request.urlopen(sub_req, timeout=4.0) as sub_resp:
-                    return True, "Firebase Cloud endpoint is online and reachable!"
-            except Exception:
-                pass
-            return True, "Firebase reached (Authentication/Rule enforced)."
+            return True, "Firebase reached (Authentication/Rules enforced)."
         return False, f"HTTP Error: {he.code} {he.reason}"
     except Exception as ex:
         return False, f"Connection failed: {ex}"

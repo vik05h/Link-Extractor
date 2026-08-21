@@ -282,7 +282,7 @@ async def run_pipeline_async(ctx: UIContext, state: AppState, target_url: str):
             ctx.set_status("Validating Links & Size...", icon=ft.Icons.CHECKLIST, color=ft.Colors.CYAN_400)
             ctx.log(f"Phase 3: Validating {len(resolved_urls)} direct URLs & computing exact download sizes...")
 
-            val_summary = await asyncio.to_thread(validator.validate_links, resolved_urls, 15, state.cancel_event)
+            val_summary = await asyncio.to_thread(validator.validate_links, resolved_urls, 15, None, state.cancel_event)
             state.last_val_summary = val_summary
             total_size_str = val_summary.total_size_str
             total_size_bytes = val_summary.total_bytes

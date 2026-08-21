@@ -62,7 +62,7 @@ def create_pixel_dino_loader(seed_color: str) -> ft.Container:
     )
 
     loading_status = ft.Text(
-        "🦖 PIXEL DINO IS HUNTING FRESH COMMUNITY REPACKS...",
+        "PIXEL DINO IS HUNTING FRESH COMMUNITY REPACKS...",
         size=12,
         weight=ft.FontWeight.BOLD,
         color=ft.Colors.GREEN_ACCENT_400
@@ -136,15 +136,15 @@ def build_3d_title_card(
     if freshness == "fresh":
         badge_color = ft.Colors.GREEN_400
         badge_icon = ft.Icons.BOLT
-        badge_label = f"⚡ Fresh ({age_str})"
+        badge_label = f"Fresh ({age_str})"
     elif freshness == "aging":
         badge_color = ft.Colors.AMBER_400
         badge_icon = ft.Icons.SCHEDULE
-        badge_label = f"⏳ Aging ({age_str})"
+        badge_label = f"Aging ({age_str})"
     else:
         badge_color = ft.Colors.DEEP_ORANGE_400
         badge_icon = ft.Icons.WARNING_AMBER
-        badge_label = f"⚠️ Expired ({age_str})"
+        badge_label = f"Expired ({age_str})"
 
     freshness_chip = ft.Container(
         content=ft.Row([
@@ -229,17 +229,17 @@ def build_3d_title_card(
         async def _check_worker():
             urls = community.get_game_urls(slug, ctx.settings.get("community_firebase_url"))
             if not urls:
-                health_pill.value = "❌ No URLs"
+                health_pill.value = "No URLs"
                 health_pill.color = ft.Colors.RED_400
                 health_pill.update()
                 return
 
             is_alive, msg = await asyncio.to_thread(community.check_link_health, urls[0])
             if is_alive:
-                health_pill.value = f"✅ Alive ({msg})"
+                health_pill.value = f"Active ({msg})"
                 health_pill.color = ft.Colors.GREEN_400
             else:
-                health_pill.value = f"❌ Expired"
+                health_pill.value = f"Expired ({msg})"
                 health_pill.color = ft.Colors.DEEP_ORANGE_400
             try:
                 health_pill.update()
@@ -266,30 +266,31 @@ def build_3d_title_card(
                     ], spacing=8),
                     title_widget,
                     ft.Text(
-                        f"📅 Local Time: {local_time}",
+                        f"Local Time: {local_time}",
                         size=11,
                         color=ft.Colors.PRIMARY,
                         weight=ft.FontWeight.W_500
                     ),
                     ft.Row([
-                        ft.Text(f"📦 {total_parts} Parts", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(f"{total_parts} Parts", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text("•", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(f"💾 {total_size_str}", size=11, weight=ft.FontWeight.BOLD, color=seed_color),
+                        ft.Text(f"{total_size_str}", size=11, weight=ft.FontWeight.BOLD, color=seed_color),
                         ft.Text("•", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(f"👤 {uploader}", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(f"By {uploader}", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
                     ], spacing=6)
                 ], expand=True, spacing=4),
                 # Right: 4 Quick Actions
                 ft.Column([
                     ft.FilledButton(
-                        "⚡ Use Instant",
+                        "Use Instant",
                         icon=ft.Icons.BOLT,
                         height=36,
                         on_click=handle_use_instant
                     ),
                     ft.Row([
                         ft.FilledTonalButton(
-                            "🚀 Push JD2",
+                            "Push JD2",
+                            icon=ft.Icons.ROCKET_LAUNCH,
                             height=32,
                             on_click=handle_push_jd2
                         ),
@@ -326,7 +327,7 @@ def build_community_screen(
     """
     cards_list = ft.ListView(expand=True, spacing=10, padding=12)
     search_input = ft.TextField(
-        hint_text="🔍 Search community repacks...",
+        hint_text="Search community repacks...",
         prefix_icon=ft.Icons.SEARCH,
         dense=True,
         width=280,
@@ -421,9 +422,9 @@ def build_community_screen(
         on_change=on_filter_change,
         segments=[
             ft.Segment(value="all", label=ft.Text("All Repacks"), icon=ft.Icon(ft.Icons.ALL_INCLUSIVE)),
-            ft.Segment(value="fresh", label=ft.Text("⚡ Fresh (<12h)"), icon=ft.Icon(ft.Icons.BOLT)),
-            ft.Segment(value="aging", label=ft.Text("⏳ Aging (12-36h)"), icon=ft.Icon(ft.Icons.SCHEDULE)),
-            ft.Segment(value="expired", label=ft.Text("⚠️ Expired"), icon=ft.Icon(ft.Icons.WARNING_AMBER)),
+            ft.Segment(value="fresh", label=ft.Text("Fresh (<12h)"), icon=ft.Icon(ft.Icons.BOLT)),
+            ft.Segment(value="aging", label=ft.Text("Aging (12-36h)"), icon=ft.Icon(ft.Icons.SCHEDULE)),
+            ft.Segment(value="expired", label=ft.Text("Expired"), icon=ft.Icon(ft.Icons.WARNING_AMBER)),
         ]
     )
 
