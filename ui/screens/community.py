@@ -119,8 +119,8 @@ def build_3d_title_card(
     on_health_check_complete: Callable[[], None]
 ) -> ft.Card:
     """
-    Build a rich 3D-styled Game Card with thumbnail, depth lighting,
-    freshness indicators, local time formatting, and 4 quick actions.
+    Build a clean 3D-styled Game Card with native Material 3 elevation,
+    3D animated title, poster zoom on hover, freshness indicators, and quick actions.
     """
     title = rec.get("title", "FitGirl Repack")
     image_url = rec.get("image_url", "")
@@ -151,8 +151,8 @@ def build_3d_title_card(
             ft.Icon(badge_icon, size=12, color=badge_color),
             ft.Text(badge_label, size=10, weight=ft.FontWeight.BOLD, color=badge_color)
         ], spacing=4, tight=True),
-        bgcolor=ft.Colors.with_opacity(0.18, badge_color),
-        border=ft.Border.all(1, ft.Colors.with_opacity(0.5, badge_color)),
+        bgcolor=ft.Colors.with_opacity(0.15, badge_color),
+        border=ft.Border.all(1, ft.Colors.with_opacity(0.4, badge_color)),
         border_radius=12,
         padding=ft.Padding.symmetric(horizontal=8, vertical=4)
     )
@@ -169,7 +169,7 @@ def build_3d_title_card(
             fit=ft.BoxFit.COVER,
             border_radius=8,
             error_content=ft.Container(
-                content=ft.Icon(ft.Icons.SPORTS_ESPORTS, size=36, color=ft.Colors.PRIMARY),
+                content=ft.Icon(ft.Icons.SPORTS_ESPORTS, size=36, color=seed_color),
                 bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
                 width=90,
                 height=115,
@@ -179,7 +179,7 @@ def build_3d_title_card(
         )
     else:
         cover_img = ft.Container(
-            content=ft.Icon(ft.Icons.SPORTS_ESPORTS, size=36, color=ft.Colors.PRIMARY),
+            content=ft.Icon(ft.Icons.SPORTS_ESPORTS, size=36, color=seed_color),
             bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
             width=90,
             height=115,
@@ -187,16 +187,45 @@ def build_3d_title_card(
             border_radius=8
         )
 
-    # 3D Title with Layered Depth Style
-    title_widget = ft.Container(
-        content=ft.Text(
-            title,
-            size=15,
-            weight=ft.FontWeight.BOLD,
-            max_lines=2,
-            overflow=ft.TextOverflow.ELLIPSIS,
-            color=ft.Colors.ON_SURFACE
-        ),
+    # 3D Cover Poster Frame with pop-out hover effect
+    cover_frame = ft.Container(
+        content=cover_img,
+        border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.PRIMARY)),
+        border_radius=8,
+        animate_scale=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC),
+        scale=1.0
+    )
+
+    # 3D Title: Animated Left Neon Accent Bar
+    title_accent_bar = ft.Container(
+        width=3.5,
+        height=20,
+        border_radius=2,
+        bgcolor=ft.Colors.with_opacity(0.6, seed_color),
+        animate=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC)
+    )
+
+    title_text = ft.Text(
+        title,
+        size=15,
+        weight=ft.FontWeight.BOLD,
+        max_lines=2,
+        overflow=ft.TextOverflow.ELLIPSIS,
+        color=ft.Colors.ON_SURFACE
+    )
+
+    # 3D Title Block with Parallax Depth Translation
+    title_block = ft.Container(
+        content=ft.Row([
+            title_accent_bar,
+            ft.Container(
+                content=title_text,
+                expand=True,
+                padding=ft.Padding.only(left=2)
+            )
+        ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+        animate_offset=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC),
+        offset=ft.Offset(0, 0),
         padding=ft.Padding.only(bottom=2)
     )
 
@@ -248,71 +277,110 @@ def build_3d_title_card(
 
         ctx.page.run_task(_check_worker)
 
-    return ft.Card(
-        content=ft.Container(
-            content=ft.Row([
-                # Left: Game Cover Thumbnail
-                ft.Container(
-                    content=cover_img,
-                    border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.PRIMARY)),
-                    border_radius=10,
-                    padding=2
-                ),
-                # Middle: Game Info & 3D Title
-                ft.Column([
-                    ft.Row([
-                        freshness_chip,
-                        health_pill
-                    ], spacing=8),
-                    title_widget,
+    card = ft.Card(
+        elevation=1,
+        animate_scale=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC),
+        scale=1.0
+    )
+
+    def handle_card_hover(e):
+        is_hovered = e.data == "true" or e.data is True
+        if is_hovered:
+            card.elevation = 4
+            card.scale = 1.008
+            cover_frame.scale = 1.04
+            title_accent_bar.width = 4.5
+            title_accent_bar.bgcolor = seed_color
+            title_block.offset = ft.Offset(0.006, 0)
+        else:
+            card.elevation = 1
+            card.scale = 1.0
+            cover_frame.scale = 1.0
+            title_accent_bar.width = 3.5
+            title_accent_bar.bgcolor = ft.Colors.with_opacity(0.6, seed_color)
+            title_block.offset = ft.Offset(0, 0)
+
+        try:
+            card.update()
+        except Exception:
+            pass
+
+    card_container = ft.Container(
+        on_hover=handle_card_hover,
+        padding=14,
+        content=ft.Row([
+            # Left: 3D Poster Artwork Frame
+            cover_frame,
+            # Middle: Game Info & 3D Title
+            ft.Column([
+                ft.Row([
+                    freshness_chip,
+                    health_pill
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+                title_block,
+                ft.Row([
+                    ft.Icon(ft.Icons.ACCESS_TIME_FILLED, size=12, color=ft.Colors.PRIMARY),
                     ft.Text(
-                        f"Local Time: {local_time}",
+                        f"Synced: {local_time}",
                         size=11,
                         color=ft.Colors.PRIMARY,
                         weight=ft.FontWeight.W_500
                     ),
-                    ft.Row([
-                        ft.Text(f"{total_parts} Parts", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text("•", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(f"{total_size_str}", size=11, weight=ft.FontWeight.BOLD, color=seed_color),
-                        ft.Text("•", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ft.Text(f"By {uploader}", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
-                    ], spacing=6)
-                ], expand=True, spacing=4),
-                # Right: 4 Quick Actions
-                ft.Column([
-                    ft.FilledButton(
-                        "Use Instant",
-                        icon=ft.Icons.BOLT,
-                        height=36,
-                        on_click=handle_use_instant
+                ], spacing=4, tight=True),
+                ft.Row([
+                    ft.Container(
+                        content=ft.Text(f"{total_parts} Parts", size=11, weight=ft.FontWeight.W_500, color=ft.Colors.ON_SURFACE_VARIANT),
+                        bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.ON_SURFACE),
+                        border_radius=6,
+                        padding=ft.Padding.symmetric(horizontal=6, vertical=2)
+                    ),
+                    ft.Container(
+                        content=ft.Text(f"{total_size_str}", size=11, weight=ft.FontWeight.BOLD, color=seed_color),
+                        bgcolor=ft.Colors.with_opacity(0.12, seed_color),
+                        border=ft.Border.all(0.8, ft.Colors.with_opacity(0.3, seed_color)),
+                        border_radius=6,
+                        padding=ft.Padding.symmetric(horizontal=6, vertical=2)
                     ),
                     ft.Row([
-                        ft.FilledTonalButton(
-                            "Push JD2",
-                            icon=ft.Icons.ROCKET_LAUNCH,
-                            height=32,
-                            on_click=handle_push_jd2
-                        ),
-                        ft.IconButton(
-                            icon=ft.Icons.COPY,
-                            icon_size=16,
-                            tooltip="Copy URLs",
-                            on_click=handle_copy_all
-                        ),
-                        ft.IconButton(
-                            icon=ft.Icons.HEALTH_AND_SAFETY,
-                            icon_size=16,
-                            tooltip="1-Click Health Check",
-                            on_click=handle_health_check
-                        ),
-                    ], spacing=4)
-                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.END, spacing=6)
-            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-            padding=14
-        ),
-        elevation=2
+                        ft.Icon(ft.Icons.PERSON_OUTLINE, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text(f"By {uploader}", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ], spacing=3, tight=True)
+                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            ], expand=True, spacing=4),
+            # Right: Quick Action Hub
+            ft.Column([
+                ft.FilledButton(
+                    "Use Instant",
+                    icon=ft.Icons.BOLT,
+                    height=36,
+                    on_click=handle_use_instant
+                ),
+                ft.Row([
+                    ft.FilledTonalButton(
+                        "Push JD2",
+                        icon=ft.Icons.ROCKET_LAUNCH,
+                        height=32,
+                        on_click=handle_push_jd2
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.COPY,
+                        icon_size=16,
+                        tooltip="Copy Direct URLs",
+                        on_click=handle_copy_all
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.HEALTH_AND_SAFETY,
+                        icon_size=16,
+                        tooltip="1-Click Health Check",
+                        on_click=handle_health_check
+                    ),
+                ], spacing=4)
+            ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.END, spacing=6)
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=14)
     )
+
+    card.content = card_container
+    return card
 
 
 def build_community_screen(
@@ -365,7 +433,7 @@ def build_community_screen(
                         ft.Icon(ft.Icons.CLOUD_OFF, size=48, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text("No community repacks match your filter.", size=15, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE_VARIANT),
                         ft.Text("Try changing your search terms or extract a new game to share with the community!", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=6),
                     alignment=ft.Alignment.CENTER,
                     padding=40
                 )
@@ -430,52 +498,53 @@ def build_community_screen(
 
     search_input.on_change = lambda e: apply_filter_and_render(state.community_games, search_input.value or "", current_filter[0])
 
+    top_banner_card = ft.Card(
+        content=ft.Container(
+            content=ft.Row([
+                ft.Column([
+                    ft.Row([
+                        ft.Icon(ft.Icons.GROUPS, size=24, color=seed_color),
+                        ft.Text("FitGirl Community Cloud Cache", size=18, weight=ft.FontWeight.BOLD),
+                        ft.Container(
+                            content=ft.Text("🌐 LIVE HUB", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
+                            bgcolor=ft.Colors.GREEN_700,
+                            border_radius=10,
+                            padding=ft.Padding.symmetric(horizontal=8, vertical=2)
+                        )
+                    ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+                    ft.Text(
+                        "Instant decentralized link sharing. Download games already resolved by others without waiting for browser decryption.",
+                        size=11, color=ft.Colors.ON_SURFACE_VARIANT
+                    )
+                ], expand=True, spacing=4),
+                ft.Row([
+                    search_input,
+                    ft.FilledTonalButton(
+                        "Refresh Feed",
+                        icon=ft.Icons.REFRESH,
+                        on_click=lambda _: refresh_community()
+                    )
+                ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=16
+        )
+    )
+
+    feed_card = ft.Card(
+        content=ft.Container(
+            content=cards_list,
+            expand=True,
+            padding=6
+        ),
+        expand=True
+    )
+
     community_screen = ft.Container(
         key="screen_community",
         content=ft.Column([
-            # Top Banner Card
-            ft.Card(
-                content=ft.Container(
-                    content=ft.Row([
-                        ft.Column([
-                            ft.Row([
-                                ft.Icon(ft.Icons.GROUPS, size=24, color=seed_color),
-                                ft.Text("FitGirl Community Cloud Cache", size=18, weight=ft.FontWeight.BOLD),
-                                ft.Container(
-                                    content=ft.Text("🌐 LIVE HUB", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                                    bgcolor=ft.Colors.GREEN_700,
-                                    border_radius=10,
-                                    padding=ft.Padding.symmetric(horizontal=8, vertical=2)
-                                )
-                            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                            ft.Text(
-                                "Instant decentralized link sharing. Download games already resolved by others without waiting for browser decryption.",
-                                size=11, color=ft.Colors.ON_SURFACE_VARIANT
-                            )
-                        ], expand=True, spacing=4),
-                        ft.Row([
-                            search_input,
-                            ft.FilledTonalButton(
-                                "Refresh Feed",
-                                icon=ft.Icons.REFRESH,
-                                on_click=lambda _: refresh_community()
-                            )
-                        ], spacing=8)
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    padding=16
-                )
-            ),
-            # Filter Tabs
+            top_banner_card,
             ft.Row([filter_segments], alignment=ft.MainAxisAlignment.START),
-            # Community Feed Card
-            ft.Card(
-                content=ft.Container(
-                    content=cards_list,
-                    expand=True,
-                    padding=6
-                ),
-                expand=True
-            )
+            feed_card
         ], spacing=10, expand=True),
         padding=16,
         expand=True
