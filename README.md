@@ -121,13 +121,24 @@ Inspect all extracted `dl.fuckingfast.co` URLs in the interactive DataTable, com
 
 ---
 
-### Step 5: Community Hub & Searchable History
-Browse the **Community** screen to discover newly shared games with live health checks, or visit the **History** tab to search past extractions.
+### Step 5: Community Cloud Cache & Instant Download
+Browse the **Community** screen to discover pre-fetched games shared anonymously by other users. Filter by freshness (Fresh, Aging, Expired), run rapid 1-byte health checks, or click **Use Instant** to load links immediately without browser decryption.
 
 <p align="center">
-  <img src="screenshots/step5.png" alt="Step 5: Searchable SQLite History Archive" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <img src="screenshots/step5_community.png" alt="Step 5: Community Cloud Cache and Shared Repacks Hub" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
   <br>
-  <em>Figure 5: SQLite history archive preserved permanently across app restarts.</em>
+  <em>Figure 5: Community Cloud Cache with instant downloads, freshness badges, and health checks.</em>
+</p>
+
+---
+
+### Step 6: Searchable SQLite History Archive
+Access the **History** tab to search past extractions saved permanently in your local database (`history.db`). Re-copy direct links or re-push to JDownloader 2 anytime with a single click.
+
+<p align="center">
+  <img src="screenshots/step5.png" alt="Step 6: Searchable SQLite History Archive" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <br>
+  <em>Figure 6: SQLite history archive preserved permanently across app restarts.</em>
 </p>
 
 ---
