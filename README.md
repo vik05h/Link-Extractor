@@ -13,7 +13,7 @@
   <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-0284C7.svg" alt="CC BY-NC-SA 4.0" /></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-10B981.svg" alt="Python" /></a>
   <a href="https://flet.dev"><img src="https://img.shields.io/badge/UI-Flet_Material_3-F59E0B.svg" alt="UI" /></a>
-  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.1.0-blue.svg" alt="Release" /></a>
+  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.1.1-blue.svg" alt="Release" /></a>
 </p>
 
 ---
@@ -49,7 +49,7 @@ graph LR
 - **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using lightweight 1-byte HTTP range requests.
 - **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
 - **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.
-- **GitHub Releases Auto-Updater**: Built-in update checker that notifies you when new releases or binaries are published.
+- **GitHub Releases Auto-Updater & In-App Installer**: Automatically checks for updates on startup, downloads and applies updates in-app upon user confirmation, and displays a What's New & Bug Fixes changelog on updated launches.
 
 ---
 

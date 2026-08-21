@@ -140,6 +140,10 @@ def main(page: ft.Page):
         ], expand=True, spacing=0)
     )
 
+    # Startup automated checks: post-update What's New dialog & silent update checker
+    ctx.check_whats_new_on_startup()
+    ctx.check_startup_updates()
+
 
 if __name__ == "__main__":
     ft.run(main, assets_dir=os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets"))

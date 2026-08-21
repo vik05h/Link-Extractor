@@ -74,6 +74,10 @@ graph TD
 * **The Pattern**: Monolithic UI code in `main.py` is decomposed into a dedicated `ui/` package (`ui/constants.py`, `ui/state.py`, `ui/screens/extractor.py`, `ui/screens/pipeline.py`, `ui/screens/history.py`, `ui/screens/settings.py`) with shared system helpers in `utils.py`.
 * **The Solution**: `main.py` serves strictly as the application entrypoint (< 150 lines) managing window initialization, navigation rails, and animated switcher wiring. All screen state is coordinated via `AppState` and `UIContext` without circular dependencies.
 
+### 8. In-App Auto-Update & Post-Update What's New Popup
+* **The Pattern**: On application startup, `check_startup_updates()` runs in a background daemon thread without blocking initial rendering. If a new release is available on GitHub, an in-app download progress dialog appears upon user confirmation.
+* **The Solution**: On Windows, `apply_update_and_restart()` writes a detached `apply_update.bat` script that monitors the current PID, waits for termination, replaces the target `.exe`, restarts the new executable, and cleans up. The first run of the new version checks `settings.json` (`last_seen_version`) and displays a structured What's New & Bug Fixes dialog.
+
 ---
 
 ## 5. Security & Penetration Baseline

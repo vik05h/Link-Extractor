@@ -59,8 +59,11 @@ This document tracks current milestones, active implementation status, and upcom
 - [x] **2.4 JDownloader 2 Direct One-Click Push**
   - [x] Local Click'n'Load (CNL2 / FlashGot on port 9666) integration in `integrations.py`.
   - [x] Auto-formatting with `#filename.partXX.rar` anchors to prevent "Deep Link Analysis" prompts.
-- [x] **2.5 GitHub Releases Auto-Update Checker**
-  - [x] `updater.py`: Live query to GitHub Releases API with semver comparison and changelog dialog.
+- [x] **2.5 GitHub Releases Auto-Updater & In-App Installer**
+  - [x] `updater.py`: Live query to GitHub Releases API with semver comparison.
+  - [x] Automated startup update checker with user approval prompt.
+  - [x] In-app background download progress bar and detached Windows launcher (`apply_update.bat`) executable replacement.
+  - [x] Post-update What's New & Bug Fixes popup dialog on updated version launch.
 
 ---
 

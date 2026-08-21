@@ -138,6 +138,15 @@ def build_settings_screen(
         else:
             ctx.show_snack(f"⚠️ Could not connect to JDownloader 2 on port {port}.", success=False)
 
+    def on_startup_update_changed(e):
+        ctx.settings["check_updates_on_startup"] = e.control.value
+        utils.save_settings(ctx.settings)
+
+    startup_update_switch = ft.Switch(
+        value=ctx.settings.get("check_updates_on_startup", True),
+        on_change=on_startup_update_changed
+    )
+
     settings_screen = ft.Container(
         key="screen_settings",
         content=ft.Column([
@@ -225,10 +234,22 @@ def build_settings_screen(
                                 ft.Text(f"Application Version & Updates ({updater.CURRENT_VERSION}):", size=13, weight=ft.FontWeight.BOLD),
                                 ft.Text("Check GitHub Releases for the latest patches, features, and binary builds.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
-                            ft.FilledButton("Check for Updates", icon=ft.Icons.SYSTEM_UPDATE, on_click=ctx.show_update_dialog)
+                            ft.Row([
+                                ft.OutlinedButton("What's New", icon=ft.Icons.AUTO_AWESOME, on_click=lambda _: ctx.show_whats_new_dialog()),
+                                ft.FilledButton("Check for Updates", icon=ft.Icons.SYSTEM_UPDATE, on_click=ctx.show_update_dialog)
+                            ], spacing=8)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 9. About & Author Credits
+                        # 9. Startup Update Check
+                        ft.Row([
+                            ft.Column([
+                                ft.Text("Auto-Check for Updates on Startup:", size=13, weight=ft.FontWeight.BOLD),
+                                ft.Text("Silently query GitHub Releases when opening the app and prompt if an update is found.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                            ]),
+                            startup_update_switch
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        # 10. About & Author Credits
                         ft.Row([
                             ft.Column([
                                 ft.Text("Original Author & Open Source License:", size=13, weight=ft.FontWeight.BOLD),
