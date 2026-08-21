@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
 import validator
+import updater
 
 DEFAULT_FIREBASE_URL = "https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app"
 
@@ -311,7 +312,7 @@ def upload_game_record(
         "total_size_str": total_size_str or "0 B",
         "total_size_bytes": total_size_bytes or 0,
         "uploader": uploader or "Community",
-        "app_version": "v3.3.0"
+        "app_version": updater.CURRENT_VERSION
     }
 
     url_payload = {
