@@ -18,17 +18,18 @@ FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
     "v3.1.1": {
-        "title": "Startup Auto-Updater, In-App Installer & What's New Dialog",
+        "title": "Startup Auto-Updater, Real-Time Async UI & In-App Installer",
         "highlights": [
             "Automatic silent update check on application startup with user confirmation prompt.",
             "In-app background download progress dialog displaying live speed and percentage.",
             "Automated Windows binary replacement and seamless application restart launcher.",
             "Interactive What's New & Bug Fixes release notes popup dialog on updated version launch.",
-            "Added Settings toggle for auto-checking updates and quick What's New changelog viewer."
+            "Off-screen headed Playwright browser engine preventing OS window focus theft."
         ],
         "bug_fixes": [
-            "Fixed version upgrade detection across persistent settings in %APPDATA%.",
-            "Added defensive network error handling for offline startup checks.",
+            "Fixed real-time UI freezing by transitioning to Flet's native async event loop.",
+            "Fixed DataTable child mutation rendering using state model rebuild pattern.",
+            "Fixed SegmentedButton JSON serialization error with set-to-list conversion.",
             "Improved detached updater batch script cleanup and process PID tracking on Windows."
         ]
     },

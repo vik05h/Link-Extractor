@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import asyncio
 import threading
 from dataclasses import dataclass, field
 from typing import List, Optional, Any, Dict
@@ -27,6 +28,8 @@ class UIContext:
         self.page = page
         self.settings = settings
         self.history_mgr = history_mgr
+        self.state: Optional[AppState] = None
+        self.current_tab: str = "urls"
 
         # Control references bound by screen builders
         self.status_chip_text: Optional[ft.Text] = None
@@ -39,6 +42,7 @@ class UIContext:
         self.val_container: Optional[ft.ListView] = None
         self.log_column: Optional[ft.ListView] = None
         self.results_view_container: Optional[ft.Container] = None
+        self.view_segments: Optional[ft.SegmentedButton] = None
         self.seg_urls_label: Optional[ft.Text] = None
         self.seg_val_label: Optional[ft.Text] = None
         self.start_btn: Optional[ft.FilledButton] = None
@@ -127,14 +131,14 @@ class UIContext:
         self.page.show_dialog(dlg)
 
     def show_update_dialog(self, e=None, silent_if_up_to_date: bool = False):
-        def _check_and_render():
-            has_update, release_info, msg = updater.check_for_updates()
+        async def _check_and_render():
+            has_update, release_info, msg = await asyncio.to_thread(updater.check_for_updates)
             if has_update and release_info:
                 self._render_update_available_dialog(release_info)
             elif not silent_if_up_to_date:
                 self._render_up_to_date_dialog()
 
-        threading.Thread(target=_check_and_render, daemon=True).start()
+        self.page.run_task(_check_and_render)
 
     def _render_up_to_date_dialog(self):
         dlg = ft.AlertDialog(
@@ -267,27 +271,52 @@ class UIContext:
         if not self.settings.get("check_updates_on_startup", True):
             return
 
-        def _worker():
-            time.sleep(0.8)
+        async def _worker():
+            await asyncio.sleep(0.8)
             try:
-                has_update, release_info, msg = updater.check_for_updates(timeout=6.0)
+                has_update, release_info, msg = await asyncio.to_thread(updater.check_for_updates, 6.0)
                 if has_update and release_info:
                     self._render_update_available_dialog(release_info)
             except Exception:
                 pass
 
-        threading.Thread(target=_worker, daemon=True).start()
+        self.page.run_task(_worker)
 
     def check_whats_new_on_startup(self):
         """Check if application was updated or running for the first time on a new version."""
         last_seen = self.settings.get("last_seen_version")
         if last_seen is None or updater.parse_version(updater.CURRENT_VERSION) > updater.parse_version(str(last_seen)):
             # Defer slightly so page renders
-            def _whats_new_worker():
-                time.sleep(0.4)
+            async def _whats_new_worker():
+                await asyncio.sleep(0.4)
                 self.show_whats_new_dialog(updater.CURRENT_VERSION)
 
-            threading.Thread(target=_whats_new_worker, daemon=True).start()
+            self.page.run_task(_whats_new_worker)
+
+    def refresh_extractor_ui(self):
+        """Safely update dynamic Extractor UI controls from any thread."""
+        if self.state and self.state.active_screen != 0:
+            return
+
+        controls_to_update = [
+            self.data_table,
+            self.view_segments,
+            self.results_view_container,
+            self.progress_bar,
+            self.stats_text,
+            self.status_chip,
+            self.count_label,
+        ]
+        for ctrl in controls_to_update:
+            if ctrl:
+                try:
+                    ctrl.update()
+                except Exception:
+                    pass
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def set_status(self, text: str, icon=ft.Icons.CHECK_CIRCLE_OUTLINE, color=None):
         if not self.status_chip_text or not self.status_chip_icon or not self.status_chip:
@@ -305,10 +334,7 @@ class UIContext:
             self.status_chip_icon.color = ft.Colors.ON_SURFACE_VARIANT
             self.status_chip.bgcolor = ft.Colors.SURFACE_CONTAINER_HIGH
             self.status_chip.border = ft.Border.all(1, ft.Colors.OUTLINE_VARIANT)
-        try:
-            self.status_chip.update()
-        except Exception:
-            self.page.update()
+        self.refresh_extractor_ui()
 
     def log(self, msg: str):
         if not self.log_column:
@@ -317,16 +343,7 @@ class UIContext:
         self.log_column.controls.append(
             ft.Text(f"[{ts}] {msg}", size=11, font_family="Consolas", color=ft.Colors.ON_SURFACE_VARIANT)
         )
-        try:
-            if self.results_view_container and self.results_view_container.content == self.log_column:
-                self.log_column.update()
-            else:
-                self.page.update()
-        except Exception:
-            try:
-                self.page.update()
-            except Exception:
-                pass
+        self.refresh_extractor_ui()
 
     def update_stats_display(self, is_running: bool = False):
         if not is_running and self.stats_text:

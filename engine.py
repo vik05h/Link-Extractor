@@ -71,7 +71,13 @@ class ResolutionEngine:
 
     async def _launch_browser(self, p) -> Browser:
         channel = detect_browser_channel()
-        launch_args = ["--disable-blink-features=AutomationControlled"]
+        launch_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--window-position=-3000,-3000",
+            "--window-size=1280,720",
+            "--no-first-run",
+            "--no-default-browser-check"
+        ]
 
         if channel:
             try:
@@ -223,6 +229,7 @@ class ResolutionEngine:
         on_progress: Optional[Callable[[int, int, float, float, int, str, Optional[str], str], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
         on_retry_pass: Optional[Callable[[int, int, int], None]] = None,
+        on_start_part: Optional[Callable[[str, int], None]] = None,
         cancel_event: Optional[Union[threading.Event, asyncio.Event]] = None
     ) -> List[ResolvedLink]:
         """
@@ -301,6 +308,13 @@ class ResolutionEngine:
 
                         item = results[idx]
                         item.attempts = current_attempt
+                        item.status = "resolving"
+
+                        if on_start_part:
+                            try:
+                                on_start_part(item.part_name, worker_id)
+                            except Exception:
+                                pass
 
                         direct_url, elapsed = await self._resolve_single_link(page, item.original_url, cancel_event)
                         item.elapsed_sec = elapsed
@@ -367,7 +381,8 @@ class ResolutionEngine:
         on_progress: Optional[Callable[[int, int, float, float, int, str, Optional[str], str], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
         on_retry_pass: Optional[Callable[[int, int, int], None]] = None,
+        on_start_part: Optional[Callable[[str, int], None]] = None,
         cancel_event: Optional[Union[threading.Event, asyncio.Event]] = None
     ) -> List[ResolvedLink]:
         """Synchronous wrapper for resolve_all_async."""
-        return asyncio.run(self.resolve_all_async(urls, on_progress, on_log, on_retry_pass, cancel_event))
+        return asyncio.run(self.resolve_all_async(urls, on_progress, on_log, on_retry_pass, on_start_part, cancel_event))

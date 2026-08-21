@@ -11,7 +11,54 @@ import validator
 from ui.state import UIContext, AppState
 
 
-def run_pipeline_thread(ctx: UIContext, state: AppState, target_url: str):
+# Row state model: list of dicts tracking each part's current display state
+_row_states = []
+
+
+def _build_status_chip(rs):
+    """Build a Chip control from a row state dict."""
+    return ft.Chip(
+        label=ft.Text(rs["status_label"], size=10, color=rs.get("status_color")),
+        leading=ft.Icon(rs["status_icon"], size=12, color=rs.get("status_color"))
+    )
+
+
+def _build_action_cell(rs, ctx):
+    """Build the action cell (copy button) from row state."""
+    if rs["status"] == "resolved" and rs.get("direct_url"):
+        url = rs["direct_url"]
+        return ft.IconButton(
+            icon=ft.Icons.COPY,
+            icon_size=16,
+            tooltip="Copy Link",
+            on_click=lambda _, u=url: (pyperclip.copy(u), ctx.show_snack("Copied direct link!"))
+        )
+    return ft.IconButton(icon=ft.Icons.COPY, icon_size=16, tooltip="Copy Link", disabled=True)
+
+
+def rebuild_table(ctx):
+    """Clear and rebuild data_table.rows from _row_states, then push update."""
+    if not ctx.data_table:
+        return
+    ctx.data_table.rows.clear()
+    for rs in _row_states:
+        ctx.data_table.rows.append(
+            ft.DataRow(
+                cells=[
+                    ft.DataCell(ft.Text(str(rs["index"] + 1))),
+                    ft.DataCell(ft.Text(rs["name"], size=12)),
+                    ft.DataCell(ft.Text(rs["size_str"], size=12, color=ft.Colors.ON_SURFACE_VARIANT,
+                                        weight=ft.FontWeight.W_500 if rs["size_str"] != "--" else None)),
+                    ft.DataCell(_build_status_chip(rs)),
+                    ft.DataCell(_build_action_cell(rs, ctx))
+                ]
+            )
+        )
+    ctx.refresh_extractor_ui()
+
+
+async def run_pipeline_async(ctx: UIContext, state: AppState, target_url: str):
+    global _row_states
     t_start = time.time()
     try:
         url_type = scraper.detect_url_type(target_url)
@@ -37,7 +84,7 @@ def run_pipeline_thread(ctx: UIContext, state: AppState, target_url: str):
         elif url_type == "fitgirl_game_page":
             ctx.set_status("Scraping Game Page...", icon=ft.Icons.SEARCH, color=ft.Colors.AMBER_400)
             ctx.log(f"Phase 1: Fetching FitGirl game page: {target_url}")
-            pastebins, game_title = scraper.extract_game_page_pastebins(target_url)
+            pastebins, game_title = await asyncio.to_thread(scraper.extract_game_page_pastebins, target_url)
             state.last_game_title = game_title or "FitGirl Repack"
             ctx.log(f"Game Repack: {state.last_game_title}")
 
@@ -50,10 +97,10 @@ def run_pipeline_thread(ctx: UIContext, state: AppState, target_url: str):
 
             target_pastebin = ff_pastebins[0]["url"]
             ctx.set_status("Decrypting Pastebin...", icon=ft.Icons.LOCK_OPEN, color=ft.Colors.AMBER_400)
-            state.pastebin_links = asyncio.run(engine.fetch_pastebin_links(target_pastebin, log_cb=ctx.log))
+            state.pastebin_links = await engine.fetch_pastebin_links(target_pastebin, log_cb=ctx.log)
         else:
             ctx.set_status("Decrypting Pastebin...", icon=ft.Icons.LOCK_OPEN, color=ft.Colors.AMBER_400)
-            state.pastebin_links = asyncio.run(engine.fetch_pastebin_links(target_url, log_cb=ctx.log))
+            state.pastebin_links = await engine.fetch_pastebin_links(target_url, log_cb=ctx.log)
             state.last_game_title = "FitGirl Pastebin Download"
 
         total_count = len(state.pastebin_links)
@@ -64,70 +111,78 @@ def run_pipeline_thread(ctx: UIContext, state: AppState, target_url: str):
             finish_pipeline(ctx, state)
             return
 
-        # Initialize Table Rows
-        if ctx.data_table:
-            ctx.data_table.rows.clear()
-            for i, u in enumerate(state.pastebin_links):
-                p_name = u.split("#")[-1] if "#" in u else f"part_{i+1:02d}"
-                ctx.data_table.rows.append(
-                    ft.DataRow(
-                        cells=[
-                            ft.DataCell(ft.Text(str(i + 1))),
-                            ft.DataCell(ft.Text(p_name, size=12)),
-                            ft.DataCell(ft.Text("--", size=12, color=ft.Colors.ON_SURFACE_VARIANT)),
-                            ft.DataCell(ft.Chip(label=ft.Text("Pending", size=10), leading=ft.Icon(ft.Icons.HOURGLASS_EMPTY, size=12))),
-                            ft.DataCell(ft.IconButton(icon=ft.Icons.COPY, icon_size=16, tooltip="Copy Link", disabled=True))
-                        ]
-                    )
-                )
-            ctx.page.update()
+        # Initialize row state model
+        _row_states = []
+        for i, u in enumerate(state.pastebin_links):
+            p_name = u.split("#")[-1] if "#" in u else f"part_{i+1:02d}"
+            _row_states.append({
+                "index": i,
+                "name": p_name,
+                "size_str": "--",
+                "status": "pending",
+                "status_label": "Pending",
+                "status_color": None,
+                "status_icon": ft.Icons.HOURGLASS_EMPTY,
+                "direct_url": None
+            })
+        rebuild_table(ctx)
+
+        def on_start_part(part_name, worker_id):
+            for rs in _row_states:
+                if rs["name"] == part_name:
+                    rs["status"] = "resolving"
+                    rs["status_label"] = f"Resolving (Tab {worker_id})"
+                    rs["status_color"] = ft.Colors.BLUE_400
+                    rs["status_icon"] = ft.Icons.SYNC
+                    break
+            rebuild_table(ctx)
 
         def on_progress(done_count, total, avg_speed, eta, active_tabs, part_name, direct_url, status):
             frac = done_count / max(1, total)
             if ctx.progress_bar:
                 ctx.progress_bar.value = frac
-            ctx.set_status(f"Resolving {done_count}/{total}", icon=ft.Icons.AUTORENEW, color=ft.Colors.BLUE_400)
+            ctx.set_status(f"Resolved {done_count}/{total} ({active_tabs} Active)", icon=ft.Icons.AUTORENEW, color=ft.Colors.BLUE_400)
             eta_str = f"{int(eta)}s" if eta < 60 else f"{int(eta // 60)}m {int(eta % 60)}s"
             if ctx.stats_text:
                 ctx.stats_text.value = f"⚡ Speed: {avg_speed:.1f}s/part | ⏱️ ETA: ~{eta_str} | 🌐 {active_tabs} tabs active"
 
-            # Update row
-            if ctx.data_table:
-                for idx, row in enumerate(ctx.data_table.rows):
-                    if row.cells[1].content.value == part_name:
-                        if status == "resolved" and direct_url:
-                            row.cells[3].content = ft.Chip(
-                                label=ft.Text("Resolved", size=10, color=ft.Colors.GREEN_400),
-                                leading=ft.Icon(ft.Icons.CHECK_CIRCLE, size=12, color=ft.Colors.GREEN_400)
-                            )
-                            row.cells[4].content = ft.IconButton(
-                                icon=ft.Icons.COPY,
-                                icon_size=16,
-                                tooltip="Copy Link",
-                                on_click=lambda _, u=direct_url: (pyperclip.copy(u), ctx.show_snack("Copied direct link!"))
-                            )
-                        else:
-                            row.cells[3].content = ft.Chip(
-                                label=ft.Text("Failed", size=10, color=ft.Colors.RED_400),
-                                leading=ft.Icon(ft.Icons.ERROR, size=12, color=ft.Colors.RED_400)
-                            )
-                        break
+            # Update row state
+            for rs in _row_states:
+                if rs["name"] == part_name:
+                    if status == "resolved" and direct_url:
+                        rs["status"] = "resolved"
+                        rs["status_label"] = "Resolved"
+                        rs["status_color"] = ft.Colors.GREEN_400
+                        rs["status_icon"] = ft.Icons.CHECK_CIRCLE
+                        rs["direct_url"] = direct_url
+                    else:
+                        rs["status"] = "failed"
+                        rs["status_label"] = "Failed"
+                        rs["status_color"] = ft.Colors.RED_400
+                        rs["status_icon"] = ft.Icons.ERROR
+                    break
 
             if ctx.seg_urls_label:
                 ctx.seg_urls_label.value = f"Direct URLs ({done_count}/{total})"
-            ctx.page.update()
+            rebuild_table(ctx)
 
         def on_retry_pass(failed_cnt, cur_att, max_att):
             ctx.set_status(f"Retrying {failed_cnt} links (Pass {cur_att}/{max_att})", icon=ft.Icons.REFRESH, color=ft.Colors.AMBER_400)
+            for rs in _row_states:
+                if rs["status"] == "failed":
+                    rs["status"] = "queued"
+                    rs["status_label"] = f"Queue (Pass {cur_att})"
+                    rs["status_color"] = ft.Colors.AMBER_400
+                    rs["status_icon"] = ft.Icons.SCHEDULE
+            rebuild_table(ctx)
 
-        results = asyncio.run(
-            engine.resolve_all_async(
-                urls=state.pastebin_links,
-                on_progress=on_progress,
-                on_log=ctx.log,
-                on_retry_pass=on_retry_pass,
-                cancel_event=state.cancel_event
-            )
+        results = await engine.resolve_all_async(
+            urls=state.pastebin_links,
+            on_progress=on_progress,
+            on_log=ctx.log,
+            on_retry_pass=on_retry_pass,
+            on_start_part=on_start_part,
+            cancel_event=state.cancel_event
         )
 
         resolved_urls = [r.direct_url for r in results if r.direct_url]
@@ -141,17 +196,16 @@ def run_pipeline_thread(ctx: UIContext, state: AppState, target_url: str):
             ctx.set_status("Validating Links & Size...", icon=ft.Icons.CHECKLIST, color=ft.Colors.CYAN_400)
             ctx.log(f"Phase 3: Validating {len(resolved_urls)} direct URLs & computing exact download sizes...")
 
-            val_summary = validator.validate_links(resolved_urls, max_workers=15, cancel_event=state.cancel_event)
+            val_summary = await asyncio.to_thread(validator.validate_links, resolved_urls, 15, state.cancel_event)
             state.last_val_summary = val_summary
             total_size_str = val_summary.total_size_str
             total_size_bytes = val_summary.total_bytes
 
-            # Update row sizes in table
-            if ctx.data_table:
-                for vl in val_summary.links:
-                    for row in ctx.data_table.rows:
-                        if vl.filename in row.cells[1].content.value or row.cells[1].content.value in vl.filename:
-                            row.cells[2].content = ft.Text(vl.content_length_str, size=12, weight=ft.FontWeight.W_500)
+            # Update row sizes in state
+            for vl in val_summary.links:
+                for rs in _row_states:
+                    if vl.filename in rs["name"] or rs["name"] in vl.filename:
+                        rs["size_str"] = vl.content_length_str
 
             if ctx.val_text:
                 ctx.val_text.value = (
@@ -165,12 +219,14 @@ def run_pipeline_thread(ctx: UIContext, state: AppState, target_url: str):
             if ctx.seg_val_label:
                 ctx.seg_val_label.value = f"Validation & Size ({total_size_str})"
             ctx.log(f"Validation Complete: {val_summary.valid_count}/{val_summary.total_links} verified | Total Size: {total_size_str}")
+            rebuild_table(ctx)
 
         is_cancelled = bool(state.cancel_event and state.cancel_event.is_set())
 
         # Save to SQLite History ONLY if not cancelled and URLs were resolved
         if resolved_urls and not is_cancelled:
-            ctx.history_mgr.add_record(
+            await asyncio.to_thread(
+                ctx.history_mgr.add_record,
                 title=state.last_game_title,
                 source_url=target_url,
                 total_parts=total_count,
@@ -222,9 +278,13 @@ def start_pipeline(ctx: UIContext, state: AppState, e=None):
     if ctx.progress_bar:
         ctx.progress_bar.value = None
     ctx.set_status("Starting Engine...", icon=ft.Icons.AUTORENEW, color=ft.Colors.BLUE_400)
-    ctx.page.update()
+    try:
+        ctx.page.window.to_front()
+    except Exception:
+        pass
+    ctx.refresh_extractor_ui()
 
-    threading.Thread(target=run_pipeline_thread, args=(ctx, state, target), daemon=True).start()
+    ctx.page.run_task(run_pipeline_async, ctx, state, target)
 
 
 def cancel_pipeline(ctx: UIContext, state: AppState, e=None):
@@ -234,7 +294,7 @@ def cancel_pipeline(ctx: UIContext, state: AppState, e=None):
     ctx.set_status("Cancelling...", icon=ft.Icons.CANCEL, color=ft.Colors.AMBER_400)
     if ctx.cancel_btn:
         ctx.cancel_btn.disabled = True
-    ctx.page.update()
+    ctx.refresh_extractor_ui()
 
 
 def finish_pipeline(ctx: UIContext, state: AppState):
@@ -245,4 +305,4 @@ def finish_pipeline(ctx: UIContext, state: AppState):
         ctx.cancel_btn.disabled = True
     if ctx.progress_bar and ctx.progress_bar.value is None:
         ctx.progress_bar.value = 1.0
-    ctx.page.update()
+    ctx.refresh_extractor_ui()

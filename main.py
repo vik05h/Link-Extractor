@@ -18,10 +18,10 @@ from ui.screens.history import build_history_screen
 from ui.screens.settings import build_settings_screen
 
 
-def main(page: ft.Page):
+async def main(page: ft.Page):
     utils.apply_windows_native_icon("app_icon.ico")
 
-    page.title = f"FitGirl Direct Link Extractor {updater.CURRENT_VERSION} — Flutter High Speed Edition"
+    page.title = f"FitGirl Direct Link Extractor {updater.CURRENT_VERSION}"
     page.window.width = 1180
     page.window.height = 840
     page.window.min_width = 960
@@ -54,6 +54,7 @@ def main(page: ft.Page):
     # Runtime state and context
     state = AppState()
     ctx = UIContext(page, settings, history_mgr)
+    ctx.state = state
     ctx.rail_logo = rail_logo
     ctx.banner_logo = banner_logo
 
@@ -98,13 +99,16 @@ def main(page: ft.Page):
     def on_nav_change(e):
         idx = e.control.selected_index
         state.active_screen = idx
+        nav_rail.selected_index = idx
         if idx == 0:
             ctx.update_stats_display(state.is_running)
+            ctx.refresh_extractor_ui()
         elif idx == 1:
             refresh_history()
 
         screen_container.content = screens[idx]
         screen_container.update()
+        nav_rail.update()
 
     nav_rail = ft.NavigationRail(
         selected_index=0,

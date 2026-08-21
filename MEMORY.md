@@ -78,6 +78,22 @@ graph TD
 * **The Pattern**: On application startup, `check_startup_updates()` runs in a background daemon thread without blocking initial rendering. If a new release is available on GitHub, an in-app download progress dialog appears upon user confirmation.
 * **The Solution**: On Windows, `apply_update_and_restart()` writes a detached `apply_update.bat` script that monitors the current PID, waits for termination, replaces the target `.exe`, restarts the new executable, and cleans up. The first run of the new version checks `settings.json` (`last_seen_version`) and displays a structured What's New & Bug Fixes dialog.
 
+### 9. Flet Native Async Event Loop vs Sync Socket Buffer Stalling
+* **The Problem**: When `main` was synchronous (`def main(page: ft.Page)`), Flet's Python process communicated with Flutter via a synchronous session loop. Calling `page.update()` from background threads placed mutations into an outgoing buffer that was only flushed when an incoming user event (such as a click or window drag) was received from Flutter.
+* **The Solution**: Define `async def main(page: ft.Page):` and run background operations via `page.run_task(...)` or native `asyncio`. Every update directly yields and flushes across the active WebSocket transport in real time with zero event backlog.
+
+### 10. Headed Browser Window Focus Stealing & OS VSync Deprioritization
+* **The Problem**: When Playwright launched Chromium/Edge in headed mode (`headless=False`), the browser window stole foreground focus from the Flet app. Windows automatically throttles or pauses VSync rendering signals to unfocused background applications, causing the Flet UI to appear frozen until focused or clicked.
+* **The Solution**: Launch Chromium/Edge with `--window-position=-3000,-3000` and `--window-size=1280,720`. The browser runs in full headed mode (guaranteeing 100% reliable Cloudflare Turnstile token bypass) but renders off-screen, never stealing foreground focus from the Flet application.
+
+### 11. DataTable Deep Child Mutation & Rebuild State Pattern
+* **The Problem**: Mutating child controls inside existing `DataCell`s (e.g. `row.cells[3].content = ft.Chip(...)`) does not trigger deep serialization down the Flet widget tree because the parent `DataTable` reference remains unchanged.
+* **The Solution**: Maintain an internal state list (`_row_states`) and use `rebuild_table()` to clear `data_table.rows` and re-populate fresh `DataRow`/`DataCell` instances on each progress callback.
+
+### 12. Flet Control JSON Serialization (`list` vs `set`)
+* **The Problem**: Flet serializes control properties to JSON when transmitting to Flutter. Passing Python `set` instances (e.g. `view_segments.selected = {"urls"}`) raises `TypeError: can not serialize 'set' object`.
+* **The Solution**: Always assign standard Python `list` collections (e.g. `view_segments.selected = ["urls"]`) for selection properties.
+
 ---
 
 ## 5. Security & Penetration Baseline

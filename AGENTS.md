@@ -71,6 +71,9 @@ python scratch/security_pen_test.py
 * **Flet AnimatedSwitcher Hot-Swap**: `AnimatedSwitcher` locks duration at `initState()`. To change animation style at runtime, wrap in `screen_holder = ft.Container(...)` and rebuild `screen_holder.content = create_screen_switcher(cfg, cur_screen)`.
 * **PyInstaller Icon JSON Dependency**: Flet 0.86+ requires `collect_all('flet')` in `LinkExtractor_Single.spec` to bundle internal icon mappings.
 * **Adaptive Scrolling**: All screen containers must include `scroll=ft.ScrollMode.ADAPTIVE` on the outer `ft.Column` to prevent UI truncation on smaller monitors.
+* **Flet Native Async Event Loop**: Synchronous `def main(page: ft.Page)` causes background `page.update()` calls to stall in the socket outgoing buffer until an incoming UI event wakes the thread. Entrypoint must use `async def main(page: ft.Page)` with `page.run_task(...)` for immediate real-time frame dispatch.
+* **Off-Screen Headed Browser**: Launching visible browser instances (`headless=False`) causes Windows to steal foreground focus and throttle VSync frame delivery to the background Flet app. Chromium/Edge must be launched with `--window-position=-3000,-3000` to maintain 100% Cloudflare Turnstile token resolution without stealing window focus.
+* **DataTable Rebuild State Model**: Flet does not detect deep mutations on child controls inside existing `DataCell`s. Maintain a state model (`_row_states`) and use `rebuild_table()` to re-populate rows upon state changes.
 
 ---
 

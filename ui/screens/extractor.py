@@ -134,18 +134,26 @@ def build_extractor_screen(ctx: UIContext, state: AppState, seed_color: str) -> 
     results_view_container = ft.Container(content=table_scroll, expand=True)
 
     def on_view_segment_changed(e):
-        selected = list(e.control.selected)[0] if e.control.selected else "urls"
-        if selected == "urls":
+        if not e.control.selected:
+            view_segments.selected = [ctx.current_tab]
+            view_segments.update()
+            return
+        selected_val = list(e.control.selected)[0]
+        ctx.current_tab = selected_val
+        view_segments.selected = [selected_val]
+        if selected_val == "urls":
             results_view_container.content = table_scroll
-        elif selected == "val":
+        elif selected_val == "val":
             results_view_container.content = val_container
         else:
             results_view_container.content = log_column
         results_view_container.update()
+        view_segments.update()
 
     view_segments = ft.SegmentedButton(
         selected=["urls"],
         allow_multiple_selection=False,
+        allow_empty_selection=False,
         on_change=on_view_segment_changed,
         segments=[
             ft.Segment(value="urls", label=seg_urls_label, icon=ft.Icon(ft.Icons.LINK)),
@@ -230,6 +238,7 @@ def build_extractor_screen(ctx: UIContext, state: AppState, seed_color: str) -> 
     ctx.val_container = val_container
     ctx.log_column = log_column
     ctx.results_view_container = results_view_container
+    ctx.view_segments = view_segments
     ctx.seg_urls_label = seg_urls_label
     ctx.seg_val_label = seg_val_label
     ctx.count_label = count_label
