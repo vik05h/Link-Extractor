@@ -53,6 +53,13 @@ class HistoryManager:
                     urls_json TEXT NOT NULL
                 )
             """)
+            # Auto-cleanup any preexisting duplicate records by title, keeping the newest entry
+            conn.execute("""
+                DELETE FROM extractions
+                WHERE id NOT IN (
+                    SELECT MAX(id) FROM extractions GROUP BY title
+                )
+            """)
             conn.commit()
 
     def _ensure_url_hashes(self, urls: List[str], title: str) -> List[str]:
@@ -79,7 +86,7 @@ class HistoryManager:
         total_size_str: str = "0 B",
         urls: Optional[List[str]] = None
     ) -> int:
-        """Add a new extraction record to database."""
+        """Add or update an extraction record in database without duplicates."""
         clean_title = title.strip() or "FitGirl Repack Download"
         formatted_urls = self._ensure_url_hashes(urls or [], clean_title)
         urls_json = json.dumps(formatted_urls)
@@ -87,17 +94,46 @@ class HistoryManager:
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            # Check if matching record exists by title or source_url
             cursor.execute("""
-                INSERT INTO extractions (
-                    title, source_url, timestamp, total_parts,
+                SELECT id FROM extractions
+                WHERE title = ? OR (source_url = ? AND source_url != '')
+                ORDER BY id DESC LIMIT 1
+            """, (clean_title, source_url.strip() if source_url else ""))
+            existing = cursor.fetchone()
+
+            if existing:
+                rec_id = existing[0]
+                cursor.execute("""
+                    UPDATE extractions SET
+                        title = ?,
+                        source_url = ?,
+                        timestamp = ?,
+                        total_parts = ?,
+                        resolved_count = ?,
+                        total_size_bytes = ?,
+                        total_size_str = ?,
+                        urls_json = ?
+                    WHERE id = ?
+                """, (
+                    clean_title, source_url, now_str, total_parts,
+                    resolved_count, total_size_bytes, total_size_str, urls_json,
+                    rec_id
+                ))
+                conn.commit()
+                return rec_id
+            else:
+                cursor.execute("""
+                    INSERT INTO extractions (
+                        title, source_url, timestamp, total_parts,
+                        resolved_count, total_size_bytes, total_size_str, urls_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    clean_title, source_url, now_str, total_parts,
                     resolved_count, total_size_bytes, total_size_str, urls_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                clean_title, source_url, now_str, total_parts,
-                resolved_count, total_size_bytes, total_size_str, urls_json
-            ))
-            conn.commit()
-            return cursor.lastrowid
+                ))
+                conn.commit()
+                return cursor.lastrowid
 
     def get_records(self, search_query: str = "", limit: int = 100) -> List[Dict[str, Any]]:
         """Retrieve extraction records, optionally filtered by title or URL."""

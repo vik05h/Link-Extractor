@@ -23,7 +23,7 @@ from ui.screens.pipeline import load_community_record_into_extractor
 async def main(page: ft.Page):
     utils.apply_windows_native_icon("app_icon.ico")
 
-    page.title = f"FitGirl Direct Link Extractor {updater.CURRENT_VERSION}"
+    page.title = f"Link Extractor {updater.CURRENT_VERSION}"
     page.window.width = 1180
     page.window.height = 840
     page.window.min_width = 960
@@ -142,11 +142,18 @@ async def main(page: ft.Page):
         ],
         on_change=on_nav_change,
         trailing=ft.Container(
-            content=ft.IconButton(
-                icon=ft.Icons.SYSTEM_UPDATE_ALT,
-                tooltip="Check for Updates",
-                on_click=ctx.show_update_dialog
-            ),
+            content=ft.Column([
+                ft.IconButton(
+                    icon=ft.Icons.HELP_OUTLINE,
+                    tooltip="Quickstart Guide & Feature Tour",
+                    on_click=lambda _: ctx.show_tutorial_dialog()
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.SYSTEM_UPDATE_ALT,
+                    tooltip="Check for Updates",
+                    on_click=ctx.show_update_dialog
+                )
+            ], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
             padding=ft.Padding.only(bottom=16)
         )
     )
@@ -160,8 +167,11 @@ async def main(page: ft.Page):
         ], expand=True, spacing=0)
     )
 
-    # Startup automated checks: post-update What's New dialog & silent update checker
-    ctx.check_whats_new_on_startup()
+    # Startup checks: Onboarding Tutorial for new users, What's New dialog & silent updater
+    if not settings.get("has_seen_tutorial", False):
+        ctx.show_tutorial_dialog()
+    else:
+        ctx.check_whats_new_on_startup()
     ctx.check_startup_updates()
 
 

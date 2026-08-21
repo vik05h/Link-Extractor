@@ -11,12 +11,34 @@ from typing import Optional, Dict, Any, Tuple, Callable, List
 
 import utils
 
-CURRENT_VERSION = "v3.2.0"
+CURRENT_VERSION = "v3.5.0"
 GITHUB_REPO = "vik05h/Link-Extractor"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
+    "v3.5.0": {
+        "title": "Interactive Live In-App Guided Tour, Dynamic Spotlight Highlighting & Rebranding",
+        "highlights": [
+            "Interactive Live In-App Guided Tour actively navigating across Extractor, Community Hub, History Archive, and Settings in real-time.",
+            "Dynamic Spotlight Box Highlighting with glowing theme borders and soft shadows illuminating the exact target cards on each step.",
+            "Complete Rebranding to 'Link Extractor' across window titles, PE resource headers, and in-app components.",
+            "Display Framerate Selector toggling between 60 FPS (Balanced) and 120 FPS (Ultra Fluid) in real-time.",
+            "Community Hub View Switcher with responsive Poster Grid View and Compact Feed List.",
+            "Interactive Game Details Modal popup displaying all split repack archive parts with individual copy links.",
+            "Enhanced Card Hover animations with theme-colored glowing borders, elevation pop, and smooth poster zoom.",
+            "Expanded 8 dynamic Material 3 theme presets (Deep Violet, Emerald, Cyber Sapphire, Amber Gold, Neon Rose, Synthwave, Matrix, Crimson).",
+            "Enhanced 1-Click Health Check with clear Part 1 verification badge and detailed tooltip."
+        ],
+        "bug_fixes": [
+            "Fixed Icon.__init__() missing positional argument in tour controller.",
+            "Fixed typing import for Callable in ui/state.py.",
+            "Fixed shadow smudge glitch on lighter themes using native Material 3 elevation.",
+            "Fixed missing utils import on Community view toggle.",
+            "Added automatic SQLite History archive deduplication and smart upsert updates.",
+            "Enforced pure-white high-contrast text and icons on floating status notifications."
+        ]
+    },
     "v3.2.0": {
         "title": "Community Cloud Cache, Pixel Dino Loader & 3D Repack Hub",
         "highlights": [
@@ -169,7 +191,7 @@ def get_version_changelog(version: str) -> Dict[str, Any]:
     # Fallback default
     return {
         "version": clean_v,
-        "title": f"FitGirl Link Extractor {clean_v}",
+        "title": f"Link Extractor {clean_v}",
         "highlights": [
             "Performance and stability enhancements.",
             "Updated direct link extraction algorithms.",

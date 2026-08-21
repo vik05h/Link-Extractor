@@ -71,9 +71,11 @@ def load_settings() -> Dict[str, Any]:
         "logo_style": "Minimalist Cyber Link",
         "animation_style": "Fast Subtle Fade",
         "fps_mode": "120 FPS",
+        "community_view_mode": "grid",
         "headless": False,
         "check_updates_on_startup": True,
         "last_seen_version": None,
+        "has_seen_tutorial": False,
         "community_auto_share": True,
         "community_firebase_url": "https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app"
     }
@@ -139,7 +141,7 @@ def apply_windows_native_icon(ico_path="app_icon.ico"):
                         if length > 0:
                             buf = ctypes.create_unicode_buffer(length + 1)
                             user32.GetWindowTextW(hwnd, buf, length + 1)
-                            if "fitgirl direct link extractor" in buf.value.lower():
+                            if "link extractor" in buf.value.lower():
                                 found.append(hwnd)
                     return True
 

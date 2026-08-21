@@ -42,7 +42,7 @@ def check_and_start_pipeline(ctx: UIContext, state: AppState, e=None):
                 ft.Image(src=img_url, width=80, height=105, fit=ft.BoxFit.COVER, border_radius=8)
                 if img_url else
                 ft.Container(
-                    content=ft.Icon(ft.Icons.SPORTS_ESPORTS, size=36, color=ft.Colors.PRIMARY),
+                    content=ft.Icon(ft.Icons.FOLDER_ZIP_ROUNDED, size=36, color=ft.Colors.PRIMARY),
                     width=80, height=105, alignment=ft.Alignment.CENTER,
                     bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH, border_radius=8
                 )
@@ -119,9 +119,9 @@ def build_extractor_screen(ctx: UIContext, state: AppState, seed_color: str) -> 
         raw_val = (url_input.value or "").strip()
         url_type = scraper.detect_url_type(raw_val)
         if url_type == "fitgirl_game_page":
-            url_badge_text.value = "🎮 Game Page Detected"
+            url_badge_text.value = "Game Page Detected"
             url_badge_text.color = ft.Colors.GREEN_400
-            url_badge_icon.name = ft.Icons.SPORTS_ESPORTS
+            url_badge_icon.name = ft.Icons.LANGUAGE
             url_badge_icon.color = ft.Colors.GREEN_400
             url_badge.bgcolor = ft.Colors.with_opacity(0.18, ft.Colors.GREEN_400)
             url_badge.border = ft.Border.all(1, ft.Colors.with_opacity(0.6, ft.Colors.GREEN_400))
@@ -325,52 +325,63 @@ def build_extractor_screen(ctx: UIContext, state: AppState, seed_color: str) -> 
     ctx.seg_val_label = seg_val_label
     ctx.count_label = count_label
 
+    banner_container = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ctx.banner_logo,
+                ft.Text("Link Extractor", size=20, weight=ft.FontWeight.BOLD),
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.BOLT, size=14, color=ft.Colors.WHITE),
+                        ft.Text("TURBO ENGINE", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
+                    ], spacing=4, tight=True),
+                    bgcolor=seed_color,
+                    border_radius=10,
+                    padding=ft.Padding.symmetric(horizontal=10, vertical=4)
+                ),
+            ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Text(
+                "Directly paste FitGirl Game Pages, Pastebin URLs, or FuckingFast links. Converts all parts to direct dl.fuckingfast.co URLs via concurrent tabs with auto-retry and JDownloader 2 push.",
+                size=12, color=ft.Colors.ON_SURFACE_VARIANT
+            )
+        ], spacing=6),
+        padding=16,
+        border_radius=12
+    )
+    ctx.tour_targets["extractor_banner"] = banner_container
+
+    input_container = ft.Container(
+        content=ft.Column([
+            ft.Row([
+                ft.Text("FitGirl Game Page, Pastebin, or FuckingFast URL:", size=13, weight=ft.FontWeight.BOLD),
+                url_badge
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Row([
+                url_input,
+                start_btn,
+                cancel_btn
+            ]),
+            ft.Row([
+                status_chip,
+                progress_bar
+            ]),
+            stats_text
+        ], spacing=10),
+        padding=16,
+        border_radius=12
+    )
+    ctx.tour_targets["extractor_input"] = input_container
+
     extractor_screen = ft.Container(
         key="screen_extractor",
         content=ft.Column([
             # Top Banner Card
             ft.Card(
-                content=ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ctx.banner_logo,
-                            ft.Text("FitGirl Direct Link Extractor", size=20, weight=ft.FontWeight.BOLD),
-                            ft.Container(
-                                content=ft.Text("⚡ TURBO SPEED ENGINE", size=11, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE),
-                                bgcolor=seed_color,
-                                border_radius=12,
-                                padding=ft.Padding.symmetric(horizontal=10, vertical=4)
-                            ),
-                        ], vertical_alignment=ft.CrossAxisAlignment.CENTER),
-                        ft.Text(
-                            "Directly paste FitGirl Game Pages, Pastebin URLs, or FuckingFast links. Converts all parts to direct dl.fuckingfast.co URLs via concurrent tabs with auto-retry and JDownloader 2 push.",
-                            size=12, color=ft.Colors.ON_SURFACE_VARIANT
-                        )
-                    ], spacing=6),
-                    padding=16
-                )
+                content=banner_container
             ),
             # URL Input Card
             ft.Card(
-                content=ft.Container(
-                    content=ft.Column([
-                        ft.Row([
-                            ft.Text("FitGirl Game Page, Pastebin, or FuckingFast URL:", size=13, weight=ft.FontWeight.BOLD),
-                            url_badge
-                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        ft.Row([
-                            url_input,
-                            start_btn,
-                            cancel_btn
-                        ]),
-                        ft.Row([
-                            status_chip,
-                            progress_bar
-                        ]),
-                        stats_text
-                    ], spacing=10),
-                    padding=16
-                )
+                content=input_container
             ),
             # Results Card with Segmented Controls
             ft.Card(

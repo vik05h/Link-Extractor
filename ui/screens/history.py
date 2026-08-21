@@ -63,24 +63,28 @@ def build_history_screen(ctx: UIContext, state: AppState, seed_color: str) -> Tu
 
     search_input.on_change = lambda e: refresh_history(search_input.value)
 
+    history_top_container = ft.Container(
+        content=ft.Row([
+            ft.Text("Saved Game Extractions & Archive", size=18, weight=ft.FontWeight.BOLD),
+            ft.Row([
+                search_input,
+                ft.OutlinedButton(
+                    "Clear All",
+                    icon=ft.Icons.DELETE_FOREVER,
+                    on_click=lambda _: (ctx.history_mgr.clear_history(), refresh_history())
+                )
+            ])
+        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+        padding=16,
+        border_radius=12
+    )
+    ctx.tour_targets["history_card"] = history_top_container
+
     history_screen = ft.Container(
         key="screen_history",
         content=ft.Column([
             ft.Card(
-                content=ft.Container(
-                    content=ft.Row([
-                        ft.Text("Saved Game Extractions & Archive", size=18, weight=ft.FontWeight.BOLD),
-                        ft.Row([
-                            search_input,
-                            ft.OutlinedButton(
-                                "Clear All",
-                                icon=ft.Icons.DELETE_FOREVER,
-                                on_click=lambda _: (ctx.history_mgr.clear_history(), refresh_history())
-                            )
-                        ])
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    padding=16
-                )
+                content=history_top_container
             ),
             ft.Card(
                 content=ft.Container(

@@ -4,7 +4,7 @@ import time
 import asyncio
 import threading
 from dataclasses import dataclass, field
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Callable, Tuple
 import flet as ft
 
 from history import HistoryManager
@@ -61,6 +61,22 @@ class UIContext:
         self.screens: List[ft.Control] = []
         self.refresh_community_cb: Optional[Any] = None
         self.refresh_history_cb: Optional[Any] = None
+        self.theme_change_listeners: List[Callable[[str], None]] = []
+        self.tour_targets: Dict[str, ft.Container] = {}
+        self._active_highlight_target: Optional[str] = None
+
+    def register_theme_listener(self, callback: Callable[[str], None]):
+        """Register a listener called when theme seed changes."""
+        if callback not in self.theme_change_listeners:
+            self.theme_change_listeners.append(callback)
+
+    def notify_theme_changed(self, new_seed: str):
+        """Notify all registered listeners of theme change."""
+        for cb in self.theme_change_listeners:
+            try:
+                cb(new_seed)
+            except Exception:
+                pass
 
     def navigate_to_screen(self, index: int):
         """Programmatically switch active screen and update NavigationRail."""
@@ -92,10 +108,19 @@ class UIContext:
 
     def show_snack(self, text: str, success: bool = True):
         snack = ft.SnackBar(
-            content=ft.Text(text, weight=ft.FontWeight.W_500),
-            bgcolor=ft.Colors.GREEN_800 if success else ft.Colors.RED_800,
+            content=ft.Row([
+                ft.Icon(
+                    ft.Icons.CHECK_CIRCLE_ROUNDED if success else ft.Icons.ERROR_OUTLINE_ROUNDED,
+                    color=ft.Colors.WHITE,
+                    size=18
+                ),
+                ft.Text(text, weight=ft.FontWeight.W_600, color=ft.Colors.WHITE, expand=True, size=13)
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            bgcolor=ft.Colors.GREEN_700 if success else ft.Colors.RED_700,
             duration=3500,
-            open=True
+            open=True,
+            behavior=ft.SnackBarBehavior.FLOATING,
+            margin=ft.Padding.only(left=20, right=20, bottom=20)
         )
         self.page.overlay.append(snack)
         self.page.update()
@@ -168,6 +193,219 @@ class UIContext:
         )
         self.page.show_dialog(dlg)
 
+    def highlight_tour_target(self, target_key: Optional[str], color: Optional[str] = None):
+        """Highlight the active UI container with glowing border and shadow during guided tour."""
+        # Reset previous target highlight
+        if self._active_highlight_target and self._active_highlight_target in self.tour_targets:
+            prev_ctrl = self.tour_targets[self._active_highlight_target]
+            prev_ctrl.border = None
+            prev_ctrl.shadow = None
+            try:
+                prev_ctrl.update()
+            except Exception:
+                pass
+        self._active_highlight_target = target_key
+
+        # Apply glowing highlight border to new target
+        if target_key and target_key in self.tour_targets:
+            new_ctrl = self.tour_targets[target_key]
+            active_color = color or ft.Colors.CYAN_400
+            new_ctrl.border = ft.Border.all(2.5, active_color)
+            new_ctrl.shadow = ft.BoxShadow(
+                spread_radius=3,
+                blur_radius=14,
+                color=ft.Colors.with_opacity(0.45, active_color),
+                offset=ft.Offset(0, 2)
+            )
+            new_ctrl.animate = ft.Animation(300, ft.AnimationCurve.EASE_OUT)
+            try:
+                new_ctrl.update()
+            except Exception:
+                pass
+
+    def start_live_tour(self):
+        """
+        Interactive In-App Live Auto-Guide Spotlight Tour.
+        Directly navigates between app screens and presents a floating glassmorphic spotlight controller.
+        """
+        tour_steps = [
+            {
+                "screen_idx": 0,
+                "target_key": "extractor_input",
+                "step_num": "1 of 5",
+                "badge": "EXTRACTOR INPUT",
+                "color": ft.Colors.CYAN_400,
+                "icon": ft.Icons.LINK_ROUNDED,
+                "title": "Step 1: Input & Smart Auto-Detection",
+                "desc": "Paste any FitGirl Game Page, Pastebin URL, or direct FuckingFast link here. The engine auto-detects the format and checks if community pre-fetched links already exist."
+            },
+            {
+                "screen_idx": 0,
+                "target_key": "extractor_banner",
+                "step_num": "2 of 5",
+                "badge": "TURBO ENGINE",
+                "color": ft.Colors.AMBER_400,
+                "icon": ft.Icons.BOLT_ROUNDED,
+                "title": "Step 2: Turbo Multi-Tab Engine",
+                "desc": "When resolving fresh, the Playwright browser pool automatically solves Cloudflare Turnstile in parallel across concurrent tabs (~1.8s/part) with a 120 FPS live progress HUD."
+            },
+            {
+                "screen_idx": 1,
+                "target_key": "community_banner",
+                "step_num": "3 of 5",
+                "badge": "COMMUNITY CLOUD",
+                "color": ft.Colors.GREEN_400,
+                "icon": ft.Icons.ALL_INCLUSIVE,
+                "title": "Step 3: FitGirl Community Cloud Cache",
+                "desc": "Browse pre-fetched game extractions shared anonymously by the community. Click 'Use Instant' to download in 0 seconds, or click the Health Check icon to verify live server status."
+            },
+            {
+                "screen_idx": 2,
+                "target_key": "history_card",
+                "step_num": "4 of 5",
+                "badge": "HISTORY ARCHIVE",
+                "color": ft.Colors.PURPLE_400,
+                "icon": ft.Icons.HISTORY_ROUNDED,
+                "title": "Step 4: SQLite Extraction Archive",
+                "desc": "All successfully resolved games are saved to your local database. Search past repacks, re-copy direct links, or push straight to JDownloader 2 anytime."
+            },
+            {
+                "screen_idx": 3,
+                "target_key": "settings_card",
+                "step_num": "5 of 5",
+                "badge": "CUSTOMIZATION",
+                "color": ft.Colors.PINK_400,
+                "icon": ft.Icons.PALETTE_ROUNDED,
+                "title": "Step 5: Dynamic Themes & 120 FPS Mode",
+                "desc": "Personalize your experience with 8 dynamic Material 3 color themes, toggle between 60 FPS and 120 FPS high-refresh rate modes, and tune parallel worker tabs."
+            }
+        ]
+
+        cur_step = [0]
+        active_overlay = [None]
+
+        def update_tour_view():
+            idx = cur_step[0]
+            data = tour_steps[idx]
+            self.navigate_to_screen(data["screen_idx"])
+            self.highlight_tour_target(data.get("target_key"), data["color"])
+
+            title_text.value = data["title"]
+            desc_text.value = data["desc"]
+            badge_text.value = data["badge"]
+            badge_container.bgcolor = data["color"]
+            step_pill.value = f"STEP {data['step_num'].upper()}"
+            step_icon.name = data["icon"]
+            step_icon.color = data["color"]
+            card_container.border = ft.Border.all(1.5, data["color"])
+
+            prev_btn.disabled = (idx == 0)
+            if idx == len(tour_steps) - 1:
+                next_btn.text = "Complete Tour 🎉"
+                next_btn.icon = ft.Icons.CHECK_CIRCLE_ROUNDED
+            else:
+                next_btn.text = "Next Step ▶"
+                next_btn.icon = ft.Icons.ARROW_FORWARD_ROUNDED
+
+            try:
+                self.page.update()
+            except Exception:
+                pass
+
+        def on_prev(e):
+            if cur_step[0] > 0:
+                cur_step[0] -= 1
+                update_tour_view()
+
+        def on_next(e):
+            if cur_step[0] < len(tour_steps) - 1:
+                cur_step[0] += 1
+                update_tour_view()
+            else:
+                end_tour()
+
+        def end_tour(e=None):
+            self.highlight_tour_target(None)
+            self.settings["has_seen_tutorial"] = True
+            utils.save_settings(self.settings)
+            if active_overlay[0] in self.page.overlay:
+                self.page.overlay.remove(active_overlay[0])
+            self.navigate_to_screen(0)
+            self.show_snack("Tour completed! Welcome to Link Extractor.")
+            try:
+                self.page.update()
+            except Exception:
+                pass
+
+        title_text = ft.Text(size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.ON_SURFACE)
+        desc_text = ft.Text(size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+        badge_text = ft.Text(size=9, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
+        badge_container = ft.Container(
+            content=badge_text,
+            border_radius=6,
+            padding=ft.Padding.symmetric(horizontal=6, vertical=2)
+        )
+        step_pill = ft.Text("STEP 1 OF 5", size=10, weight=ft.FontWeight.BOLD, color=ft.Colors.PRIMARY)
+        step_icon = ft.Icon(ft.Icons.HELP_OUTLINE, size=22)
+
+        prev_btn = ft.TextButton("◀ Previous", on_click=on_prev)
+        next_btn = ft.FilledButton("Next Step ▶", on_click=on_next)
+
+        card_container = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    step_icon,
+                    title_text,
+                    badge_container,
+                    ft.Container(expand=True),
+                    step_pill,
+                    ft.IconButton(
+                        icon=ft.Icons.CLOSE,
+                        icon_size=16,
+                        tooltip="Exit Tour",
+                        on_click=end_tour
+                    )
+                ], vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+                desc_text,
+                ft.Row([
+                    prev_btn,
+                    ft.Row([
+                        ft.TextButton("Exit Tour", on_click=end_tour),
+                        next_btn
+                    ], spacing=6)
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
+            ], spacing=6, tight=True),
+            padding=14,
+            width=580,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
+            border_radius=12,
+            shadow=ft.BoxShadow(
+                spread_radius=2,
+                blur_radius=16,
+                color=ft.Colors.with_opacity(0.35, ft.Colors.BLACK),
+                offset=ft.Offset(0, 4)
+            )
+        )
+
+        tour_card = ft.Card(
+            content=card_container,
+            elevation=10
+        )
+
+        tour_overlay = ft.Container(
+            content=tour_card,
+            alignment=ft.Alignment.BOTTOM_CENTER,
+            padding=ft.Padding.only(bottom=20)
+        )
+
+        active_overlay[0] = tour_overlay
+        self.page.overlay.append(tour_overlay)
+        update_tour_view()
+
+    def show_tutorial_dialog(self):
+        """Alias for starting the interactive live tour."""
+        self.start_live_tour()
+
     def show_update_dialog(self, e=None, silent_if_up_to_date: bool = False):
         async def _check_and_render():
             has_update, release_info, msg = await asyncio.to_thread(updater.check_for_updates)
@@ -204,7 +442,7 @@ class UIContext:
         size_label = ft.Text("", size=11, color=ft.Colors.PRIMARY)
 
         dl_ui = ft.Column([
-            ft.Text(f"Downloading FitGirl Link Extractor {latest_tag}...", size=13, weight=ft.FontWeight.BOLD),
+            ft.Text(f"Downloading Link Extractor {latest_tag}...", size=13, weight=ft.FontWeight.BOLD),
             ft.Container(height=4),
             progress_bar,
             ft.Row([status_label, size_label], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)

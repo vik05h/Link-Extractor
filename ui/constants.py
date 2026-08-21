@@ -3,14 +3,16 @@ import flet as ft
 THEME_PRESETS = {
     "Deep Violet": "#6750A4",
     "Emerald": "#10B981",
-    "Sapphire": "#0284C7",
-    "Amber": "#F59E0B",
-    "Rose": "#F43F5E"
+    "Cyber Sapphire": "#0284C7",
+    "Amber Gold": "#F59E0B",
+    "Neon Rose": "#F43F5E",
+    "Synthwave Purple": "#A855F7",
+    "Matrix Cyber": "#00FF66",
+    "Crimson Flame": "#EF4444"
 }
 
 LOGO_PRESETS = {
-    "Minimalist Cyber Link": "assets/logo_minimal.png",
-    "Retro Arcade Cartridge": "assets/logo_arcade.png"
+    "Minimalist Cyber Link": "assets/logo_minimal.png"
 }
 
 ANIMATION_PRESETS = {

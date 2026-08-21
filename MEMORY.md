@@ -107,10 +107,17 @@ graph TD
 * **The Problem**: `community.check_link_health()` called `validator.validate_single_link(url)`, which does not exist. The `AttributeError` was caught by a broad `except` and silently returned `(False, "Error")`, making every link appear "Expired" in the UI health pill.
 * **The Solution**: The correct function is `validator.validate_single_url(index, url, timeout=8.0)`. It returns `(index, is_valid, size_str)`. Health check should call `validator.validate_single_url(0, clean_url, timeout=8.0)` and interpret `result[1]` as the alive boolean and `result[2]` as the size string.
 
-### 15. Firebase Realtime Database Production Deployment
-* **The Pattern**: Live production database URL is `https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app` (region: `asia-southeast1`). The URL is stored as the default value in `utils.load_settings()` under the key `community_firebase_url`, and is user-configurable via the Settings screen.
-* **Security Rules**: Write access uses timestamp-based overwrite protection (`newData.child('timestamp_utc').val() >= data.child('timestamp_utc').val()`). Deletion requires explicit `!newData.exists()` in the rule condition since `PUT null` has no children to compare. All non-whitelisted paths (`$other`) are locked `read: false, write: false`.
-* **Open-Source Constraint**: The Firebase URL must never be hardcoded in committed source for security. It ships as a user-configurable default; the user enters their own database URL in Settings and clicks "Test Cloud" to verify connectivity.
+### 16. Flet Native Card Elevation vs Container BoxShadow Smudge
+* **The Problem**: Combining semi-transparent container backgrounds with high `blur_radius` `BoxShadow` creates thick gray halos on light surfaces.
+* **The Solution**: Use native `ft.Card(elevation=1)` with animated hover elevation (`card.elevation = 4`) and hover scaling (`card.scale = 1.012`) attached to the card content container.
+
+### 17. 1-Byte Health Check vs Aggregate Repack Size
+* **The Problem**: Rapid 1-byte HTTP Range verification tests Part 1 (`urls[0]`) for instantaneous server uptime verification. Displaying "Active (1.95 GB)" misled users into thinking the entire game repack was 1.95 GB instead of 39.10 GB.
+* **The Solution**: Explicitly format the health badge as `Part 1 Live (1.95 GB)` with a detailed tooltip explaining that Part 1 is verified online and referencing the total aggregate size.
+
+### 18. Interactive GUI Onboarding Tutorial & Multi-Step Carousel
+* **The Pattern**: First-time users are automatically presented with a 4-step onboarding carousel (`show_tutorial_dialog()`) detailing Turbo Extractor, Community Cloud Cache, 1-Click Health Check, and JDownloader 2 Push.
+* **The Solution**: Persist `has_seen_tutorial` in `settings.json`. Provide easy access points via the Navigation Rail Help button and Settings screen to replay the tutorial at any time.
 
 ---
 

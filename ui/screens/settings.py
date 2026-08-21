@@ -23,13 +23,14 @@ def build_settings_screen(
         utils.save_settings(ctx.settings)
         new_seed = THEME_PRESETS.get(theme_name, "#6750A4")
         ctx.page.theme = ft.Theme(color_scheme_seed=new_seed)
+        ctx.notify_theme_changed(new_seed)
         ctx.page.update()
         ctx.show_snack(f"Theme switched to {theme_name}!")
 
     theme_dropdown = ft.Dropdown(
         value=ctx.settings.get("theme_seed", "Deep Violet"),
         options=[ft.dropdown.Option(text=name, key=name) for name in THEME_PRESETS.keys()],
-        width=200,
+        width=230,
         dense=True,
         on_select=lambda e: on_theme_changed(e.control.value)
     )
@@ -74,7 +75,7 @@ def build_settings_screen(
     logo_dropdown = ft.Dropdown(
         value=ctx.settings.get("logo_style", "Minimalist Cyber Link"),
         options=[ft.dropdown.Option(text=name, key=name) for name in LOGO_PRESETS.keys()],
-        width=220,
+        width=230,
         dense=True,
         on_select=lambda e: on_logo_changed(e.control.value)
     )
@@ -185,22 +186,9 @@ def build_settings_screen(
         ok, msg = community.test_firebase_connection(url)
         ctx.show_snack(f"{'✅' if ok else '⚠️'} {msg}", success=ok)
 
-    settings_screen = ft.Container(
-        key="screen_settings",
+    settings_main_container = ft.Container(
         content=ft.Column([
-            ft.Card(
-                content=ft.Container(
-                    content=ft.Column([
-                        ft.Text("Engine & Customization Preferences", size=18, weight=ft.FontWeight.BOLD),
-                        ft.Text("Configure Material 3 color themes, worker tab concurrency, validation, Community Cloud, and JDownloader 2 integration.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-                    ]),
-                    padding=16
-                )
-            ),
-            ft.Card(
-                content=ft.Container(
-                    content=ft.Column([
-                        # 1. Theme Brightness Mode (Dark / Light / System)
+            # 1. Theme Brightness Mode (Dark / Light / System)
                         ft.Row([
                             ft.Column([
                                 ft.Text("Appearance & Theme Mode:", size=13, weight=ft.FontWeight.BOLD),
@@ -213,7 +201,7 @@ def build_settings_screen(
                         ft.Row([
                             ft.Column([
                                 ft.Text("Material 3 Theme Palette Preset:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Choose dynamic seed color (Deep Violet, Emerald, Sapphire, Amber, Rose).", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                                ft.Text("Choose dynamic seed color (Deep Violet, Emerald, Cyber Sapphire, Amber Gold, Neon Rose, Synthwave, Matrix, Crimson).", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             theme_dropdown
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -222,7 +210,7 @@ def build_settings_screen(
                         ft.Row([
                             ft.Column([
                                 ft.Text("Application Logo & Branding Theme:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Switch between Minimalist Cyber Link and Retro Arcade Cartridge.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                                ft.Text("Active theme: Minimalist Cyber Link branding.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
                             ]),
                             logo_dropdown
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -308,7 +296,16 @@ def build_settings_screen(
                             startup_update_switch
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 12. About & Author Credits
+                        # 12. Interactive Tutorial & Tour
+                        ft.Row([
+                            ft.Column([
+                                ft.Text("Interactive GUI Tutorial & Quickstart Tour:", size=13, weight=ft.FontWeight.BOLD),
+                                ft.Text("Replay the 4-step visual onboarding guide covering Turbo Extractor, Community Cloud Cache, Health Check, and JD2 push.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                            ]),
+                            ft.FilledTonalButton("Open Tutorial Tour", icon=ft.Icons.HELP_OUTLINE, on_click=lambda _: ctx.show_tutorial_dialog())
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        # 13. About & Author Credits
                         ft.Row([
                             ft.Column([
                                 ft.Text("Original Author & Open Source License:", size=13, weight=ft.FontWeight.BOLD),
@@ -317,8 +314,25 @@ def build_settings_screen(
                             ft.TextButton("GitHub Repo", icon=ft.Icons.OPEN_IN_NEW, on_click=lambda _: updater.open_release_page("https://github.com/vik05h/Link-Extractor"))
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
                     ], spacing=12),
-                    padding=20
+                    padding=20,
+                    border_radius=12
                 )
+    ctx.tour_targets["settings_card"] = settings_main_container
+
+    settings_screen = ft.Container(
+        key="screen_settings",
+        content=ft.Column([
+            ft.Card(
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Text("Engine & Customization Preferences", size=18, weight=ft.FontWeight.BOLD),
+                        ft.Text("Configure Material 3 color themes, worker tab concurrency, validation, Community Cloud, and JDownloader 2 integration.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+                    ]),
+                    padding=16
+                )
+            ),
+            ft.Card(
+                content=settings_main_container
             )
         ], spacing=10, expand=True, scroll=ft.ScrollMode.ADAPTIVE),
         padding=16,

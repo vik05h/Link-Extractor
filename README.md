@@ -2,7 +2,7 @@
   <img src="assets/logo_minimal.png" alt="FitGirl Link Extractor Logo" width="130" style="border-radius: 24px;" />
 </p>
 
-<h1 align="center">FitGirl Direct Link Extractor</h1>
+<h1 align="center">Link Extractor</h1>
 
 <p align="center">
   <b>High-speed multi-threaded direct link resolver and JDownloader 2 automation tool for FitGirl repacks.</b>
@@ -13,18 +13,18 @@
   <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-0284C7.svg" alt="CC BY-NC-SA 4.0" /></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-10B981.svg" alt="Python" /></a>
   <a href="https://flet.dev"><img src="https://img.shields.io/badge/UI-Flet_Material_3-F59E0B.svg" alt="UI" /></a>
-  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.2.0-blue.svg" alt="Release" /></a>
+  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.5.0-blue.svg" alt="Release" /></a>
 </p>
 
 ---
 
 ## Why This Tool Exists
 
-When downloading large games (such as Black Myth: Wukong with 195 parts or Assassin's Creed with 27 parts), navigating through pastebins and solving Cloudflare Turnstile captchas on every part takes 30–45 minutes of manual clicking.
+When downloading large games (such as Black Myth: Wukong with 195 parts or Assassin's Creed with 27 parts), navigating through pastebins and solving Cloudflare Turnstile captchas on every part takes 30-45 minutes of manual clicking.
 
 Furthermore, feeding raw fuckingfast.co links to JDownloader 2 often triggers captcha errors or Deep Link Analysis prompts because direct tokens lack file extensions.
 
-**FitGirl Link Extractor automates the entire pipeline:**
+**Link Extractor automates the entire pipeline:**
 1. Paste a single FitGirl game page URL.
 2. Community Cloud Cache automatically checks for pre-fetched links from other users to download instantly in 0 seconds.
 3. If not cached or resolving fresh, the multi-tab worker pool automatically solves Cloudflare Turnstile in parallel (~1.8s/part).
@@ -46,11 +46,14 @@ graph LR
     E --> H[SQLite History Archive]
 ```
 
+- **Interactive Live In-App Guided Tour & Dynamic Spotlight (v3.5.0)**: Real-time screen-switching onboarding guide, animated glowing border spotlighting on target cards, and responsive poster grid view with hover elevation and zoom.
+- **60 FPS & 120 FPS High-Refresh Rate Mode**: Custom frame pacing and micro-transition presets in Settings for high-refresh gaming monitors (120Hz/144Hz/240Hz).
+- **Clarified 1-Byte Health Check**: Instant 1-byte HTTP Range verification on Part 1 with explicit status badging and total repack size separation.
 - **Community Cloud Cache & Shared Link Hub (Phase 3)**: Instant decentralized link sharing powered by Firebase Realtime Database lightweight REST API. Skip browser automation entirely when games are already resolved.
 - **Pixel Dino Arcade Loading Animation**: Retro 8-bit arcade Pixel Dino running loader with live cloud status updates.
 - **3D-Styled Game Cards with Local Timezone Intelligence**: Game cover thumbnails, depth lighting, localized timestamps (e.g. `21 Aug 2026, 05:25 PM IST`), freshness badges, and 4 quick actions (`Use Instant`, `Push JD2`, `Copy URLs`, `Health Check`).
-- **Concurrent Tab Pool (3x–6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
-- **Material 3 UI (Flutter Engine)**: Smooth 60–120 FPS animations, Navigation Rail, live interactive DataTable, and 5 dynamic color palettes.
+- **Concurrent Tab Pool (3x-6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
+- **Material 3 UI (Flutter Engine)**: Smooth 60-120 FPS animations, Navigation Rail, live interactive DataTable, and 8 dynamic color palettes.
 - **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using lightweight 1-byte HTTP range requests.
 - **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
 - **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.

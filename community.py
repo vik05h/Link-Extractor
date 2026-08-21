@@ -311,7 +311,7 @@ def upload_game_record(
         "total_size_str": total_size_str or "0 B",
         "total_size_bytes": total_size_bytes or 0,
         "uploader": uploader or "Community",
-        "app_version": "v3.2.0"
+        "app_version": "v3.3.0"
     }
 
     url_payload = {
