@@ -11,7 +11,8 @@ This document tracks current milestones, active implementation status, and upcom
 | **Phase 1** | **Speed & Reliability Core** | **Completed** | `v3.0.0` |
 | **Phase 2** | **Material 3 UI/UX & Advanced Integrations** | **Completed** | `v3.1.0` |
 | **Phase 3** | **Community Cloud Cache & Shared Link Hub (Firebase)** | **Completed** | `v3.2.0` |
-| **Phase 4** | **Multi-Hoster & Universal Automation** | Planned | `v3.3.0` |
+| **Phase 3.5** | **Live In-App Tour, Spotlight Highlighting & Rebranding** | **Completed** | `v3.5.0` |
+| **Phase 4** | **Multi-Hoster & Universal Automation** | Planned | `v4.0.0` |
 
 ---
 
@@ -97,9 +98,26 @@ This document tracks current milestones, active implementation status, and upcom
   - [x] Interactive dialog presenting game cover, local time, and options to `Use Instant Links (Skip Browser)` or `Resolve Fresh & Update Cloud`.
   - [x] Background automated publishing to Community Cloud with global opt-out switch in Settings & Tweaks.
 
+## Phase 3.5: Live In-App Tour, Spotlight Highlighting & Rebranding (v3.5.0) — COMPLETED
+
+**Goal:** Interactive live in-app onboarding tour, dynamic target element highlighting, 60/120 FPS high-refresh rate pacing, and rebranding to Link Extractor.
+
+- [x] **3.5.1 Interactive Live In-App Guided Tour**
+  - [x] Programmatic real-time screen navigation across Extractor, Community Hub, History, and Settings.
+  - [x] Floating glassmorphic HUD overlay docked at the bottom with step indicators and fluid controls.
+  - [x] First-time launch welcome trigger with persistent settings toggle (`has_seen_tutorial`).
+  - [x] Quick access replay buttons in Settings and Navigation Rail (?) icon.
+- [x] **3.5.2 Dynamic Spotlight Target Highlighting**
+  - [x] Animated theme-colored glowing borders (2.5px) and ambient shadows illuminating target cards on each step.
+  - [x] Automatic cleanup and reset upon advancing or completing tour.
+- [x] **3.5.3 Rebranding & Visual Polish**
+  - [x] Renamed to Link Extractor across window titles, headers, PE executable metadata, and notifications.
+  - [x] High-refresh rate 60 FPS / 120 FPS display pacing selector in Settings.
+  - [x] Selectable update changelog dialog with adaptive scrolling.
+
 ---
 
-## Phase 4: Multi-Hoster & Universal Automation (v3.3.0)
+## Phase 4: Multi-Hoster & Universal Automation (v4.0.0)
 
 **Goal:** Universal repack link extraction across all mirror providers.
 
@@ -112,4 +130,4 @@ This document tracks current milestones, active implementation status, and upcom
   - [ ] Headless command-line interface for scripting and server environments (`python main.py --cli --url ...`).
 
 ---
-*Last Updated: 2026-08-21*
+*Last Updated: 2026-08-22*

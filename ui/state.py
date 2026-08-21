@@ -453,7 +453,9 @@ class UIContext:
             ft.Divider(),
             ft.Text("Changelog & Highlights:", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
             ft.Container(
-                content=ft.Text(release_body, size=12, scroll=ft.ScrollMode.ADAPTIVE),
+                content=ft.Column([
+                    ft.Text(release_body, size=12, selectable=True)
+                ], scroll=ft.ScrollMode.ADAPTIVE),
                 padding=10,
                 bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
                 border_radius=8,
