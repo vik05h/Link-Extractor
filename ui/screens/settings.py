@@ -4,6 +4,7 @@ import flet as ft
 import utils
 import integrations
 import updater
+import community
 from ui.constants import THEME_PRESETS, LOGO_PRESETS, ANIMATION_PRESETS
 from ui.state import UIContext, AppState
 
@@ -147,6 +148,28 @@ def build_settings_screen(
         on_change=on_startup_update_changed
     )
 
+    def on_community_share_changed(e):
+        ctx.settings["community_auto_share"] = e.control.value
+        utils.save_settings(ctx.settings)
+        ctx.show_snack("Community auto-share preference saved!")
+
+    community_share_switch = ft.Switch(
+        value=ctx.settings.get("community_auto_share", True),
+        on_change=on_community_share_changed
+    )
+
+    community_url_field = ft.TextField(
+        value=ctx.settings.get("community_firebase_url", community.DEFAULT_FIREBASE_URL),
+        width=340,
+        dense=True,
+        on_change=lambda e: (ctx.settings.update({"community_firebase_url": e.control.value.strip()}), utils.save_settings(ctx.settings))
+    )
+
+    def test_firebase_cloud(e):
+        url = community_url_field.value.strip()
+        ok, msg = community.test_firebase_connection(url)
+        ctx.show_snack(f"{'✅' if ok else '⚠️'} {msg}", success=ok)
+
     settings_screen = ft.Container(
         key="screen_settings",
         content=ft.Column([
@@ -154,7 +177,7 @@ def build_settings_screen(
                 content=ft.Container(
                     content=ft.Column([
                         ft.Text("Engine & Customization Preferences", size=18, weight=ft.FontWeight.BOLD),
-                        ft.Text("Configure Material 3 color themes, worker tab concurrency, validation, and JDownloader 2 integration.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+                        ft.Text("Configure Material 3 color themes, worker tab concurrency, validation, Community Cloud, and JDownloader 2 integration.", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
                     ]),
                     padding=16
                 )
@@ -216,7 +239,28 @@ def build_settings_screen(
                             val_switch
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 7. JD2 Port
+                        # 7. Phase 3: Community Cloud Auto-Share
+                        ft.Row([
+                            ft.Column([
+                                ft.Text("Auto-Share Resolved Links to Community Cloud:", size=13, weight=ft.FontWeight.BOLD),
+                                ft.Text("Automatically publish newly resolved direct URLs anonymously to Community Hub so others can download instantly.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                            ]),
+                            community_share_switch
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        # 8. Phase 3: Community Firebase RTDB URL
+                        ft.Row([
+                            ft.Column([
+                                ft.Text("Community Firebase Realtime DB Endpoint:", size=13, weight=ft.FontWeight.BOLD),
+                                ft.Text("REST API endpoint for Community Cloud Cache synchronization.", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
+                            ]),
+                            ft.Row([
+                                community_url_field,
+                                ft.FilledTonalButton("Test Cloud", on_click=test_firebase_cloud)
+                            ])
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(),
+                        # 9. JD2 Port
                         ft.Row([
                             ft.Column([
                                 ft.Text("JDownloader 2 Local CNL Port:", size=13, weight=ft.FontWeight.BOLD),
@@ -228,7 +272,7 @@ def build_settings_screen(
                             ])
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 8. Check for Updates
+                        # 10. Check for Updates
                         ft.Row([
                             ft.Column([
                                 ft.Text(f"Application Version & Updates ({updater.CURRENT_VERSION}):", size=13, weight=ft.FontWeight.BOLD),
@@ -240,7 +284,7 @@ def build_settings_screen(
                             ], spacing=8)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 9. Startup Update Check
+                        # 11. Startup Update Check
                         ft.Row([
                             ft.Column([
                                 ft.Text("Auto-Check for Updates on Startup:", size=13, weight=ft.FontWeight.BOLD),
@@ -249,7 +293,7 @@ def build_settings_screen(
                             startup_update_switch
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 10. About & Author Credits
+                        # 12. About & Author Credits
                         ft.Row([
                             ft.Column([
                                 ft.Text("Original Author & Open Source License:", size=13, weight=ft.FontWeight.BOLD),

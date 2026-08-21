@@ -1,13 +1,95 @@
 import os
 import re
+import asyncio
+from typing import Dict, Any, Optional
 import pyperclip
 import flet as ft
 
 import scraper
 import integrations
 import utils
+import community
 from ui.state import UIContext, AppState
-from ui.screens.pipeline import start_pipeline, cancel_pipeline
+from ui.screens.pipeline import start_pipeline, cancel_pipeline, load_community_record_into_extractor
+
+
+def check_and_start_pipeline(ctx: UIContext, state: AppState, e=None):
+    """Check community cache before running browser engine, prompting user if pre-fetched links exist."""
+    if not ctx.url_input:
+        return
+    target = ctx.url_input.value.strip()
+    if not target:
+        ctx.show_snack("Please enter a valid FitGirl game page or pastebin URL.", success=False)
+        return
+
+    game_slug = scraper.extract_game_slug(target)
+    fb_url = ctx.settings.get("community_firebase_url")
+
+    async def _check_community_and_launch():
+        game_data = await asyncio.to_thread(community.get_game_by_slug, game_slug, fb_url)
+        if game_data and game_data.get("resolved_count", 0) > 0:
+            # Show interactive choice popup dialog
+            def on_use_community(ev):
+                ctx.page.pop_dialog()
+                load_community_record_into_extractor(ctx, state, game_data)
+
+            def on_resolve_fresh(ev):
+                ctx.page.pop_dialog()
+                start_pipeline(ctx, state)
+
+            img_url = game_data.get("image_url", "")
+            cover_control = (
+                ft.Image(src=img_url, width=80, height=105, fit=ft.BoxFit.COVER, border_radius=8)
+                if img_url else
+                ft.Container(
+                    content=ft.Icon(ft.Icons.SPORTS_ESPORTS, size=36, color=ft.Colors.PRIMARY),
+                    width=80, height=105, alignment=ft.Alignment.CENTER,
+                    bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH, border_radius=8
+                )
+            )
+
+            freshness = game_data.get("freshness", "fresh")
+            f_color = ft.Colors.GREEN_400 if freshness == "fresh" else (ft.Colors.AMBER_400 if freshness == "aging" else ft.Colors.DEEP_ORANGE_400)
+
+            dlg = ft.AlertDialog(
+                title=ft.Row([
+                    ft.Icon(ft.Icons.AUTO_AWESOME, color=ft.Colors.GREEN_400),
+                    ft.Text("Community Pre-Fetched Links!", weight=ft.FontWeight.BOLD)
+                ]),
+                content=ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            cover_control,
+                            ft.Column([
+                                ft.Text(game_data.get("title", "Game Repack"), size=14, weight=ft.FontWeight.BOLD, max_lines=2, overflow=ft.TextOverflow.ELLIPSIS),
+                                ft.Text(f"📅 Synced: {game_data.get('local_time', 'Recently')}", size=11, color=ft.Colors.PRIMARY, weight=ft.FontWeight.W_500),
+                                ft.Text(f"📦 {game_data.get('total_parts', 0)} Parts  •  💾 {game_data.get('total_size_str', '0 B')}", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Container(
+                                    content=ft.Text(f"⚡ Status: {freshness.upper()} ({game_data.get('age_str', 'recent')})", size=10, weight=ft.FontWeight.BOLD, color=f_color),
+                                    padding=ft.Padding.symmetric(horizontal=6, vertical=2),
+                                    bgcolor=ft.Colors.SURFACE_CONTAINER_HIGH,
+                                    border_radius=6
+                                )
+                            ], expand=True, spacing=4)
+                        ], spacing=12),
+                        ft.Divider(height=12),
+                        ft.Text(
+                            "This game was already resolved by the community! You can skip browser automation and load these direct download links instantly, or resolve fresh with your local browser to refresh the cloud cache.",
+                            size=11, color=ft.Colors.ON_SURFACE_VARIANT
+                        )
+                    ], tight=True, spacing=6),
+                    width=460
+                ),
+                actions=[
+                    ft.OutlinedButton("🔄 Resolve Fresh & Update", icon=ft.Icons.REFRESH, on_click=on_resolve_fresh),
+                    ft.FilledButton("⚡ Use Instant Links", icon=ft.Icons.BOLT, on_click=on_use_community)
+                ]
+            )
+            ctx.page.show_dialog(dlg)
+        else:
+            start_pipeline(ctx, state)
+
+    ctx.page.run_task(_check_community_and_launch)
 
 
 def build_extractor_screen(ctx: UIContext, state: AppState, seed_color: str) -> ft.Container:
@@ -221,7 +303,7 @@ def build_extractor_screen(ctx: UIContext, state: AppState, seed_color: str) -> 
 
     copy_all_btn.on_click = on_copy_all
     push_jd_btn.on_click = on_push_jd
-    start_btn.on_click = lambda e: start_pipeline(ctx, state, e)
+    start_btn.on_click = lambda e: check_and_start_pipeline(ctx, state, e)
     cancel_btn.on_click = lambda e: cancel_pipeline(ctx, state, e)
 
     # Bind control references into ctx

@@ -2,10 +2,12 @@ import re
 import time
 import asyncio
 import threading
+from typing import List, Dict, Any, Optional
 import pyperclip
 import flet as ft
 
 import scraper
+import community
 from engine import ResolutionEngine, detect_browser_channel
 import validator
 from ui.state import UIContext, AppState
@@ -57,9 +59,92 @@ def rebuild_table(ctx):
     ctx.refresh_extractor_ui()
 
 
+def load_community_record_into_extractor(ctx: UIContext, state: AppState, record: Dict[str, Any]):
+    """
+    Instantly inject community cloud record into Extractor UI without browser automation.
+    """
+    global _row_states
+    slug = record.get("slug", "")
+    title = record.get("title", "FitGirl Repack")
+    urls = community.get_game_urls(slug, ctx.settings.get("community_firebase_url"))
+    if not urls:
+        ctx.show_snack(f"Could not load URLs for {title}.", success=False)
+        return
+
+    state.resolved_links = urls
+    state.last_game_title = title
+    state.last_cover_image = record.get("image_url", "")
+    total_count = len(urls)
+    total_size_str = record.get("total_size_str", "0 B")
+    local_time = record.get("local_time", "Recently")
+
+    if ctx.url_input:
+        ctx.url_input.value = record.get("source_url", f"https://fitgirl-repacks.site/{slug}/")
+
+    # Rebuild rows as resolved
+    _row_states = []
+    for i, u in enumerate(urls):
+        p_name = u.split("#")[-1] if "#" in u else f"part_{i+1:02d}.rar"
+        _row_states.append({
+            "index": i,
+            "name": p_name,
+            "size_str": "--",
+            "status": "resolved",
+            "status_label": "Cloud Instant",
+            "status_color": ft.Colors.GREEN_400,
+            "status_icon": ft.Icons.BOLT,
+            "direct_url": u
+        })
+
+    rebuild_table(ctx)
+
+    if ctx.progress_bar:
+        ctx.progress_bar.value = 1.0
+
+    ctx.set_status("Loaded from Community Cloud", icon=ft.Icons.BOLT, color=ft.Colors.GREEN_400)
+    if ctx.stats_text:
+        ctx.stats_text.value = f"⚡ Instant Community Cache | 📦 {total_count} Parts | 💾 {total_size_str} | 📅 Synced: {local_time}"
+    if ctx.count_label:
+        ctx.count_label.value = f"✨ {total_count} direct URLs ready from Community Hub ({total_size_str})"
+    if ctx.seg_urls_label:
+        ctx.seg_urls_label.value = f"Direct URLs ({total_count}/{total_count})"
+    if ctx.seg_val_label:
+        ctx.seg_val_label.value = f"Validation & Size ({total_size_str})"
+
+    if ctx.val_text:
+        ctx.val_text.value = (
+            f"=== COMMUNITY CLOUD DOWNLOAD RECORD ===\n"
+            f"Game: {title}\n"
+            f"Source: {record.get('source_url', 'FitGirl Repacks')}\n"
+            f"Total Repack Size: {total_size_str}\n"
+            f"Cached Local Time: {local_time}\n"
+            f"Community Uploader: {record.get('uploader', 'Community')}\n"
+            f"{'='*50}\n\n"
+            + "\n".join(f"⚡ [  INSTANT ]  {u.split('#')[-1] if '#' in u else u}" for u in urls)
+        )
+
+    # Save to local SQLite History database
+    try:
+        ctx.history_mgr.add_record(
+            title=title,
+            source_url=record.get("source_url", ""),
+            total_parts=total_count,
+            resolved_count=total_count,
+            total_size_bytes=record.get("total_size_bytes", 0),
+            total_size_str=total_size_str,
+            urls=urls
+        )
+    except Exception:
+        pass
+
+    ctx.navigate_to_screen(0)
+    ctx.show_snack(f"✨ Loaded {total_count} links for '{title}' instantly from Community Hub!")
+
+
 async def run_pipeline_async(ctx: UIContext, state: AppState, target_url: str):
     global _row_states
     t_start = time.time()
+    cover_image_url = ""
     try:
         url_type = scraper.detect_url_type(target_url)
         ctx.log(f"Detected input type: {url_type}")
@@ -84,8 +169,9 @@ async def run_pipeline_async(ctx: UIContext, state: AppState, target_url: str):
         elif url_type == "fitgirl_game_page":
             ctx.set_status("Scraping Game Page...", icon=ft.Icons.SEARCH, color=ft.Colors.AMBER_400)
             ctx.log(f"Phase 1: Fetching FitGirl game page: {target_url}")
-            pastebins, game_title = await asyncio.to_thread(scraper.extract_game_page_pastebins, target_url)
+            pastebins, game_title, cover_image_url = await asyncio.to_thread(scraper.extract_game_page_pastebins, target_url)
             state.last_game_title = game_title or "FitGirl Repack"
+            state.last_cover_image = cover_image_url
             ctx.log(f"Game Repack: {state.last_game_title}")
 
             ff_pastebins = [p for p in pastebins if p["hoster"] == "FuckingFast"] or (pastebins[:1] if pastebins else [])
@@ -235,6 +321,28 @@ async def run_pipeline_async(ctx: UIContext, state: AppState, target_url: str):
                 total_size_str=total_size_str,
                 urls=resolved_urls
             )
+
+            # Auto-upload to Community Cloud Cache if enabled in settings
+            if ctx.settings.get("community_auto_share", True):
+                try:
+                    game_slug = scraper.extract_game_slug(target_url, state.last_game_title)
+                    fb_url = ctx.settings.get("community_firebase_url")
+                    ok, upload_msg = await asyncio.to_thread(
+                        community.upload_game_record,
+                        slug=game_slug,
+                        title=state.last_game_title,
+                        source_url=target_url,
+                        image_url=cover_image_url or state.last_cover_image,
+                        urls=resolved_urls,
+                        total_parts=total_count,
+                        total_size_str=total_size_str,
+                        total_size_bytes=total_size_bytes,
+                        firebase_url=fb_url
+                    )
+                    if ok:
+                        ctx.log(f"Community Hub: {upload_msg}")
+                except Exception as ex_up:
+                    ctx.log(f"Community upload error (silent): {ex_up}")
 
         total_elapsed = time.time() - t_start
         avg_s = total_elapsed / len(resolved_urls) if resolved_urls else 0

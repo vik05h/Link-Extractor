@@ -11,12 +11,29 @@ from typing import Optional, Dict, Any, Tuple, Callable, List
 
 import utils
 
-CURRENT_VERSION = "v3.1.1"
+CURRENT_VERSION = "v3.2.0"
 GITHUB_REPO = "vik05h/Link-Extractor"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
+    "v3.2.0": {
+        "title": "Community Cloud Cache, Pixel Dino Loader & 3D Repack Hub",
+        "highlights": [
+            "Decentralized Community Cloud Cache powered by Firebase Realtime Database lightweight REST API.",
+            "Retro 8-bit Arcade Pixel Dino running loading animation with live cloud status updates.",
+            "Interactive 3D-styled Game Cards with cover thumbnails, depth glow, and local timezone intelligence.",
+            "Automatic instant pre-fetched link detection on Extractor screen with 1-click skip browser option.",
+            "1-Click Health Check executing rapid 1-byte verification on Part 1 of any community repack.",
+            "Automated background cloud publishing with privacy opt-out toggle in Settings & Tweaks.",
+            "Freshness color badges (⚡ Fresh <12h, ⏳ Aging 12-36h, ⚠️ Expired >36h) with local time display."
+        ],
+        "bug_fixes": [
+            "Enforced strict overwrite logic to ensure newest extraction timestamps update cloud records.",
+            "Added graceful offline fallback with built-in community cache when Firebase is unreachable.",
+            "Added full entity unescaping and cover image extraction for FitGirl game pages."
+        ]
+    },
     "v3.1.1": {
         "title": "Startup Auto-Updater, Real-Time Async UI & In-App Installer",
         "highlights": [

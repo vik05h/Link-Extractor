@@ -14,8 +14,10 @@ from history import HistoryManager
 from ui.constants import THEME_PRESETS, LOGO_PRESETS, ANIMATION_PRESETS
 from ui.state import AppState, UIContext
 from ui.screens.extractor import build_extractor_screen
+from ui.screens.community import build_community_screen
 from ui.screens.history import build_history_screen
 from ui.screens.settings import build_settings_screen
+from ui.screens.pipeline import load_community_record_into_extractor
 
 
 async def main(page: ft.Page):
@@ -71,10 +73,17 @@ async def main(page: ft.Page):
             switch_out_curve=cfg.get("curve_out", ft.AnimationCurve.EASE_IN_OUT),
             expand=True
         )
+        ctx.screen_container = screen_container
         return screen_container
 
     # Build modular screens
     extractor_screen = build_extractor_screen(ctx, state, seed_color)
+    community_screen, refresh_community = build_community_screen(
+        ctx=ctx,
+        state=state,
+        seed_color=seed_color,
+        on_load_record_into_extractor=lambda rec: load_community_record_into_extractor(ctx, state, rec)
+    )
     history_screen, refresh_history = build_history_screen(ctx, state, seed_color)
     settings_screen = build_settings_screen(
         ctx=ctx,
@@ -85,7 +94,10 @@ async def main(page: ft.Page):
         create_screen_switcher=create_screen_switcher
     )
 
-    screens = [extractor_screen, history_screen, settings_screen]
+    screens = [extractor_screen, community_screen, history_screen, settings_screen]
+    ctx.screens = screens
+    ctx.refresh_community_cb = refresh_community
+    ctx.refresh_history_cb = refresh_history
 
     # Main layout with NavigationRail and Screen Switcher
     active_anim_name = settings.get("animation_style", "Fast Subtle Fade")
@@ -104,6 +116,8 @@ async def main(page: ft.Page):
             ctx.update_stats_display(state.is_running)
             ctx.refresh_extractor_ui()
         elif idx == 1:
+            refresh_community()
+        elif idx == 2:
             refresh_history()
 
         screen_container.content = screens[idx]
@@ -122,6 +136,7 @@ async def main(page: ft.Page):
         group_alignment=-0.9,
         destinations=[
             ft.NavigationRailDestination(icon=ft.Icons.BOLT_OUTLINED, selected_icon=ft.Icons.BOLT, label="Extractor"),
+            ft.NavigationRailDestination(icon=ft.Icons.GROUPS_OUTLINED, selected_icon=ft.Icons.GROUPS, label="Community"),
             ft.NavigationRailDestination(icon=ft.Icons.HISTORY_OUTLINED, selected_icon=ft.Icons.HISTORY, label="History"),
             ft.NavigationRailDestination(icon=ft.Icons.SETTINGS_OUTLINED, selected_icon=ft.Icons.SETTINGS, label="Settings"),
         ],
@@ -135,6 +150,7 @@ async def main(page: ft.Page):
             padding=ft.Padding.only(bottom=16)
         )
     )
+    ctx.nav_rail = nav_rail
 
     page.add(
         ft.Row([

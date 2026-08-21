@@ -72,7 +72,9 @@ def load_settings() -> Dict[str, Any]:
         "animation_style": "Fast Subtle Fade",
         "headless": False,
         "check_updates_on_startup": True,
-        "last_seen_version": None
+        "last_seen_version": None,
+        "community_auto_share": True,
+        "community_firebase_url": "https://fitgirl-community-hub-default-rtdb.firebaseio.com"
     }
     settings_file = os.path.join(get_app_data_dir(), "settings.json")
     if os.path.exists(settings_file):

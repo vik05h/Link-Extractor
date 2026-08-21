@@ -84,11 +84,49 @@ def extract_game_title(url: str, page_html: Optional[str] = None) -> str:
     return "FitGirl Repack"
 
 
-def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], str]:
+def extract_game_cover_image(url: str, page_html: Optional[str] = None) -> str:
+    """Extract game cover/thumbnail image URL from FitGirl page HTML."""
+    if page_html:
+        # 1. Look for wp-post-image or featured image
+        img_match = re.search(r'<img[^>]+class=[\x22\x27][^\x22\x27]*wp-post-image[^\x22\x27]*[\x22\x27][^>]+src=[\x22\x27](https?://[^\x22\x27]+)[\x22\x27]', page_html, re.IGNORECASE)
+        if img_match:
+            return img_match.group(1).strip()
+
+        # 2. Look for any image inside entry-content
+        entry_match = re.search(r'<div[^>]*class=[\x22\x27]entry-content[\x22\x27][^>]*>(.*?)</div>', page_html, re.IGNORECASE | re.DOTALL)
+        if entry_match:
+            first_img = re.search(r'<img[^>]+src=[\x22\x27](https?://[^\x22\x27]+\.(?:jpg|jpeg|png|webp))[\x22\x27]', entry_match.group(1), re.IGNORECASE)
+            if first_img:
+                return first_img.group(1).strip()
+
+        # 3. Look for og:image meta tag
+        og_match = re.search(r'<meta[^>]+property=[\x22\x27]og:image[\x22\x27][^>]+content=[\x22\x27](https?://[^\x22\x27]+)[\x22\x27]', page_html, re.IGNORECASE)
+        if og_match:
+            return og_match.group(1).strip()
+
+    return ""
+
+
+def extract_game_slug(url: str, title: str = "") -> str:
+    """Extract clean URL slug for game."""
+    if "fitgirl-repacks.site" in url:
+        parsed = urllib.parse.urlparse(url)
+        path_parts = [p for p in parsed.path.strip("/").split("/") if p]
+        if path_parts:
+            return path_parts[-1].lower()
+    if title:
+        clean = re.sub(r'\[.*?\]|\(.*?\)', '', title)
+        slug = re.sub(r'[^a-zA-Z0-9]+', '-', clean.lower()).strip('-')
+        if slug:
+            return slug
+    return "fitgirl-game"
+
+
+def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], str, str]:
     """
-    Fetch a FitGirl game page and extract all pastebin links with hoster names and game title.
+    Fetch a FitGirl game page and extract all pastebin links with hoster names, game title, and cover image.
     Returns:
-      (pastebin_list, game_title)
+      (pastebin_list, game_title, cover_image_url)
     """
     # Normalize URL
     if not game_url.startswith("http://") and not game_url.startswith("https://"):
@@ -118,6 +156,7 @@ def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], st
         raise RuntimeError(f"Failed to fetch FitGirl game page: {e}")
 
     game_title = extract_game_title(game_url, page_html)
+    cover_image_url = extract_game_cover_image(game_url, page_html)
     results = []
 
     pattern = r'<a[^>]+href=[\x22\x27](https?://paste\.fitgirl-repacks\.site/[^\x22\x27]+)[\x22\x27][^>]*>(.*?)</a>'
@@ -152,7 +191,7 @@ def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], st
                 "label": "FitGirl Pastebin"
             })
 
-    return results, game_title
+    return results, game_title, cover_image_url
 
 
 def extract_links_from_pastebin_html(page_content: str) -> List[str]:

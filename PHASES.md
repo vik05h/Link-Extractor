@@ -10,7 +10,7 @@ This document tracks current milestones, active implementation status, and upcom
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | **Speed & Reliability Core** | **Completed** | `v3.0.0` |
 | **Phase 2** | **Material 3 UI/UX & Advanced Integrations** | **Completed** | `v3.1.0` |
-| **Phase 3** | **Community Cloud Cache & Shared Link Hub (Firebase)** | **Design Finalized / Ready** | `v3.2.0` |
+| **Phase 3** | **Community Cloud Cache & Shared Link Hub (Firebase)** | **Completed** | `v3.2.0` |
 | **Phase 4** | **Multi-Hoster & Universal Automation** | Planned | `v3.3.0` |
 
 ---
@@ -67,32 +67,35 @@ This document tracks current milestones, active implementation status, and upcom
 
 ---
 
-## Phase 3: Community Cloud Cache & Shared Link Hub (v3.2.0) — DESIGN SPECIFICATION
+## Phase 3: Community Cloud Cache & Shared Link Hub (v3.2.0) — COMPLETED
 
-**Goal:** Provide an instant community link cache powered by Firebase Realtime Database (free tier), allowing users to skip browser automation completely when fresh links (<24-36h) already exist for a game.
+**Goal:** Decentralized, high-speed Community Cloud Cache powered by Firebase Realtime Database (lightweight REST API), allowing users to skip browser automation completely when fresh links already exist for a game.
 
-- [ ] **3.1 Firebase Realtime Database Architecture (Lightweight REST API)**
-  - [ ] Zero-SDK lightweight integration via Python standard `urllib` / `httpx` (no heavy Google Cloud dependencies).
-  - [ ] **Split Storage Schema**:
-    - Metadata Node: `/games_meta/{slug}` (stores `title`, `source_url`, `timestamp`, `total_parts`, `total_size_str`, `active_status`) — minimal bandwidth.
-    - Payload Node: `/games_urls/{slug}` (stores `urls: []`) — fetched on-demand only when imported or pushed.
-- [ ] **3.2 Security, Moderation & Anti-Spam**
-  - [ ] Strict client & server-side regex validation: all links must match `^https://dl\.fuckingfast\.co/dl/[a-zA-Z0-9_-]+`.
-  - [ ] Repack validation requirement: part count must match pastebin parts count and pass 1-byte validation before upload.
-  - [ ] Overwrite Protection: New upload can only overwrite an existing game record if the new extraction timestamp is strictly newer.
-- [ ] **3.3 Expiration Tracking & 1-Click Health Check**
-  - [ ] Visual link age indicators on game cards:
+- [x] **3.1 Firebase Realtime Database Architecture (Lightweight REST API)**
+  - [x] Zero-SDK lightweight integration via standard `urllib` / `json` in `community.py` (no heavy Google Cloud dependencies).
+  - [x] **Split Storage Schema**:
+    - Metadata Node: `/games_meta/{slug}` (stores `title`, `image_url`, `source_url`, `timestamp_utc`, `total_parts`, `total_size_str`, `total_size_bytes`, `uploader`, `app_version`).
+    - Payload Node: `/games_urls/{slug}` (stores direct `urls: []` and `updated_at`).
+- [x] **3.2 Security, Moderation & Anti-Spam**
+  - [x] Strict regex and domain validation for all direct URLs matching `dl.fuckingfast.co/dl/...`.
+  - [x] Strict overwrite protection: New uploads must have equal or newer extraction timestamps than existing records.
+  - [x] Slug sanitization protecting against path traversal and database node pollution.
+- [x] **3.3 Expiration Tracking & 1-Click Health Check**
+  - [x] Local timezone intelligence: UTC timestamps converted to client timezone (e.g. `21 Aug 2026, 05:25 PM IST`).
+  - [x] Visual link age badges on game cards:
     - **Fresh** (< 12 hours old)
     - **Aging** (12–36 hours old)
     - **Likely Expired** (> 36 hours old)
-  - [ ] Fast 1-Click Health Check: Rapid 1-byte Range GET on Part 1; if expired, offers 1-click local re-resolve and auto-refreshes the cloud cache.
-- [ ] **3.4 UI Integration: Community Hub Tab**
-  - [ ] New **Community Hub** destination in the left Navigation Rail.
-  - [ ] Search bar with live title filtering, game cards with part counts, sizes, age badges, and 1-click `Push JD2` / `Copy` buttons.
-- [ ] **3.5 Extractor Screen Integration & User Privacy**
-  - [ ] When entering a URL on the Extractor screen, auto-check Firebase for active links.
-  - [ ] If found: Display banner *"Found active links resolved X hours ago in Community Hub! [Use Instant Links] [Resolve Fresh]"*.
-  - [ ] 100% anonymous sharing with global toggle in Settings & Tweaks: `[x] Auto-share resolved links to Community Hub` and checkbox on Extractor view.
+  - [x] Rapid 1-Click Health Check: 1-byte Range GET on Part 1 to determine live/expired status in under 1 second.
+- [x] **3.4 UI Integration: Community Hub Tab & Pixel Dino Animation**
+  - [x] Dedicated **Community** tab in the left Navigation Rail.
+  - [x] Retro 8-bit arcade Pixel Dino running loading animation when loading/refreshing cloud feed.
+  - [x] 3D-styled Game Cards with game cover art, depth lighting, part counts, sizes, local time badges, and 4 quick actions: `Use Instant`, `Push JD2`, `Copy URLs`, `Health Check`.
+  - [x] Real-time title search and filter chips (`All`, `Fresh`, `Aging`, `Expired`).
+- [x] **3.5 Extractor Screen Integration & User Privacy**
+  - [x] Automatic Community cache lookup upon clicking `Extract & Resolve`.
+  - [x] Interactive dialog presenting game cover, local time, and options to `Use Instant Links (Skip Browser)` or `Resolve Fresh & Update Cloud`.
+  - [x] Background automated publishing to Community Cloud with global opt-out switch in Settings & Tweaks.
 
 ---
 
@@ -109,4 +112,4 @@ This document tracks current milestones, active implementation status, and upcom
   - [ ] Headless command-line interface for scripting and server environments (`python main.py --cli --url ...`).
 
 ---
-*Last Updated: 2026-08-20*
+*Last Updated: 2026-08-21*

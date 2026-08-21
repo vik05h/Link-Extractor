@@ -33,13 +33,18 @@
 ```mermaid
 graph TD
     A["User Input (Game URL / Pastebin / FuckingFast)"] --> B["scraper.detect_url_type()"]
-    B --> C["scraper.extract_game_page_pastebins()"]
-    C --> D["engine.ResolutionEngine (Playwright Pool)"]
-    D --> E["Concurrent Worker Tabs (3-4 Parallel)"]
-    E --> F["validator.validate_links (1-Byte Range HTTP)"]
-    F --> G["sqlite3: %APPDATA%/FitGirlLinkExtractor/history.db"]
-    F --> H["Export Engine (.txt, .json, .crawljob)"]
-    F --> I["JDownloader 2 API (localhost:9666)"]
+    B --> C{"Check Community Cloud Cache"}
+    C -->|Instant Pre-Fetched| D["Direct Import to Extractor Table"]
+    D --> E["JDownloader 2 / Clipboard / Export"]
+    C -->|Fresh Resolution| F["scraper.extract_game_page_pastebins()"]
+    F --> G["engine.ResolutionEngine (Playwright Pool)"]
+    G --> H["Concurrent Worker Tabs (3-4 Parallel)"]
+    H --> I["validator.validate_links (1-Byte Range HTTP)"]
+    I --> J["sqlite3: %APPDATA%/FitGirlLinkExtractor/history.db"]
+    I --> K["Auto-Upload: community.upload_game_record()"]
+    K --> L["Firebase Realtime Database: /games_meta & /games_urls"]
+    I --> M["Export Engine (.txt, .json, .crawljob)"]
+    I --> N["JDownloader 2 API (localhost:9666)"]
 ```
 
 ---
@@ -71,7 +76,7 @@ graph TD
 * **The Solution**: Use `os.path.expanduser("~")/Downloads` with `%USERPROFILE%` fallback and `open_folder_cross_platform()` (`os.startfile` on Windows, `open` on macOS, `xdg-open` on Linux).
 
 ### 7. Modular UI Architecture & Package Boundaries
-* **The Pattern**: Monolithic UI code in `main.py` is decomposed into a dedicated `ui/` package (`ui/constants.py`, `ui/state.py`, `ui/screens/extractor.py`, `ui/screens/pipeline.py`, `ui/screens/history.py`, `ui/screens/settings.py`) with shared system helpers in `utils.py`.
+* **The Pattern**: Monolithic UI code in `main.py` is decomposed into a dedicated `ui/` package (`ui/constants.py`, `ui/state.py`, `ui/screens/extractor.py`, `ui/screens/community.py`, `ui/screens/pipeline.py`, `ui/screens/history.py`, `ui/screens/settings.py`) with shared system helpers in `utils.py`.
 * **The Solution**: `main.py` serves strictly as the application entrypoint (< 150 lines) managing window initialization, navigation rails, and animated switcher wiring. All screen state is coordinated via `AppState` and `UIContext` without circular dependencies.
 
 ### 8. In-App Auto-Update & Post-Update What's New Popup
@@ -90,9 +95,9 @@ graph TD
 * **The Problem**: Mutating child controls inside existing `DataCell`s (e.g. `row.cells[3].content = ft.Chip(...)`) does not trigger deep serialization down the Flet widget tree because the parent `DataTable` reference remains unchanged.
 * **The Solution**: Maintain an internal state list (`_row_states`) and use `rebuild_table()` to clear `data_table.rows` and re-populate fresh `DataRow`/`DataCell` instances on each progress callback.
 
-### 12. Flet Control JSON Serialization (`list` vs `set`)
-* **The Problem**: Flet serializes control properties to JSON when transmitting to Flutter. Passing Python `set` instances (e.g. `view_segments.selected = {"urls"}`) raises `TypeError: can not serialize 'set' object`.
-* **The Solution**: Always assign standard Python `list` collections (e.g. `view_segments.selected = ["urls"]`) for selection properties.
+### 12. Community Cloud Split Storage & Lightweight REST
+* **The Pattern**: Zero-SDK lightweight integration using Python standard `urllib.request` / `json`.
+* **The Solution**: Split database schema into `/games_meta/{slug}` (minimal metadata bandwidth for feed rendering) and `/games_urls/{slug}` (full payload fetched on demand). All timestamps are stored in UTC ISO-8601 and converted client-side to the user's localized timezone with relative age calculation.
 
 ---
 
@@ -102,10 +107,10 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 * **SSRF / Cloud Metadata Protection**: Blocks `169.254.169.254` and non-whitelisted domains.
 * **Command Injection**: Strict subprocess argument sanitization (no shell interpolation).
 * **SQL Injection**: 100% parameterized SQLite queries in `history.py`.
-* **Path Traversal**: Filename sanitization with `re.sub(r'[^a-zA-Z0-9_-]', '_', title)`.
+* **Path Traversal**: Filename and slug sanitization (`re.sub(r'[^a-zA-Z0-9_-]', '-', slug)`).
 * **CRLF / Header Injection**: JDownloader 2 FlashGot payload encoding.
-* **ReDoS Prevention**: Safe regex limits on `Content-Disposition` header parsing.
-* **Result**: **8/8 Tests Passed (100% Clean)**.
+* **ReDoS Prevention**: Safe regex limits on `Content-Disposition` and pastebin link parsing.
+* **Result**: **6/6 Tests Passed (100% Clean)**.
 
 ---
 
@@ -113,7 +118,8 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 
 - [x] **Phase 1: High-Speed Direct Resolver** (Multi-tab Playwright concurrency, exponential backoff).
 - [x] **Phase 2: Modern Material 3 UI & Suite** (Flet M3, SQLite archive, JD2 push, EXE packaging).
-- [ ] **Phase 3: Community Cloud Cache** (Shared public link pool with 24-72h TTL, free-tier Firestore/RTDB, rate-limiting, and upvote/downvote verification — specifications in `PHASES.md`).
+- [x] **Phase 3: Community Cloud Cache & Shared Link Hub** (Firebase Realtime DB REST API, Pixel Dino loading animation, 3D game cards, local timezone intelligence, instant pre-fetched resolver).
+- [ ] **Phase 4: Multi-Hoster & Universal Automation** (DataNodes, FileKeeper, selective downloads, CLI mode).
 
 ---
 
@@ -123,3 +129,4 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 2. **Never Hardcode System Paths**: Always use `get_app_data_dir()`, `get_resource_path()`, or `get_export_dir()`.
 3. **Verify Build Correctness**: When modifying GUI or dependencies, re-verify with `pyinstaller LinkExtractor_Single.spec --noconfirm`.
 4. **Preserve Cancellation Integrity**: Aborted extractions must never be persisted to `history.db`.
+5. **No Emojis in Documentation**: Maintain professional, clean markdown formatting across all documentation files.

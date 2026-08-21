@@ -19,8 +19,11 @@ class AppState:
     pastebin_links: List[str] = field(default_factory=list)
     resolved_links: List[str] = field(default_factory=list)
     last_game_title: str = "FitGirl Repack"
+    last_cover_image: str = ""
     last_val_summary: Optional[Any] = None
     active_screen: int = 0
+    community_games: List[Dict[str, Any]] = field(default_factory=list)
+    community_loading: bool = False
 
 
 class UIContext:
@@ -51,6 +54,41 @@ class UIContext:
         self.url_input: Optional[ft.TextField] = None
         self.rail_logo: Optional[ft.Image] = None
         self.banner_logo: Optional[ft.Image] = None
+
+        # Navigation and Screen Switching Handlers
+        self.nav_rail: Optional[ft.NavigationRail] = None
+        self.screen_container: Optional[ft.AnimatedSwitcher] = None
+        self.screens: List[ft.Control] = []
+        self.refresh_community_cb: Optional[Any] = None
+        self.refresh_history_cb: Optional[Any] = None
+
+    def navigate_to_screen(self, index: int):
+        """Programmatically switch active screen and update NavigationRail."""
+        if self.state:
+            self.state.active_screen = index
+        if self.nav_rail:
+            self.nav_rail.selected_index = index
+            try:
+                self.nav_rail.update()
+            except Exception:
+                pass
+        if self.screen_container and self.screens and 0 <= index < len(self.screens):
+            self.screen_container.content = self.screens[index]
+            try:
+                self.screen_container.update()
+            except Exception:
+                pass
+        if index == 0:
+            self.update_stats_display(self.state.is_running if self.state else False)
+            self.refresh_extractor_ui()
+        elif index == 1 and self.refresh_community_cb:
+            self.refresh_community_cb()
+        elif index == 2 and self.refresh_history_cb:
+            self.refresh_history_cb()
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def show_snack(self, text: str, success: bool = True):
         snack = ft.SnackBar(
