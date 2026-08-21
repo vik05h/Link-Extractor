@@ -99,6 +99,19 @@ graph TD
 * **The Pattern**: Zero-SDK lightweight integration using Python standard `urllib.request` / `json`.
 * **The Solution**: Split database schema into `/games_meta/{slug}` (minimal metadata bandwidth for feed rendering) and `/games_urls/{slug}` (full payload fetched on demand). All timestamps are stored in UTC ISO-8601 and converted client-side to the user's localized timezone with relative age calculation.
 
+### 13. Validator API Positional Argument Ordering Trap
+* **The Problem**: `validator.validate_links(urls, max_workers, cancel_event)` silently passed `cancel_event` (a `threading.Event`) into the `on_progress` callback parameter, causing `TypeError: 'Event' object is not callable` inside the worker loop. This swallowed the error and reported `0 B` total repack size.
+* **The Solution**: The correct signature is `validator.validate_links(urls, max_workers=15, on_progress=None, cancel_event=None)`. Always use `validator.validate_links(urls, 15, None, state.cancel_event)` with explicit `None` for `on_progress` when no progress callback is needed.
+
+### 14. Community Health Check Validator Function Name
+* **The Problem**: `community.check_link_health()` called `validator.validate_single_link(url)`, which does not exist. The `AttributeError` was caught by a broad `except` and silently returned `(False, "Error")`, making every link appear "Expired" in the UI health pill.
+* **The Solution**: The correct function is `validator.validate_single_url(index, url, timeout=8.0)`. It returns `(index, is_valid, size_str)`. Health check should call `validator.validate_single_url(0, clean_url, timeout=8.0)` and interpret `result[1]` as the alive boolean and `result[2]` as the size string.
+
+### 15. Firebase Realtime Database Production Deployment
+* **The Pattern**: Live production database URL is `https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app` (region: `asia-southeast1`). The URL is stored as the default value in `utils.load_settings()` under the key `community_firebase_url`, and is user-configurable via the Settings screen.
+* **Security Rules**: Write access uses timestamp-based overwrite protection (`newData.child('timestamp_utc').val() >= data.child('timestamp_utc').val()`). Deletion requires explicit `!newData.exists()` in the rule condition since `PUT null` has no children to compare. All non-whitelisted paths (`$other`) are locked `read: false, write: false`.
+* **Open-Source Constraint**: The Firebase URL must never be hardcoded in committed source for security. It ships as a user-configurable default; the user enters their own database URL in Settings and clicks "Test Cloud" to verify connectivity.
+
 ---
 
 ## 5. Security & Penetration Baseline
@@ -129,4 +142,5 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 2. **Never Hardcode System Paths**: Always use `get_app_data_dir()`, `get_resource_path()`, or `get_export_dir()`.
 3. **Verify Build Correctness**: When modifying GUI or dependencies, re-verify with `pyinstaller LinkExtractor_Single.spec --noconfirm`.
 4. **Preserve Cancellation Integrity**: Aborted extractions must never be persisted to `history.db`.
-5. **No Emojis in Documentation**: Maintain professional, clean markdown formatting across all documentation files.
+5. **No Emojis in Documentation or UI**: Maintain professional, clean typography across all documentation files and UI labels/buttons. Use Material Icons (`ft.Icons.*`) instead of Unicode emoji in Flet controls.
+6. **Verify Validator API Signatures**: Before calling any `validator.*` function, check `validator.py` for the exact function name and positional argument order. Silent `AttributeError` or `TypeError` from wrong names/ordering is a recurring trap.
