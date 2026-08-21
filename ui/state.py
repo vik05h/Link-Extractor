@@ -435,14 +435,15 @@ class UIContext:
         latest_tag = release_info.get("latest_version", "")
         release_name = release_info.get("name", latest_tag)
         release_body = release_info.get("body", "No changelog provided.")
+        has_binary = release_info.get("has_binary", False)
 
         cancel_dl = threading.Event()
         progress_bar = ft.ProgressBar(value=0, expand=True)
-        status_label = ft.Text("Ready to download update...", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        status_label = ft.Text("Ready to install update automatically...", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         size_label = ft.Text("", size=11, color=ft.Colors.PRIMARY)
 
         dl_ui = ft.Column([
-            ft.Text(f"Downloading Link Extractor {latest_tag}...", size=13, weight=ft.FontWeight.BOLD),
+            ft.Text(f"Auto-updating to Link Extractor {latest_tag}...", size=13, weight=ft.FontWeight.BOLD),
             ft.Container(height=4),
             progress_bar,
             ft.Row([status_label, size_label], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
@@ -454,16 +455,20 @@ class UIContext:
             ft.Text("Changelog & Highlights:", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
             ft.Container(
                 content=ft.Column([
-                    ft.Text(release_body, size=12, selectable=True)
+                    ft.Markdown(
+                        release_body,
+                        selectable=True,
+                        extension_set=ft.MarkdownExtensionSet.GITHUB_WEB
+                    )
                 ], scroll=ft.ScrollMode.ADAPTIVE),
                 padding=10,
                 bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST,
                 border_radius=8,
-                height=150
+                height=160
             ),
             ft.Container(height=4),
             dl_ui
-        ], tight=True, width=500)
+        ], tight=True, width=520)
 
         later_btn = ft.TextButton("Later", on_click=lambda _: (cancel_dl.set(), self.page.pop_dialog()))
         browser_btn = ft.TextButton("View on GitHub", icon=ft.Icons.OPEN_IN_NEW, on_click=lambda _: updater.open_release_page(release_info.get("html_url")))
@@ -480,7 +485,7 @@ class UIContext:
                         progress_bar.value = pct / 100.0
                         mb_down = downloaded / (1024 * 1024)
                         mb_tot = total / (1024 * 1024)
-                        status_label.value = f"Downloading: {pct:.1f}%"
+                        status_label.value = f"Downloading update: {pct:.1f}%"
                         size_label.value = f"{mb_down:.1f} MB / {mb_tot:.1f} MB"
                         try:
                             self.page.update()
@@ -488,13 +493,13 @@ class UIContext:
                             pass
 
                     target_file = updater.download_update(download_url, _on_progress, cancel_dl)
-                    status_label.value = "Download completed! Preparing update..."
+                    status_label.value = "Download completed! Replacing binary and restarting..."
                     progress_bar.value = 1.0
                     self.page.update()
                     time.sleep(0.5)
 
                     # Save version so next launch shows What's New
-                    self.settings["last_seen_version"] = updater.CURRENT_VERSION
+                    self.settings["last_seen_version"] = latest_tag
                     utils.save_settings(self.settings)
 
                     restarted = updater.apply_update_and_restart(target_file)
@@ -524,11 +529,18 @@ class UIContext:
 
             threading.Thread(target=_download_worker, daemon=True).start()
 
-        update_btn = ft.FilledButton(
-            "Update Now",
-            icon=ft.Icons.DOWNLOAD,
-            on_click=start_in_app_update
-        )
+        if has_binary:
+            update_btn = ft.FilledButton(
+                "Update Now (Auto-Install)",
+                icon=ft.Icons.SYSTEM_UPDATE_ALT_ROUNDED,
+                on_click=start_in_app_update
+            )
+        else:
+            update_btn = ft.FilledButton(
+                "Open Release Page",
+                icon=ft.Icons.OPEN_IN_NEW,
+                on_click=lambda _: updater.open_release_page(release_info.get("html_url"))
+            )
 
         dlg = ft.AlertDialog(
             title=ft.Row([

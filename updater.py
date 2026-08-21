@@ -145,10 +145,12 @@ def check_for_updates(current_version: str = CURRENT_VERSION, timeout: float = 5
                 assets = data.get("assets", [])
                 download_url = html_url
                 asset_size = 0
+                has_binary = False
                 for a in assets:
                     if a.get("name", "").endswith(".exe"):
                         download_url = a.get("browser_download_url", html_url)
                         asset_size = a.get("size", 0)
+                        has_binary = True
                         break
 
                 curr_tuple = parse_version(current_version)
@@ -162,6 +164,7 @@ def check_for_updates(current_version: str = CURRENT_VERSION, timeout: float = 5
                     "html_url": html_url,
                     "download_url": download_url,
                     "asset_size": asset_size,
+                    "has_binary": has_binary,
                     "published_at": data.get("published_at", "")
                 }
 
