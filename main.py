@@ -11,7 +11,7 @@ os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(
 import utils
 import updater
 from history import HistoryManager
-from ui.constants import THEME_PRESETS, LOGO_PRESETS, ANIMATION_PRESETS
+from ui.constants import THEME_PRESETS, LOGO_PRESETS, ANIMATION_PRESETS, FPS_PRESETS
 from ui.state import AppState, UIContext
 from ui.screens.extractor import build_extractor_screen
 from ui.screens.community import build_community_screen
@@ -100,8 +100,8 @@ async def main(page: ft.Page):
     ctx.refresh_history_cb = refresh_history
 
     # Main layout with NavigationRail and Screen Switcher
-    active_anim_name = settings.get("animation_style", "Fast Subtle Fade")
-    anim_cfg = ANIMATION_PRESETS.get(active_anim_name, ANIMATION_PRESETS["Fast Subtle Fade"])
+    active_fps_mode = settings.get("fps_mode", "120 FPS")
+    anim_cfg = FPS_PRESETS.get(active_fps_mode, FPS_PRESETS["120 FPS"])
 
     screen_holder = ft.Container(
         content=create_screen_switcher(anim_cfg, extractor_screen),

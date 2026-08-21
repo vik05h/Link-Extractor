@@ -5,7 +5,7 @@ import utils
 import integrations
 import updater
 import community
-from ui.constants import THEME_PRESETS, LOGO_PRESETS, ANIMATION_PRESETS
+from ui.constants import THEME_PRESETS, LOGO_PRESETS, ANIMATION_PRESETS, FPS_PRESETS
 from ui.state import UIContext, AppState
 
 
@@ -79,23 +79,38 @@ def build_settings_screen(
         on_select=lambda e: on_logo_changed(e.control.value)
     )
 
-    def on_animation_changed(anim_name: str):
-        ctx.settings["animation_style"] = anim_name
+    cur_fps = ctx.settings.get("fps_mode", "120 FPS")
+    if cur_fps not in FPS_PRESETS:
+        cur_fps = "120 FPS"
+
+    fps_desc_text = ft.Text(
+        FPS_PRESETS[cur_fps].get("desc", ""),
+        size=11,
+        color=ft.Colors.ON_SURFACE_VARIANT
+    )
+
+    def on_fps_changed(fps_mode: str):
+        ctx.settings["fps_mode"] = fps_mode
         utils.save_settings(ctx.settings)
-        cfg = ANIMATION_PRESETS.get(anim_name, ANIMATION_PRESETS["Fast Subtle Fade"])
+        cfg = FPS_PRESETS.get(fps_mode, FPS_PRESETS["120 FPS"])
         screens = get_screens()
         cur_screen = screens[state.active_screen]
         screen_holder = get_screen_holder()
         screen_holder.content = create_screen_switcher(cfg, cur_screen)
         screen_holder.update()
-        ctx.show_snack(f"Tab transition set to {anim_name} (Live Applied)!")
+        fps_desc_text.value = cfg.get("desc", "")
+        fps_desc_text.update()
+        ctx.show_snack(f"Framerate mode set to {fps_mode} ({cfg.get('label')}) - Live Applied!")
 
-    anim_dropdown = ft.Dropdown(
-        value=ctx.settings.get("animation_style", "Fast Subtle Fade"),
-        options=[ft.dropdown.Option(text=name, key=name) for name in ANIMATION_PRESETS.keys()],
-        width=220,
-        dense=True,
-        on_select=lambda e: on_animation_changed(e.control.value)
+    fps_mode_btn = ft.SegmentedButton(
+        selected=[cur_fps],
+        allow_multiple_selection=False,
+        on_change=lambda e: on_fps_changed(list(e.control.selected)[0]),
+        segments=[
+            ft.Segment(value="60 FPS", label=ft.Text("60 FPS"), icon=ft.Icon(ft.Icons.SPEED)),
+            ft.Segment(value="120 FPS", label=ft.Text("120 FPS"), icon=ft.Icon(ft.Icons.BOLT)),
+            ft.Segment(value="Instant", label=ft.Text("Instant"), icon=ft.Icon(ft.Icons.FLASH_ON)),
+        ]
     )
 
     concur_slider = ft.Slider(
@@ -212,13 +227,13 @@ def build_settings_screen(
                             logo_dropdown
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
-                        # 4. Tab Transition Animation
+                        # 4. Framerate & High Refresh Rate Mode (60 FPS / 120 FPS / Instant)
                         ft.Row([
                             ft.Column([
-                                ft.Text("Tab Switch Animation Effect:", size=13, weight=ft.FontWeight.BOLD),
-                                ft.Text("Choose between Instant (Snappy 0ms) and Fast Subtle Fade (180ms).", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
-                            ]),
-                            anim_dropdown
+                                ft.Text("Framerate & Refresh Rate Mode:", size=13, weight=ft.FontWeight.BOLD),
+                                fps_desc_text
+                            ], expand=True),
+                            fps_mode_btn
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Divider(),
                         # 5. Concurrency

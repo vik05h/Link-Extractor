@@ -9,6 +9,7 @@ import community
 import integrations
 import validator
 from ui.state import UIContext, AppState
+from ui.constants import FPS_PRESETS
 
 
 # Pixel Dino 8-bit Frame Art for the Running Animation
@@ -187,12 +188,18 @@ def build_3d_title_card(
             border_radius=8
         )
 
+    # Dynamic FPS Mode Timing
+    fps_mode = ctx.settings.get("fps_mode", "120 FPS")
+    fps_cfg = FPS_PRESETS.get(fps_mode, FPS_PRESETS["120 FPS"])
+    card_anim_dur = fps_cfg.get("card_duration", 100)
+    card_anim_curve = fps_cfg.get("curve_in", ft.AnimationCurve.FAST_OUT_SLOWIN)
+
     # 3D Cover Poster Frame with pop-out hover effect
     cover_frame = ft.Container(
         content=cover_img,
         border=ft.Border.all(1, ft.Colors.with_opacity(0.3, ft.Colors.PRIMARY)),
         border_radius=8,
-        animate_scale=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC),
+        animate_scale=ft.Animation(card_anim_dur, card_anim_curve),
         scale=1.0
     )
 
@@ -202,7 +209,7 @@ def build_3d_title_card(
         height=20,
         border_radius=2,
         bgcolor=ft.Colors.with_opacity(0.6, seed_color),
-        animate=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC)
+        animate=ft.Animation(card_anim_dur, card_anim_curve)
     )
 
     title_text = ft.Text(
@@ -224,7 +231,7 @@ def build_3d_title_card(
                 padding=ft.Padding.only(left=2)
             )
         ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.CENTER),
-        animate_offset=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC),
+        animate_offset=ft.Animation(card_anim_dur, card_anim_curve),
         offset=ft.Offset(0, 0),
         padding=ft.Padding.only(bottom=2)
     )
@@ -279,7 +286,7 @@ def build_3d_title_card(
 
     card = ft.Card(
         elevation=1,
-        animate_scale=ft.Animation(200, ft.AnimationCurve.EASE_OUT_CUBIC),
+        animate_scale=ft.Animation(card_anim_dur, card_anim_curve),
         scale=1.0
     )
 

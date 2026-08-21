@@ -70,6 +70,7 @@ def load_settings() -> Dict[str, Any]:
         "theme_mode": "Dark",
         "logo_style": "Minimalist Cyber Link",
         "animation_style": "Fast Subtle Fade",
+        "fps_mode": "120 FPS",
         "headless": False,
         "check_updates_on_startup": True,
         "last_seen_version": None,
