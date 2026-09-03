@@ -1,10 +1,198 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#10b981" />
-      <stop offset="100%" stop-color="#06b6d4" />
+    <!-- Background Base Gradient -->
+    <radialGradient id="carbon-core" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#1c1815" />
+      <stop offset="55%" stop-color="#0f0d0b" />
+      <stop offset="100%" stop-color="#060504" />
+    </radialGradient>
+
+    <!-- Beveled Outer Border -->
+    <linearGradient id="tile-stroke-1" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22" />
+      <stop offset="60%" stop-color="#ff7700" stop-opacity="0.1" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.8" />
     </linearGradient>
+
+    <!-- Active Blaze Glowing Loop -->
+    <linearGradient id="blaze-core" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff3b00" />
+      <stop offset="50%" stop-color="#ff8800" />
+      <stop offset="100%" stop-color="#ffe600" />
+    </linearGradient>
+
+    <!-- Lower Machined Dark Chassis -->
+    <linearGradient id="dark-chassis" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38302b" />
+      <stop offset="50%" stop-color="#241e1b" />
+      <stop offset="100%" stop-color="#14110f" />
+    </linearGradient>
+
+    <!-- Bloom Glow Filter -->
+    <filter id="blaze-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <style>
+      /* Smooth linear displacement along the link's native axis */
+      .ejected-shackle {
+        animation: axial-levitate 3s ease-in-out infinite alternate;
+      }
+
+      /* Stream laser guide animation */
+      .laser-rail {
+        stroke-dasharray: 6 5;
+        animation: stream-flow 0.8s linear infinite;
+      }
+
+      /* Background radar rotation */
+      .radar-disc {
+        transform-origin: 256px 256px;
+        animation: radar-rotate 28s linear infinite;
+      }
+
+      /* Core extraction spark pulsation */
+      .core-spark {
+        transform-origin: 256px 255px;
+        animation: spark-breathe 1.5s ease-in-out infinite alternate;
+      }
+
+      /* Data nodes gliding precisely along their respective tracks */
+      .packet-node-left {
+        animation: node-glide 2s ease-in-out infinite alternate;
+      }
+      .packet-node-right {
+        animation: node-glide 2s ease-in-out infinite alternate 0.35s;
+      }
+
+      @keyframes axial-levitate {
+        0% {
+          transform: translateY(-38px);
+        }
+        100% {
+          transform: translateY(-56px);
+        }
+      }
+
+      @keyframes stream-flow {
+        from {
+          stroke-dashoffset: 22;
+        }
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+
+      @keyframes radar-rotate {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes spark-breathe {
+        0% {
+          transform: scale(0.85);
+          opacity: 0.8;
+        }
+        100% {
+          transform: scale(1.25);
+          opacity: 1;
+        }
+      }
+
+      @keyframes node-glide {
+        0% {
+          transform: translateY(0);
+        }
+        100% {
+          transform: translateY(-24px);
+        }
+      }
+    </style>
   </defs>
-  <rect width="100" height="100" rx="20" fill="#0a0c14" />
-  <path d="M55 15 L25 55 L48 55 L42 85 L75 45 L52 45 Z" fill="url(#grad)" />
+
+  <!-- App Tile Base -->
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#carbon-core)" stroke="url(#tile-stroke-1)" stroke-width="2.5" />
+
+  <!-- Background Reticle Ring -->
+  <circle class="radar-disc" cx="256" cy="256" r="140" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="1.5" stroke-dasharray="6 8" />
+
+  <!-- Alignment Crosshairs -->
+  <g stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.5">
+    <line x1="80" y1="256" x2="100" y2="256" />
+    <line x1="412" y1="256" x2="432" y2="256" />
+    <line x1="256" y1="80" x2="256" y2="100" />
+    <line x1="256" y1="412" x2="256" y2="432" />
+  </g>
+
+  <!-- Monospace Header & Status -->
+  <g fill="#786558" font-family="-apple-system, BlinkMacSystemFont, 'JetBrains Mono', monospace" font-size="11" font-weight="700" letter-spacing="2">
+    <text x="76" y="120">EXTRACTION</text>
+    <text x="366" y="400">01_DISP</text>
+  </g>
+
+  <!-- ==================== UNIFIED -45° MECHANISM ==================== -->
+  <g transform="rotate(-45 256 256)">
+
+    <!-- 1. LOWER FIXED BASE -->
+    <g>
+      <!-- Base Loop: Left Leg at X=206, Right Leg at X=306 -->
+      <path d="M 206 280 L 206 312 C 206 340 228 362 256 362 C 284 362 306 340 306 312 L 306 280" 
+            fill="none" stroke="url(#dark-chassis)" stroke-width="32" stroke-linecap="round" />
+      
+      <!-- Cut Terminal Faces -->
+      <ellipse cx="206" cy="280" rx="16" ry="6" fill="#ff8800" />
+      <ellipse cx="306" cy="280" rx="16" ry="6" fill="#ff8800" />
+    </g>
+
+    <!-- 2. LASER TRACKS, DATA NODES & CENTER SPARK -->
+    <g filter="url(#blaze-glow)">
+      <!-- Left Track: Precisely on X=206 -->
+      <line class="laser-rail" x1="206" y1="280" x2="206" y2="170" stroke="#ff8800" stroke-width="3" />
+      <!-- Right Track: Precisely on X=306 -->
+      <line class="laser-rail" x1="306" y1="280" x2="306" y2="170" stroke="#ff8800" stroke-width="3" />
+
+      <!-- Left Data Node: Gliding on X=206 -->
+      <g class="packet-node-left">
+        <circle cx="206" cy="254" r="7" fill="#ffffff" stroke="#ff3b00" stroke-width="3" />
+      </g>
+
+      <!-- Right Data Node: Gliding on X=306 -->
+      <g class="packet-node-right">
+        <circle cx="306" cy="254" r="7" fill="#ffffff" stroke="#ff3b00" stroke-width="3" />
+      </g>
+
+      <!-- Center Extraction Diamond: Dead-center in the void at (256, 255) -->
+      <polygon class="core-spark" points="256,246 264,255 256,264 248,255" fill="#ffe600" />
+    </g>
+
+    <!-- 3. UPPER LEVITATING SHACKLE -->
+    <!-- Translates strictly along the Y axis inside the rotated plane -->
+    <g class="ejected-shackle">
+      <g filter="url(#blaze-glow)">
+        <!-- Upper Loop -->
+        <path d="M 206 230 L 206 198 C 206 170 228 148 256 148 C 284 148 306 170 306 198 L 306 230" 
+              fill="none" stroke="url(#blaze-core)" stroke-width="32" stroke-linecap="round" />
+
+        <!-- Pure Core Filament -->
+        <path d="M 206 222 L 206 198 C 206 170 228 148 256 148 C 284 148 306 170 306 198 L 306 222" 
+              fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-opacity="0.9" />
+
+        <!-- Cut Active Faces -->
+        <ellipse cx="206" cy="230" rx="16" ry="6" fill="#ffffff" />
+        <ellipse cx="306" cy="230" rx="16" ry="6" fill="#ffffff" />
+      </g>
+    </g>
+
+  </g>
+
+  <!-- Specular Lens Glare -->
+  <path d="M 42 100 C 42 52 62 42 110 42 L 402 42 C 450 42 470 52 470 100" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.15" />
 </svg>

@@ -21,7 +21,7 @@
   let isRunning = false;
   let statusMessage = 'Paste any FitGirl URL or click a Community Repack to begin.';
   let parts: PartItem[] = [];
-  let logs: string[] = ['[System] Link Extractor v4.0 Turbo Engine initialized.'];
+  let logs: string[] = ['[System] Link Extractor v3.8 Turbo Engine initialized.'];
 
   // Community Feed State
   let communityGames: GameRecord[] = [];
@@ -128,8 +128,26 @@
               size: rec.total_size_str
             };
           });
-          logs = [`[Community] Loaded ${urls.length} verified direct links for ${rec.title}`];
-          showToast(`Loaded ${urls.length} parts for ${rec.title} with 0s wait!`);
+
+          // Infer real game title from filenames if generic
+          if (gameTitle === 'FitGirl Pastebin Download' || gameTitle === 'FuckingFast Direct Parts' || gameTitle.includes('Pastebin')) {
+            const firstWithHash = urls.find((u: string) => u.includes('#'));
+            if (firstWithHash) {
+              const rawName = decodeURIComponent(firstWithHash.split('#').pop() || '');
+              const clean = rawName
+                .replace(/\.part\d+\.rar/i, '')
+                .replace(/\.rar/i, '')
+                .replace(/--_fitgirl-repacks\.site_--.*/i, '')
+                .replace(/[-_.]+/g, ' ')
+                .trim();
+              if (clean && clean.length > 2) {
+                gameTitle = clean.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+              }
+            }
+          }
+
+          logs = [`[Community] Loaded ${urls.length} verified direct links for ${gameTitle}`];
+          showToast(`Loaded ${urls.length} parts for ${gameTitle} with 0s wait!`);
         } else {
           showToast(`No links cached for ${rec.title}. Try live extraction.`);
         }
@@ -369,7 +387,7 @@
     <button 
       type="button" 
       class="sidebar-logo-btn" 
-      title="Link Extractor v4.0"
+      title="Link Extractor v3.8"
       on:click={() => { currentView = 'community'; playClickSound(); }}
     >
       <div class="logo-mark">

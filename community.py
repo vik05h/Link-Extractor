@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import threading
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -10,6 +11,7 @@ from typing import List, Dict, Any, Optional, Tuple
 
 import validator
 import updater
+import scraper
 
 DEFAULT_FIREBASE_URL = "https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app"
 
@@ -196,16 +198,29 @@ def get_community_games(firebase_url: Optional[str] = None) -> List[Dict[str, An
             if isinstance(item, dict):
                 rec = dict(item)
                 rec["slug"] = slug
+                rec["used_count"] = int(item.get("used_count", 0))
                 iso_ts = rec.get("timestamp_utc", get_current_utc_iso())
                 loc_time, age_str, fresh = format_localized_timestamp(iso_ts)
                 rec["local_time"] = loc_time
                 rec["age_str"] = age_str
                 rec["freshness"] = fresh
                 results.append(rec)
+
+        # Asynchronously enrich generic pastebin records in background
+        generic_items = [
+            r for r in results
+            if r.get("title") in ("FitGirl Pastebin Download", "FuckingFast Direct Parts") or not r.get("image_url")
+        ]
+        if generic_items:
+            def _enrich_worker():
+                for gi in generic_items[:3]:
+                    enrich_generic_record(gi["slug"], base_url)
+            threading.Thread(target=_enrich_worker, daemon=True).start()
     else:
         # Fallback to local demo repository
         for slug, item in DEMO_COMMUNITY_DATA.items():
             rec = dict(item)
+            rec["used_count"] = int(item.get("used_count", 12))
             iso_ts = rec.get("timestamp_utc", get_current_utc_iso())
             loc_time, age_str, fresh = format_localized_timestamp(iso_ts)
             rec["local_time"] = loc_time
@@ -384,3 +399,149 @@ def test_firebase_connection(firebase_url: Optional[str] = None) -> Tuple[bool, 
         return False, f"HTTP Error: {he.code} {he.reason}"
     except Exception as ex:
         return False, f"Connection failed: {ex}"
+
+
+# ==========================================
+# Presence & Community Usage Metrics
+# ==========================================
+
+def ping_presence(session_id: str, app_version: str = "", firebase_url: Optional[str] = None) -> int:
+    """
+    Register or renew a lightweight presence heartbeat in Firebase Realtime Database.
+    Prunes stale sessions (>180s old) asynchronously to guarantee database stays < 10 KB.
+    Returns the current count of active online gamers.
+    """
+    if not session_id:
+        return 1
+
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    now_iso = get_current_utc_iso()
+    session_clean = re.sub(r'[^a-zA-Z0-9_-]', '', session_id)[:32]
+    endpoint = f"{base_url}/presence/{session_clean}.json"
+
+    # 1. Heartbeat PUT (~30 bytes)
+    _http_request(endpoint, method="PUT", data={"t": now_iso, "v": app_version or updater.CURRENT_VERSION}, timeout=4.0)
+
+    # 2. Get all presence sessions
+    all_presence = _http_request(f"{base_url}/presence.json", method="GET", timeout=4.0)
+    if not isinstance(all_presence, dict):
+        return 1
+
+    active_count = 0
+    stale_keys = []
+    now_dt = datetime.now(timezone.utc)
+
+    for sid, data in all_presence.items():
+        if isinstance(data, dict) and "t" in data:
+            try:
+                t_dt = parse_iso_timestamp(data["t"])
+                delta = abs((now_dt - t_dt).total_seconds())
+                if delta <= 180:
+                    active_count += 1
+                else:
+                    stale_keys.append(sid)
+            except Exception:
+                stale_keys.append(sid)
+        else:
+            stale_keys.append(sid)
+
+    # 3. Asynchronously prune stale entries in daemon thread
+    if stale_keys:
+        def _prune_worker(keys):
+            for k in keys[:15]:
+                try:
+                    _http_request(f"{base_url}/presence/{k}.json", method="DELETE", timeout=3.0)
+                except Exception:
+                    pass
+        threading.Thread(target=_prune_worker, args=(stale_keys,), daemon=True).start()
+
+    return max(1, active_count)
+
+
+def increment_game_usage(slug: str, firebase_url: Optional[str] = None) -> int:
+    """
+    Atomically increment download count for a game in Firebase RTDB and update global counter.
+    Returns the new used_count.
+    """
+    clean_slug = sanitize_slug(slug)
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    meta_url = f"{base_url}/games_meta/{clean_slug}.json"
+
+    game_meta = _http_request(meta_url, method="GET", timeout=4.0)
+    current_count = 0
+    if isinstance(game_meta, dict):
+        current_count = int(game_meta.get("used_count", 0))
+
+    new_count = current_count + 1
+    # Patch game record
+    _http_request(meta_url, method="PATCH", data={"used_count": new_count}, timeout=4.0)
+
+    # Increment global stats in background
+    def _inc_global():
+        try:
+            stats_url = f"{base_url}/stats/total_community_grabs.json"
+            curr_glob = _http_request(stats_url, method="GET", timeout=4.0) or 0
+            new_glob = int(curr_glob) + 1 if isinstance(curr_glob, (int, float)) else 1
+            _http_request(stats_url, method="PUT", data=new_glob, timeout=4.0)
+        except Exception:
+            pass
+    threading.Thread(target=_inc_global, daemon=True).start()
+
+    return new_count
+
+
+def get_community_stats(firebase_url: Optional[str] = None) -> Dict[str, Any]:
+    """Retrieve live online gamers count and total community grabs."""
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+
+    # Global grabs
+    total_grabs = 0
+    try:
+        tg_data = _http_request(f"{base_url}/stats/total_community_grabs.json", method="GET", timeout=3.0)
+        if isinstance(tg_data, (int, float)):
+            total_grabs = int(tg_data)
+    except Exception:
+        pass
+
+    # Live gamers count
+    live_count = 1
+    try:
+        all_presence = _http_request(f"{base_url}/presence.json", method="GET", timeout=3.0)
+        if isinstance(all_presence, dict):
+            now_dt = datetime.now(timezone.utc)
+            count = 0
+            for sid, data in all_presence.items():
+                if isinstance(data, dict) and "t" in data:
+                    try:
+                        t_dt = parse_iso_timestamp(data["t"])
+                        if abs((now_dt - t_dt).total_seconds()) <= 180:
+                            count += 1
+                    except Exception:
+                        pass
+            live_count = max(1, count)
+    except Exception:
+        pass
+
+    return {
+        "live_gamers": live_count,
+        "total_grabs": total_grabs
+    }
+
+
+def enrich_generic_record(slug: str, base_url: str):
+    """Enriches generic pastebin records by inspecting their part URLs and fetching real title/art."""
+    try:
+        urls = get_game_urls(slug, base_url)
+        if urls:
+            meta = scraper.resolve_pastebin_metadata("", urls)
+            if meta.get("title") and meta["title"] != "FitGirl Repack":
+                patch_data = {
+                    "title": meta["title"],
+                    "image_url": meta["image_url"],
+                }
+                if meta.get("source_url") and "fitgirl-repacks.site" in meta["source_url"]:
+                    patch_data["source_url"] = meta["source_url"]
+                _http_request(f"{base_url}/games_meta/{slug}.json", method="PATCH", data=patch_data, timeout=5.0)
+    except Exception:
+        pass
+

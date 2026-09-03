@@ -1,5 +1,6 @@
 import re
 import html
+import json
 import urllib.request
 import urllib.parse
 from typing import List, Dict, Tuple, Optional, Callable
@@ -207,3 +208,188 @@ def extract_links_from_pastebin_html(page_content: str) -> List[str]:
             seen.add(clean_u)
             deduped.append(clean_u)
     return deduped
+
+
+def extract_game_info_from_part_urls(urls: List[str]) -> Tuple[str, str]:
+    """
+    Analyze part filenames (from URL fragments or paths) to infer the game title candidate
+    and search query.
+    Example: '#Crimson_Desert_Enhanced_--_fitgirl-repacks.site_--_.part01.rar'
+             -> ('Crimson Desert Enhanced', 'Crimson Desert Enhanced')
+    """
+    for u in urls:
+        raw_name = ""
+        if "#" in u:
+            raw_name = u.split("#")[-1]
+        else:
+            raw_name = u.rstrip("/").split("/")[-1].split("?")[0]
+
+        if not raw_name:
+            continue
+
+        raw_name = urllib.parse.unquote(raw_name)
+        # Strip archive extension and part markers
+        cleaned = re.sub(r'\.part\d+\.(?:rar|zip|7z|bin|iso)$', '', raw_name, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\.(?:rar|zip|7z|bin|iso|exe)$', '', cleaned, flags=re.IGNORECASE)
+
+        # Strip fitgirl watermarks
+        cleaned = re.sub(r'--_fitgirl-repacks\.site_--.*', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'-fitgirl-repacks\.site.*', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'_fitgirl_repacks.*', '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'fitgirl[-_]repacks?.*', '', cleaned, flags=re.IGNORECASE)
+
+        # Normalize separators
+        name = re.sub(r'[-_.]+', ' ', cleaned).strip()
+        if name and len(name) > 2 and not name.lower().startswith("part"):
+            words = name.split()
+            candidate = " ".join(w.capitalize() for w in words)
+            query = " ".join(words[:3]) if len(words) >= 3 else candidate
+            return candidate, query
+
+    return "FitGirl Repack", "FitGirl"
+
+
+def search_fitgirl_site(query: str, timeout: float = 6.0) -> Optional[Dict[str, str]]:
+    """
+    Search FitGirl repack WordPress site for a query to locate the official game post and title.
+    """
+    clean_q = query.strip()
+    if not clean_q or clean_q.lower() == "fitgirl":
+        return None
+
+    search_url = f"https://fitgirl-repacks.site/?s={urllib.parse.quote(clean_q)}"
+    req = urllib.request.Request(
+        search_url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            page_html = resp.read().decode("utf-8", errors="ignore")
+    except Exception:
+        return None
+
+    matches = re.findall(
+        r'<h1[^>]*class=[\x22\x27]entry-title[\x22\x27][^>]*><a[^>]+href=[\x22\x27](https?://fitgirl-repacks\.site/[^\x22\x27]+)[\x22\x27][^>]*>(.*?)</a></h1>',
+        page_html,
+        re.IGNORECASE | re.DOTALL
+    )
+
+    ignored_keywords = ["updates digest", "upcoming repacks", "faq", "troubleshooting", "donations", "repairs"]
+    for post_url, raw_title in matches:
+        clean_title = clean_title_text(re.sub(r'<[^>]+>', '', raw_title))
+        if any(ik in clean_title.lower() for ik in ignored_keywords):
+            continue
+
+        slug = post_url.strip("/").split("/")[-1].lower()
+        return {
+            "title": clean_title,
+            "source_url": post_url,
+            "slug": slug,
+            "image_url": ""
+        }
+
+    return None
+
+
+def search_steam_artwork(query: str, timeout: float = 4.0) -> Optional[Dict[str, str]]:
+    """
+    Search Steam Store public API for official high-resolution game artwork header.
+    Completely free, unblocked Akamai CDN with zero rate-limiting.
+    """
+    clean_q = query.strip()
+    if not clean_q or clean_q.lower() == "fitgirl":
+        return None
+
+    url = f"https://store.steampowered.com/api/storesearch/?term={urllib.parse.quote(clean_q)}&l=english&cc=US"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+            items = data.get("items", [])
+            if items:
+                app_id = items[0].get("id")
+                app_name = items[0].get("name", clean_q)
+                header_url = f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/header.jpg"
+                return {
+                    "name": app_name,
+                    "image_url": header_url,
+                    "app_id": str(app_id)
+                }
+    except Exception:
+        pass
+    return None
+
+
+def generate_procedural_banner_svg(title: str) -> str:
+    """
+    Generate an instant, high-tech stylized SVG data URI banner for games without web artwork.
+    """
+    clean = html.escape((title or "FitGirl Repack")[:36])
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 215" width="460" height="215">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#09121a"/>
+      <stop offset="50%" stop-color="#0c252a"/>
+      <stop offset="100%" stop-color="#050a0e"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#bg)"/>
+  <rect x="20" y="20" width="80" height="22" rx="4" fill="rgba(0, 240, 160, 0.15)" stroke="#00f0a0" stroke-width="1"/>
+  <text x="60" y="35" fill="#00f0a0" font-size="10" font-family="sans-serif" font-weight="bold" text-anchor="middle" letter-spacing="1">FITGIRL</text>
+  <text x="230" y="115" fill="#ffffff" font-size="18" font-family="sans-serif" font-weight="bold" text-anchor="middle">{clean}</text>
+  <text x="230" y="145" fill="rgba(255,255,255,0.6)" font-size="11" font-family="sans-serif" text-anchor="middle">VERIFIED ARCHIVE REPACK</text>
+</svg>"""
+    return "data:image/svg+xml;utf8," + urllib.parse.quote(svg)
+
+
+def resolve_pastebin_metadata(pastebin_url: str, part_urls: List[str]) -> Dict[str, str]:
+    """
+    Full intelligence pipeline resolving game title, official cover artwork,
+    and canonical slug from decrypted pastebin part links.
+    """
+    candidate_title, search_query = extract_game_info_from_part_urls(part_urls)
+
+    official_title = ""
+    source_url = pastebin_url
+    slug = ""
+    image_url = ""
+
+    # 1. Search FitGirl site for official repack title and canonical slug
+    fg_res = search_fitgirl_site(search_query)
+    if fg_res:
+        official_title = fg_res.get("title", "")
+        source_url = fg_res.get("source_url", pastebin_url)
+        slug = fg_res.get("slug", "")
+
+    # Fallback title if search failed
+    final_title = official_title or candidate_title or "FitGirl Repack"
+    final_slug = slug or extract_game_slug(source_url, final_title)
+
+    # 2. Search high-res artwork via Steam CDN
+    steam_query = search_query if len(search_query) > 3 else final_title
+    steam_res = search_steam_artwork(steam_query)
+    if steam_res and steam_res.get("image_url"):
+        image_url = steam_res["image_url"]
+
+    # 3. If still no artwork, generate stylized procedural banner
+    if not image_url:
+        image_url = generate_procedural_banner_svg(final_title)
+
+    return {
+        "title": final_title,
+        "image_url": image_url,
+        "source_url": source_url,
+        "slug": final_slug
+    }
+

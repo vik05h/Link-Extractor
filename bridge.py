@@ -159,6 +159,23 @@ class AppBridge:
         except Exception as err:
             return {"is_alive": False, "status_code": 0, "message": str(err)}
 
+    def ping_presence(self, session_id: str = "") -> Dict[str, Any]:
+        """Pings user presence heartbeat and returns online gamers count."""
+        fb_url = self._settings.get("community_firebase_url")
+        active = community.ping_presence(session_id, updater.CURRENT_VERSION, fb_url)
+        return {"live_gamers": active}
+
+    def track_game_usage(self, slug: str) -> Dict[str, Any]:
+        """Increments usage/download counter for a community game."""
+        fb_url = self._settings.get("community_firebase_url")
+        new_count = community.increment_game_usage(slug, fb_url)
+        return {"slug": slug, "used_count": new_count}
+
+    def get_community_stats(self) -> Dict[str, Any]:
+        """Fetches live user count and global grabs."""
+        fb_url = self._settings.get("community_firebase_url")
+        return community.get_community_stats(fb_url)
+
     # ==========================================
     # Extraction Pipeline
     # ==========================================
@@ -222,7 +239,19 @@ class AppBridge:
                 self.dispatch_event("pipeline:status", {"status": "scraping", "message": "Decrypting Pastebin page..."})
                 self._current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
                 intermediate_urls = asyncio.run(self._current_engine.fetch_pastebin_links(target_url))
-                game_title = "FitGirl Pastebin Repack"
+
+                # Auto-resolve game title, artwork, and canonical slug from part filenames
+                self.dispatch_event("pipeline:status", {"status": "scraping", "message": "Resolving Game Intelligence & Artwork..."})
+                pastebin_meta = scraper.resolve_pastebin_metadata(target_url, intermediate_urls)
+                game_title = pastebin_meta.get("title") or "FitGirl Pastebin Repack"
+                cover_image = pastebin_meta.get("image_url") or ""
+                target_url = pastebin_meta.get("source_url") or target_url
+
+                self.dispatch_event("pipeline:game_meta", {
+                    "title": game_title,
+                    "image_url": cover_image,
+                    "parts_count": len(intermediate_urls)
+                })
             else:
                 intermediate_urls = [target_url]
                 game_title = "Direct Repack"
@@ -317,9 +346,9 @@ class AppBridge:
             )
 
             # Auto-upload to Community Cloud if enabled
-            if self._settings.get("community_auto_upload", True) and url_type == "fitgirl_game_page":
+            if self._settings.get("community_auto_upload", True) and game_title not in ("Direct Repack", "FitGirl Repack"):
                 try:
-                    game_slug = scraper.extract_game_slug(target_url)
+                    game_slug = scraper.extract_game_slug(target_url, game_title)
                     community.upload_game_record(
                         slug=game_slug,
                         title=game_title,

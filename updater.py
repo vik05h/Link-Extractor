@@ -11,12 +11,21 @@ from typing import Optional, Dict, Any, Tuple, Callable, List
 
 import utils
 
-CURRENT_VERSION = "v4.0.0"
+CURRENT_VERSION = "v3.8.0"
 GITHUB_REPO = "vik05h/Link-Extractor"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
+    "v3.8.0": {
+        "title": "Automated Pastebin Intelligence, Real-time Community Usage Metrics & Zero-Cost Live Presence",
+        "highlights": [
+            "Automated Pastebin metadata resolution extracting game names from archive filenames with FitGirl site search.",
+            "Live concurrent gamer presence pulse indicator powered by zero-cost lightweight Firebase REST heartbeats.",
+            "Community link usage tracking recording and displaying download counts across shared repacks.",
+            "Automatic background self-pruning keeping presence footprint under 10 KB indefinitely."
+        ]
+    },
     "v4.0.0": {
         "title": "Next-Gen Gaming Hub UI/UX, Living Canvas & Defrag Mosaic",
         "highlights": [

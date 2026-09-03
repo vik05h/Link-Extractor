@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playBypassSound } from '../utils/audio';
   import type { GameRecord } from '../types';
@@ -12,6 +12,41 @@
 
   let searchQuery = '';
   let selectedFilter: 'all' | 'fresh' | 'aging' | 'expired' = 'all';
+  let liveGamers = 1;
+  let totalGrabs = 0;
+  let heartbeatInterval: any = null;
+
+  const sessionId = (typeof window !== 'undefined' && localStorage.getItem('le_session_id')) 
+    || 'usr_' + Math.random().toString(36).substring(2, 10);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('le_session_id', sessionId);
+  }
+
+  function pingPresence() {
+    if (typeof window !== 'undefined' && (window as any).pywebview) {
+      (window as any).pywebview.api.ping_presence(sessionId).then((res: any) => {
+        if (res && typeof res.live_gamers === 'number') {
+          liveGamers = res.live_gamers;
+        }
+      }).catch(() => {});
+
+      (window as any).pywebview.api.get_community_stats().then((stats: any) => {
+        if (stats) {
+          if (typeof stats.live_gamers === 'number') liveGamers = stats.live_gamers;
+          if (typeof stats.total_grabs === 'number') totalGrabs = stats.total_grabs;
+        }
+      }).catch(() => {});
+    }
+  }
+
+  onMount(() => {
+    pingPresence();
+    heartbeatInterval = setInterval(pingPresence, 90000);
+  });
+
+  onDestroy(() => {
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+  });
 
   function handleHealthCheck(rec: GameRecord, e: MouseEvent) {
     e.stopPropagation();
@@ -44,12 +79,24 @@
 
   function handleInstantLoad(rec: GameRecord) {
     playClickSound();
+    rec.used_count = (rec.used_count || 0) + 1;
+    totalGrabs += 1;
+    games = [...games];
+    if (typeof window !== 'undefined' && (window as any).pywebview) {
+      (window as any).pywebview.api.track_game_usage(rec.slug).catch(() => {});
+    }
     onLoadRecord(rec);
   }
 
   function handleQuickPushJd(rec: GameRecord, e: MouseEvent) {
     e.stopPropagation();
     playClickSound();
+    rec.used_count = (rec.used_count || 0) + 1;
+    totalGrabs += 1;
+    games = [...games];
+    if (typeof window !== 'undefined' && (window as any).pywebview) {
+      (window as any).pywebview.api.track_game_usage(rec.slug).catch(() => {});
+    }
     onPushJd2(rec.slug, rec.title);
   }
 
@@ -77,6 +124,21 @@
     </div>
 
     <div class="filter-chips-row">
+      <!-- Live Gamers Pulse Badge -->
+      <div class="live-pulse-badge" title="{liveGamers} active gamers currently connected">
+        <span class="pulse-radar-dot">
+          <span class="radar-wave"></span>
+        </span>
+        <span class="live-count-text">{liveGamers} Online</span>
+      </div>
+
+      {#if totalGrabs > 0}
+        <div class="total-grabs-badge" title="Total repacks grabbed by community">
+          <Icon name="bolt" size={11} color="var(--accent-primary)" />
+          <span>{totalGrabs} Grabs</span>
+        </div>
+      {/if}
+
       <button 
         type="button"
         class="filter-pill" 
@@ -110,7 +172,7 @@
         <span class="pill-dot dot-expired"></span> Expired
       </button>
 
-      <button type="button" class="btn-icon" title="Refresh Community Feed" on:click={onRefresh}>
+      <button type="button" class="btn-icon" title="Refresh Community Feed" on:click={() => { onRefresh(); pingPresence(); }}>
         <Icon name="refresh" size={15} />
       </button>
     </div>
@@ -163,7 +225,15 @@
               <span class="badge badge-{rec.freshness || 'fresh'}">
                 {(rec.freshness || 'fresh').toUpperCase()} ({rec.age_str || 'recent'})
               </span>
-              <span class="card-parts-count">{rec.total_parts} Parts</span>
+              <div class="card-meta-top-right">
+                {#if rec.used_count && rec.used_count > 0}
+                  <span class="badge-downloads" title="Community downloads count">
+                    <Icon name="bolt" size={10} color="var(--accent-primary)" />
+                    <span>{rec.used_count} grabs</span>
+                  </span>
+                {/if}
+                <span class="card-parts-count">{rec.total_parts} Parts</span>
+              </div>
             </div>
 
             <h3 class="card-title" title={rec.title} on:click={() => handleInstantLoad(rec)}>{rec.title}</h3>
@@ -244,6 +314,87 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  /* Live Pulse Badge & Radar Wave */
+  .live-pulse-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-primary);
+    background: rgba(0, 240, 160, 0.08);
+    border: 1px solid rgba(0, 240, 160, 0.25);
+    letter-spacing: 0.3px;
+    user-select: none;
+  }
+
+  .pulse-radar-dot {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    display: inline-block;
+  }
+
+  .radar-wave {
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent-primary);
+    opacity: 0.8;
+    animation: radarRipple 1.8s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+  }
+
+  @keyframes radarRipple {
+    0% {
+      transform: scale(0.6);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+  }
+
+  .total-grabs-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .card-meta-top-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .badge-downloads {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-primary);
+    background: rgba(0, 240, 160, 0.1);
+    padding: 2px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 240, 160, 0.18);
   }
 
   .filter-pill {

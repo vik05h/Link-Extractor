@@ -24,6 +24,7 @@ export interface GameRecord {
   uploader?: string;
   health_status?: string;
   health_color?: string;
+  used_count?: number;
 }
 
 export interface HistoryRecord {
