@@ -1,41 +1,75 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-
   export let coverUrl: string = '';
   export let theme: string = 'cyber';
 
-  let canvasEl: HTMLCanvasElement;
-  let animId: number;
   let dominantColor = '#10b981';
   let secondaryColor = '#06b6d4';
 
-  interface Particle {
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-    size: number;
-    alpha: number;
-    maxAlpha: number;
+  function setPalette(r1: number, g1: number, b1: number, r2?: number, g2?: number, b2?: number) {
+    dominantColor = `rgb(${r1}, ${g1}, ${b1})`;
+    const sR = r2 !== undefined ? r2 : Math.max(15, Math.min(255, Math.floor(r1 * 0.7 + 30)));
+    const sG = g2 !== undefined ? g2 : Math.max(15, Math.min(255, Math.floor(g1 * 0.8 + 40)));
+    const sB = b2 !== undefined ? b2 : Math.max(15, Math.min(255, Math.floor(b1 * 1.2 + 50)));
+    secondaryColor = `rgb(${sR}, ${sG}, ${sB})`;
+
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty('--adaptive-color', dominantColor);
+      document.documentElement.style.setProperty('--adaptive-sec', secondaryColor);
+      document.documentElement.style.setProperty('--adaptive-glow', `rgba(${r1}, ${g1}, ${b1}, 0.35)`);
+    }
   }
 
-  let particles: Particle[] = [];
+  function deriveHashPalette(seedStr: string) {
+    let hash = 0;
+    for (let i = 0; i < seedStr.length; i++) {
+      hash = (hash << 5) - hash + seedStr.charCodeAt(i);
+      hash |= 0;
+    }
+    const hue1 = Math.abs(hash) % 360;
+    const hue2 = (hue1 + 50) % 360;
+
+    function hslToRgb(h: number, s: number, l: number) {
+      const c = (1 - Math.abs(2 * l - 1)) * s;
+      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+      const m = l - c / 2;
+      let r = 0, g = 0, b = 0;
+      if (h < 60) { r = c; g = x; }
+      else if (h < 120) { r = x; g = c; }
+      else if (h < 180) { g = c; b = x; }
+      else if (h < 240) { g = x; b = c; }
+      else if (h < 300) { r = x; b = c; }
+      else { r = c; b = x; }
+      return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+    }
+
+    const [r1, g1, b1] = hslToRgb(hue1, 0.88, 0.54);
+    const [r2, g2, b2] = hslToRgb(hue2, 0.82, 0.50);
+    setPalette(r1, g1, b1, r2, g2, b2);
+  }
 
   function sampleImageColors(url: string) {
-    if (!url) return;
+    if (!url) {
+      // Default vibrant Dynamic Adaptive palette (Electric Violet to Cyan)
+      setPalette(168, 85, 247, 6, 182, 212);
+      return;
+    }
+
     const img = new Image();
     img.crossOrigin = 'Anonymous';
     img.src = url;
     img.onload = () => {
       try {
         const offCanvas = document.createElement('canvas');
-        const ctx = offCanvas.getContext('2d');
-        if (!ctx) return;
+        const ctx = offCanvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) {
+          deriveHashPalette(url);
+          return;
+        }
         offCanvas.width = 16;
         offCanvas.height = 16;
         ctx.drawImage(img, 0, 0, 16, 16);
         const data = ctx.getImageData(0, 0, 16, 16).data;
-        
+
         let r1 = 0, g1 = 0, b1 = 0, count = 0;
         for (let i = 0; i < data.length; i += 16) {
           r1 += data[i];
@@ -43,97 +77,27 @@
           b1 += data[i + 2];
           count++;
         }
-        r1 = Math.min(240, Math.floor((r1 / count) * 1.2));
-        g1 = Math.min(240, Math.floor((g1 / count) * 1.2));
-        b1 = Math.min(240, Math.floor((b1 / count) * 1.2));
-
-        dominantColor = `rgb(${r1}, ${g1}, ${b1})`;
-        secondaryColor = `rgba(${Math.max(20, r1 - 40)}, ${Math.min(255, g1 + 30)}, ${Math.min(255, b1 + 60)}, 0.8)`;
-
-        document.documentElement.style.setProperty('--adaptive-color', dominantColor);
-        document.documentElement.style.setProperty('--adaptive-sec', secondaryColor);
-        document.documentElement.style.setProperty('--adaptive-glow', `rgba(${r1}, ${g1}, ${b1}, 0.35)`);
+        r1 = Math.min(245, Math.max(30, Math.floor((r1 / count) * 1.3)));
+        g1 = Math.min(245, Math.max(30, Math.floor((g1 / count) * 1.3)));
+        b1 = Math.min(245, Math.max(30, Math.floor((b1 / count) * 1.3)));
+        setPalette(r1, g1, b1);
       } catch (err) {
-        // Fallback to theme defaults
+        deriveHashPalette(url);
       }
+    };
+    img.onerror = () => {
+      deriveHashPalette(url);
     };
   }
 
-  $: if (coverUrl) {
+  $: if (theme === 'adaptive') {
     sampleImageColors(coverUrl);
+  } else if (theme === 'steam') {
+    setPalette(56, 189, 248, 99, 102, 241);
+  } else {
+    // Default cyber
+    setPalette(16, 185, 129, 6, 182, 212);
   }
-
-  function initParticles(width: number, height: number) {
-    particles = [];
-    const count = Math.floor((width * height) / 35000);
-    for (let i = 0; i < count; i++) {
-      particles.push({
-        x: Math.random() * width,
-        y: Math.random() * height,
-        vx: (Math.random() - 0.5) * 0.4,
-        vy: -0.2 - Math.random() * 0.5,
-        size: 1 + Math.random() * 2.5,
-        alpha: Math.random() * 0.6,
-        maxAlpha: 0.3 + Math.random() * 0.4
-      });
-    }
-  }
-
-  function render() {
-    if (!canvasEl) return;
-    const ctx = canvasEl.getContext('2d');
-    if (!ctx) return;
-
-    const w = canvasEl.width;
-    const h = canvasEl.height;
-
-    ctx.clearRect(0, 0, w, h);
-
-    // Render subtle atmospheric floating particles
-    for (const p of particles) {
-      p.x += p.vx;
-      p.y += p.vy;
-
-      if (p.y < -10) {
-        p.y = h + 10;
-        p.x = Math.random() * w;
-      }
-      if (p.x < -10) p.x = w + 10;
-      if (p.x > w + 10) p.x = -10;
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = dominantColor;
-      ctx.globalAlpha = p.alpha;
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = dominantColor;
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1.0;
-    ctx.shadowBlur = 0;
-
-    animId = requestAnimationFrame(render);
-  }
-
-  function handleResize() {
-    if (!canvasEl) return;
-    canvasEl.width = window.innerWidth;
-    canvasEl.height = window.innerHeight;
-    initParticles(canvasEl.width, canvasEl.height);
-  }
-
-  onMount(() => {
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    animId = requestAnimationFrame(render);
-  });
-
-  onDestroy(() => {
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animId);
-    }
-  });
 </script>
 
 <div class="living-canvas-root">
@@ -143,16 +107,13 @@
     style="
       --dom: {dominantColor}; 
       --sec: {secondaryColor};
-      background: radial-gradient(circle at 18% 22%, var(--dom) 0%, transparent 45%),
-                  radial-gradient(circle at 82% 78%, var(--sec) 0%, transparent 48%),
-                  radial-gradient(circle at 50% 50%, rgba(10, 12, 18, 0.95) 0%, rgba(5, 6, 9, 1) 100%);
+      background: radial-gradient(circle at 18% 22%, var(--dom) 0%, transparent 50%),
+                  radial-gradient(circle at 82% 78%, var(--sec) 0%, transparent 52%),
+                  radial-gradient(circle at 50% 50%, rgba(8, 10, 14, 0.95) 0%, rgba(4, 5, 8, 1) 100%);
     "
   ></div>
 
-  <!-- Particle Canvas -->
-  <canvas bind:this={canvasEl} class="particle-canvas"></canvas>
-
-  <!-- Fine Noise / Scanline Texture -->
+  <!-- Smooth Vignette Overlay (Zero floating particles) -->
   <div class="vignette-overlay"></div>
 </div>
 
@@ -169,22 +130,15 @@
 
   .ambient-mesh {
     position: absolute;
-    inset: -20px;
-    opacity: 0.28;
-    filter: blur(60px);
+    inset: -30px;
+    opacity: 0.32;
+    filter: blur(70px);
     transition: all 1.2s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .particle-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
   }
 
   .vignette-overlay {
     position: absolute;
     inset: 0;
-    background: radial-gradient(circle at center, transparent 40%, rgba(0, 0, 0, 0.65) 100%);
+    background: radial-gradient(circle at center, transparent 35%, rgba(0, 0, 0, 0.7) 100%);
   }
 </style>

@@ -340,6 +340,10 @@
     });
   }
 
+  $: if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', currentTheme);
+  }
+
   onMount(() => {
     if (typeof window !== 'undefined') {
       currentTheme = localStorage.getItem('app_theme') || 'cyber';
@@ -391,7 +395,7 @@
       on:click={() => { currentView = 'community'; playClickSound(); }}
     >
       <div class="logo-mark">
-        <Icon name="bolt" size={18} color="#ffffff" strokeWidth={2.5} />
+        <img src="/favicon.svg" alt="Link Extractor" class="brand-logo-img" />
       </div>
     </button>
 
@@ -635,14 +639,21 @@
     width: 40px;
     height: 40px;
     border-radius: 12px;
-    background: var(--accent-gradient);
     display: flex;
     align-items: center;
     justify-content: center;
+    overflow: hidden;
     box-shadow: 
-      inset 0 1px 1px rgba(255, 255, 255, 0.6),
+      inset 0 1px 1px rgba(255, 255, 255, 0.4),
       0 0 20px var(--accent-glow);
     transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+  }
+
+  .brand-logo-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
   .sidebar-logo-btn:hover .logo-mark {

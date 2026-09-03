@@ -129,13 +129,13 @@
         <span class="pulse-radar-dot">
           <span class="radar-wave"></span>
         </span>
-        <span class="live-count-text">{liveGamers} Online</span>
+        <span class="live-count-text">{liveGamers} {liveGamers === 1 ? 'Gamer' : 'Gamers'} Online</span>
       </div>
 
       {#if totalGrabs > 0}
         <div class="total-grabs-badge" title="Total repacks grabbed by community">
           <Icon name="bolt" size={11} color="var(--accent-primary)" />
-          <span>{totalGrabs} Grabs</span>
+          <span>{totalGrabs} {totalGrabs === 1 ? 'Grab' : 'Grabs'}</span>
         </div>
       {/if}
 
@@ -206,6 +206,14 @@
               </div>
             {/if}
 
+            <!-- Floating Grabs Badge on Cover -->
+            {#if rec.used_count && rec.used_count > 0}
+              <div class="card-cover-grabs-pill" title="Community Downloads">
+                <Icon name="bolt" size={10} color="#00f0a0" strokeWidth={2.5} />
+                <span>{rec.used_count} {rec.used_count === 1 ? 'grab' : 'grabs'}</span>
+              </div>
+            {/if}
+
             <div class="card-cover-overlay">
               <button 
                 type="button"
@@ -225,15 +233,7 @@
               <span class="badge badge-{rec.freshness || 'fresh'}">
                 {(rec.freshness || 'fresh').toUpperCase()} ({rec.age_str || 'recent'})
               </span>
-              <div class="card-meta-top-right">
-                {#if rec.used_count && rec.used_count > 0}
-                  <span class="badge-downloads" title="Community downloads count">
-                    <Icon name="bolt" size={10} color="var(--accent-primary)" />
-                    <span>{rec.used_count} grabs</span>
-                  </span>
-                {/if}
-                <span class="card-parts-count">{rec.total_parts} Parts</span>
-              </div>
+              <span class="card-parts-count">{rec.total_parts} Parts</span>
             </div>
 
             <h3 class="card-title" title={rec.title} on:click={() => handleInstantLoad(rec)}>{rec.title}</h3>
@@ -378,23 +378,25 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  .card-meta-top-right {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .badge-downloads {
+  .card-cover-grabs-pill {
+    position: absolute;
+    top: 8px;
+    left: 8px;
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 12px;
     font-size: 10px;
     font-weight: 700;
-    color: var(--accent-primary);
-    background: rgba(0, 240, 160, 0.1);
-    padding: 2px 6px;
-    border-radius: 6px;
-    border: 1px solid rgba(0, 240, 160, 0.18);
+    color: #ffffff;
+    background: rgba(10, 14, 22, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 240, 160, 0.4);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    z-index: 2;
+    letter-spacing: 0.2px;
   }
 
   .filter-pill {

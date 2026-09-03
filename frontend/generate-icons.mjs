@@ -37,9 +37,13 @@ await sharp(svgBuffer)
 // 3. Compile multi-resolution favicon.ico
 const icoBuffer = await pngToIco(['public/favicon-16.png', 'public/favicon-32.png']);
 await fs.writeFile('public/favicon.ico', icoBuffer);
+try {
+  await fs.writeFile('../app_icon.ico', icoBuffer);
+  await fs.writeFile('../dist_web/favicon.ico', icoBuffer);
+} catch {}
 
 // Cleanup temporary favicon PNGs
 await fs.unlink('public/favicon-16.png');
 await fs.unlink('public/favicon-32.png');
 
-console.log('All icon assets compiled successfully.');
+console.log('All icon assets compiled and synchronized to root app_icon.ico successfully.');
