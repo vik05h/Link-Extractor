@@ -1,0 +1,263 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import Icon from './icons/Icon.svelte';
+  import { playClickSound } from '../utils/audio';
+
+  export let isOpen: boolean = false;
+  export let onClose: () => void = () => {};
+  export let onLoadHistoryItem: (rec: any) => void = () => {};
+  export let onPushJd2: (urls: string[], title: string) => void = () => {};
+
+  let records: any[] = [];
+  let searchQuery: string = '';
+  let isLoading = false;
+
+  export function loadHistory() {
+    if (typeof window !== 'undefined' && (window as any).pywebview) {
+      isLoading = true;
+      (window as any).pywebview.api.get_history().then((data: any[]) => {
+        records = data || [];
+        isLoading = false;
+      });
+    }
+  }
+
+  $: if (isOpen) {
+    loadHistory();
+  }
+
+  function handleDelete(id: number, e: MouseEvent) {
+    e.stopPropagation();
+    playClickSound();
+    if (typeof window !== 'undefined' && (window as any).pywebview) {
+      (window as any).pywebview.api.delete_history_item(id).then(() => {
+        records = records.filter(r => r.id !== id);
+      });
+    }
+  }
+
+  function handleSelect(rec: any) {
+    playClickSound();
+    onClose();
+    onLoadHistoryItem(rec);
+  }
+
+  function handlePush(rec: any, e: MouseEvent) {
+    e.stopPropagation();
+    playClickSound();
+    onPushJd2(rec.resolved_links || [], rec.game_title);
+  }
+
+  $: filteredRecords = records.filter(r => 
+    !searchQuery || r.game_title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+</script>
+
+{#if isOpen}
+  <div class="modal-backdrop" on:click={onClose} role="dialog" aria-modal="true">
+    <div class="modal-card glass-panel" on:click|stopPropagation role="document">
+      <div class="modal-header">
+        <div class="modal-title">
+          <Icon name="history" size={16} color="var(--accent-primary)" />
+          <span>EXTRACTION VAULT ARCHIVE</span>
+        </div>
+        <button type="button" class="btn-close" on:click={onClose} aria-label="Close dialog">
+          <Icon name="close" size={16} />
+        </button>
+      </div>
+
+      <div class="modal-search">
+        <input 
+          type="text" 
+          class="glass-input" 
+          placeholder="Search saved repacks in SQLite history..." 
+          bind:value={searchQuery}
+        />
+      </div>
+
+      <div class="modal-body">
+        {#if isLoading}
+          <div class="loading-state">Loading history...</div>
+        {:else if filteredRecords.length === 0}
+          <div class="empty-state">No saved extractions found in database.</div>
+        {:else}
+          <div class="records-list">
+            {#each filteredRecords as r (r.id)}
+              <div 
+                class="history-item glass-card" 
+                on:click={() => handleSelect(r)}
+              >
+                <div class="history-info">
+                  <div class="history-title">{r.game_title}</div>
+                  <div class="history-meta">
+                    <span>{r.parts_count} Parts</span>
+                    <span>•</span>
+                    <span class="meta-size">{r.total_size || '0 B'}</span>
+                    <span>•</span>
+                    <span>{r.created_at || 'Recently'}</span>
+                  </div>
+                </div>
+
+                <div class="history-actions">
+                  <button 
+                    type="button" 
+                    class="btn-secondary btn-sm"
+                    title="Push directly to JDownloader 2"
+                    on:click={(e) => handlePush(r, e)}
+                  >
+                    <span>Push JD2</span>
+                  </button>
+                  <button 
+                    type="button" 
+                    class="btn-icon-sm btn-delete"
+                    title="Delete record from SQLite"
+                    on:click={(e) => handleDelete(r.id, e)}
+                  >
+                    <Icon name="trash" size={13} />
+                  </button>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .modal-card {
+    width: 600px;
+    max-width: 95%;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    background: rgba(14, 18, 27, 0.96);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .modal-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--accent-primary);
+  }
+
+  .btn-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-close:hover {
+    color: var(--text-primary);
+  }
+
+  .modal-search {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+  }
+
+  .records-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    text-align: left;
+    width: 100%;
+  }
+
+  .history-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--accent-primary);
+  }
+
+  .history-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .history-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .history-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  .meta-size {
+    color: var(--accent-primary);
+    font-weight: 600;
+  }
+
+  .history-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn-delete:hover {
+    border-color: var(--status-expired);
+    color: var(--status-expired);
+  }
+
+  .loading-state, .empty-state {
+    text-align: center;
+    padding: 40px;
+    color: var(--text-secondary);
+  }
+</style>

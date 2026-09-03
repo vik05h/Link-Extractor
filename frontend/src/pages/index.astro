@@ -1,0 +1,17 @@
+---
+import '../styles/global.css';
+import MainApp from '../components/MainApp.svelte';
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="generator" content={Astro.generator} />
+    <title>Link Extractor</title>
+  </head>
+  <body>
+    <MainApp client:load />
+  </body>
+</html>

@@ -11,12 +11,23 @@ from typing import Optional, Dict, Any, Tuple, Callable, List
 
 import utils
 
-CURRENT_VERSION = "v3.5.0"
+CURRENT_VERSION = "v4.0.0"
 GITHUB_REPO = "vik05h/Link-Extractor"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
+    "v4.0.0": {
+        "title": "Next-Gen Gaming Hub UI/UX, Living Canvas & Defrag Mosaic",
+        "highlights": [
+            "Hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.",
+            "Living Canvas dynamic ambient backlighting extracting dominant palette from game cover art.",
+            "Interactive Defrag Mosaic visualizer for real-time multi-part status tracking.",
+            "Selective Repack Filter saving tens of gigabytes by filtering optional language and bonus packs.",
+            "Background Clipboard Sentinel and Web Audio API synthesized gaming sound haptics.",
+            "Crisp vector SVG iconography across the entire UI with zero emojis."
+        ]
+    },
     "v3.5.0": {
         "title": "Interactive Live In-App Guided Tour, Dynamic Spotlight Highlighting & Rebranding",
         "highlights": [

@@ -1,0 +1,17 @@
+{
+  "name": "link-extractor-frontend",
+  "version": "4.0.0",
+  "description": "Next-Gen Gaming Hub Frontend for FitGirl Link Extractor",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/svelte": "^7.0.4",
+    "astro": "^5.4.2",
+    "svelte": "^5.20.5"
+  }
+}

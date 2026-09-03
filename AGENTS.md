@@ -28,7 +28,8 @@ This document defines repository standards, architectural boundaries, runtime co
 | [`main.py`](file:///c:/Code/link/main.py) | Application entrypoint, Flet initialization, navigation rail, and screen switcher wiring. | Keep modular and minimal (< 150 lines); delegate screen layout and state to `ui/`. |
 | [`community.py`](file:///c:/Code/link/community.py) | Community Cloud Cache REST client (Firebase RTDB), local timezone intelligence, and 1-byte health checks. | Zero-SDK integration with standard `urllib`/`json`; enforce split metadata/payload schema and overwrite rules. |
 | [`utils.py`](file:///c:/Code/link/utils.py) | Path resolution (`get_app_data_dir`, `get_export_dir`), settings I/O, and Win32 icon binding. | Never hardcode local paths or `%TEMP%` when frozen. |
-| [`ui/`](file:///c:/Code/link/ui/) | Modular UI package containing presets (`constants.py`), state models (`state.py`), and screen components (`screens/`). | Screens export clean builder functions; never mutate global state directly without `AppState` / `UIContext`. |
+| [`bridge.py`](file:///c:/Code/link/bridge.py) | High-speed RPC Bridge connecting Python workers to the hardware-accelerated WebView2 frontend. | Use private attributes (`self._window`) to prevent COM recursion during JS reflection. |
+| [`frontend/`](file:///c:/Code/link/frontend/) | Next-gen Astro + Svelte + Web Audio frontend (Living Canvas, Defrag Mosaic, Discovery Hub, Apple Liquid Glass). | Keep zero emojis, use `<Icon />` SVG components, and build to `dist_web/`. |
 | [`engine.py`](file:///c:/Code/link/engine.py) | Playwright asynchronous multi-tab worker pool & Cloudflare Turnstile bypass. | Share a single browser context across concurrent tabs to minimize memory footprint. Use detected browser channel (Chrome/Edge). |
 | [`scraper.py`](file:///c:/Code/link/scraper.py) | HTML parsing for FitGirl game pages, pastebins, cover art, and direct links. | Use `urllib.parse` and BeautifulSoup/lxml with defensive fallbacks for missing mirrors. |
 | [`validator.py`](file:///c:/Code/link/validator.py) | Rapid 1-byte HTTP Range GET requests to verify links and aggregate total repack sizes. | Always sanitize filenames extracted from `Content-Disposition`. |
@@ -47,7 +48,7 @@ python main.py
 
 ### Validate Syntax Across Modules
 ```powershell
-python -c "import main, engine, scraper, validator, history, integrations, updater, utils, community; from ui import constants, state; from ui.screens import extractor, community as comm_screen, pipeline, history as hist_screen, settings; print('All Phase 3 modules OK')"
+python -c "import main, bridge, engine, scraper, validator, history, integrations, updater, utils, community; print('All Phase 4 modules OK')"
 ```
 
 ### Build Standalone Executable
