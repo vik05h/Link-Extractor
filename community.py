@@ -425,19 +425,17 @@ def ping_presence(session_id: str, app_version: str = "", firebase_url: Optional
     Prunes stale sessions (>180s old) asynchronously to guarantee database stays < 10 KB.
     Returns the current count of active online gamers.
     """
-    if not session_id:
-        return 1
-
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
     now_iso = get_current_utc_iso()
-    session_clean = re.sub(r'[^a-zA-Z0-9_-]', '', session_id)[:32]
-    endpoint = f"{base_url}/presence/{session_clean}.json"
+    session_clean = re.sub(r'[^a-zA-Z0-9_-]', '', session_id or "")[:32]
+    endpoint = f"{base_url}/games_meta/grand-theft-auto-v/presence/{session_clean}.json"
 
     # 1. Heartbeat PUT (~30 bytes)
-    _http_request(endpoint, method="PUT", data={"t": now_iso, "v": app_version or updater.CURRENT_VERSION}, timeout=4.0)
+    if session_clean:
+        _http_request(endpoint, method="PUT", data={"t": now_iso, "v": app_version or updater.CURRENT_VERSION}, timeout=4.0)
 
     # 2. Get all presence sessions
-    all_presence = _http_request(f"{base_url}/presence.json", method="GET", timeout=4.0)
+    all_presence = _http_request(f"{base_url}/games_meta/grand-theft-auto-v/presence.json", method="GET", timeout=4.0)
     if not isinstance(all_presence, dict):
         return 1
 
@@ -464,7 +462,7 @@ def ping_presence(session_id: str, app_version: str = "", firebase_url: Optional
         def _prune_worker(keys):
             for k in keys[:15]:
                 try:
-                    _http_request(f"{base_url}/presence/{k}.json", method="DELETE", timeout=3.0)
+                    _http_request(f"{base_url}/games_meta/grand-theft-auto-v/presence/{k}.json", method="DELETE", timeout=3.0)
                 except Exception:
                     pass
         threading.Thread(target=_prune_worker, args=(stale_keys,), daemon=True).start()
@@ -487,19 +485,9 @@ def increment_game_usage(slug: str, firebase_url: Optional[str] = None) -> int:
         current_count = int(game_meta.get("used_count", 0))
 
     new_count = current_count + 1
-    # Patch game record
+    # Patch game record in Firebase RTDB
     _http_request(meta_url, method="PATCH", data={"used_count": new_count}, timeout=4.0)
-
-    # Increment global stats in background
-    def _inc_global():
-        try:
-            stats_url = f"{base_url}/stats/total_community_grabs.json"
-            curr_glob = _http_request(stats_url, method="GET", timeout=4.0) or 0
-            new_glob = int(curr_glob) + 1 if isinstance(curr_glob, (int, float)) else 1
-            _http_request(stats_url, method="PUT", data=new_glob, timeout=4.0)
-        except Exception:
-            pass
-    threading.Thread(target=_inc_global, daemon=True).start()
+    invalidate_community_cache()
 
     return new_count
 
@@ -508,19 +496,14 @@ def get_community_stats(firebase_url: Optional[str] = None) -> Dict[str, Any]:
     """Retrieve live online gamers count and total community grabs."""
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
 
-    # Global grabs
-    total_grabs = 0
-    try:
-        tg_data = _http_request(f"{base_url}/stats/total_community_grabs.json", method="GET", timeout=3.0)
-        if isinstance(tg_data, (int, float)):
-            total_grabs = int(tg_data)
-    except Exception:
-        pass
+    # Global grabs - aggregated directly from Firebase records
+    games = get_community_games(firebase_url)
+    total_grabs = sum(int(g.get("used_count", 0)) for g in games if isinstance(g, dict))
 
     # Live gamers count
     live_count = 1
     try:
-        all_presence = _http_request(f"{base_url}/presence.json", method="GET", timeout=3.0)
+        all_presence = _http_request(f"{base_url}/games_meta/grand-theft-auto-v/presence.json", method="GET", timeout=3.0)
         if isinstance(all_presence, dict):
             now_dt = datetime.now(timezone.utc)
             count = 0

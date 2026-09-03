@@ -232,7 +232,9 @@
                 <td class="filename-cell" title={p.filename}>
                   {p.filename || `Part ${p.index}`}
                 </td>
-                <td class="font-mono">{p.size || '1-Byte Range Pending'}</td>
+                <td class="font-mono" class:pending-size={!p.size || p.size === '0 B' || p.size === 'Pending'}>
+                  {(!p.size || p.size === '0 B' || p.size === 'Pending') ? '1-Byte Range Pending' : p.size}
+                </td>
                 <td>
                   <span class="table-status {p.status}">
                     {p.status.toUpperCase()}
@@ -543,6 +545,12 @@
   .excluded-row {
     opacity: 0.35;
     text-decoration: line-through;
+  }
+
+  .pending-size {
+    color: var(--text-muted);
+    font-style: italic;
+    opacity: 0.8;
   }
 
   .table-status {

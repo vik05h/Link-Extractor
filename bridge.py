@@ -369,7 +369,7 @@ class AppBridge:
                     "url": p_url,
                     "filename": clean_name,
                     "status": "pending",
-                    "size": "0 B"
+                    "size": "Pending"
                 })
             self.dispatch_event("pipeline:init_parts", parts_payload)
 
@@ -417,6 +417,7 @@ class AppBridge:
                     self.dispatch_event("pipeline:val_update", {
                         "current": curr,
                         "total": tot,
+                        "url": p_url,
                         "size": p_size,
                         "valid": is_ok
                     })

@@ -179,8 +179,18 @@
     showToast(`Loaded ${rec.game_title} from History!`);
   }
 
+  let activeGameSlug = '';
+
+  function trackActiveGameUsage() {
+    const slug = activeGameSlug || (sourceUrl ? sourceUrl.split('/').filter(Boolean).pop() : '') || gameTitle;
+    if (slug && typeof window !== 'undefined' && (window as any).pywebview?.api?.track_game_usage) {
+      (window as any).pywebview.api.track_game_usage(slug).catch(() => {});
+    }
+  }
+
   // Push to JDownloader 2
   function handlePushToJd2(urls: string[], title: string) {
+    trackActiveGameUsage();
     if (!urls || urls.length === 0) {
       showToast('No URLs available to push to JDownloader 2.');
       return;
@@ -211,6 +221,7 @@
 
   // Export URLs
   function handleExport(format: 'txt' | 'json' | 'crawljob', urls: string[], title: string) {
+    trackActiveGameUsage();
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.export_urls(format, urls, title, totalSizeStr).then((res: any) => {
         showToast(res.message || 'Export complete!');
@@ -220,6 +231,7 @@
 
   // Copy all direct URLs
   function handleCopyAll(urls: string[]) {
+    trackActiveGameUsage();
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.copy_to_clipboard(urls.join('\n')).then(() => {
         showToast(`Copied all ${urls.length} direct links to clipboard!`);
@@ -360,6 +372,12 @@
       const v = e.detail;
       if (v) {
         logs = [...logs, `[Validator] Verified: ${v.current}/${v.total} (${v.size})`];
+        parts = parts.map((p, idx) => {
+          if (idx + 1 === v.current || p.direct_url === v.url || p.url === v.url) {
+            return { ...p, size: v.size };
+          }
+          return p;
+        });
       }
     });
 
