@@ -77,7 +77,14 @@
     }
   }
 
-  function handleInstantLoad(rec: GameRecord) {
+  function handleCardPreview(rec: GameRecord) {
+    playClickSound();
+    // Preview/load game into Stage without incrementing grab count
+    onLoadRecord(rec);
+  }
+
+  function handleInstantLoad(rec: GameRecord, e?: MouseEvent) {
+    if (e) e.stopPropagation();
     playClickSound();
     rec.used_count = (rec.used_count || 0) + 1;
     totalGrabs += 1;
@@ -113,12 +120,12 @@
   <div class="hub-header-bar glass-panel">
     <div class="search-box-wrapper">
       <span class="search-icon">
-        <Icon name="search" size={15} color="var(--text-muted)" />
+        <Icon name="search" size={16} color="var(--text-muted)" />
       </span>
       <input 
         type="text" 
         class="glass-input search-input" 
-        placeholder="Search community pre-fetched repacks..."
+        placeholder="Search community pre-fetched repacks..." 
         bind:value={searchQuery} 
       />
     </div>
@@ -134,7 +141,7 @@
 
       {#if totalGrabs > 0}
         <div class="total-grabs-badge" title="Total repacks grabbed by community">
-          <Icon name="bolt" size={11} color="var(--accent-primary)" />
+          <Icon name="zap" size={12} color="var(--accent-primary)" />
           <span>{totalGrabs} {totalGrabs === 1 ? 'Grab' : 'Grabs'}</span>
         </div>
       {/if}
@@ -145,7 +152,8 @@
         class:active={selectedFilter === 'all'}
         on:click={() => { selectedFilter = 'all'; playClickSound(); }}
       >
-        All ({games.length})
+        <Icon name="layers" size={13} />
+        <span>All ({games.length})</span>
       </button>
       <button 
         type="button"
@@ -153,7 +161,8 @@
         class:active={selectedFilter === 'fresh'}
         on:click={() => { selectedFilter = 'fresh'; playClickSound(); }}
       >
-        <span class="pill-dot dot-fresh"></span> Fresh
+        <span class="pill-dot dot-fresh"></span>
+        <span>Fresh</span>
       </button>
       <button 
         type="button"
@@ -161,7 +170,8 @@
         class:active={selectedFilter === 'aging'}
         on:click={() => { selectedFilter = 'aging'; playClickSound(); }}
       >
-        <span class="pill-dot dot-aging"></span> Aging
+        <span class="pill-dot dot-aging"></span>
+        <span>Aging</span>
       </button>
       <button 
         type="button"
@@ -169,11 +179,12 @@
         class:active={selectedFilter === 'expired'}
         on:click={() => { selectedFilter = 'expired'; playClickSound(); }}
       >
-        <span class="pill-dot dot-expired"></span> Expired
+        <span class="pill-dot dot-expired"></span>
+        <span>Expired</span>
       </button>
 
       <button type="button" class="btn-icon" title="Refresh Community Feed" on:click={() => { onRefresh(); pingPresence(); }}>
-        <Icon name="refresh" size={15} />
+        <Icon name="refresh" size={16} />
       </button>
     </div>
   </div>
@@ -197,19 +208,19 @@
       {#each filteredGames as rec (rec.slug)}
         <div class="game-poster-card glass-card">
           <!-- Poster Image -->
-          <div class="card-cover-container" on:click={() => handleInstantLoad(rec)}>
+          <div class="card-cover-container" on:click={() => handleCardPreview(rec)}>
             {#if rec.image_url}
               <img src={rec.image_url} alt={rec.title} class="card-cover" loading="lazy" />
             {:else}
               <div class="card-cover-placeholder">
-                <Icon name="gamepad" size={32} color="var(--accent-primary)" />
+                <Icon name="gamepad" size={36} color="var(--accent-primary)" />
               </div>
             {/if}
 
             <!-- Floating Grabs Badge on Cover -->
             {#if rec.used_count && rec.used_count > 0}
               <div class="card-cover-grabs-pill" title="Community Downloads">
-                <Icon name="bolt" size={10} color="#00f0a0" strokeWidth={2.5} />
+                <Icon name="zap" size={11} color="#00f0a0" strokeWidth={2.5} />
                 <span>{rec.used_count} {rec.used_count === 1 ? 'grab' : 'grabs'}</span>
               </div>
             {/if}
@@ -233,26 +244,32 @@
               <span class="badge badge-{rec.freshness || 'fresh'}">
                 {(rec.freshness || 'fresh').toUpperCase()} ({rec.age_str || 'recent'})
               </span>
-              <span class="card-parts-count">{rec.total_parts} Parts</span>
+              <span class="card-parts-count">
+                <Icon name="package" size={12} color="var(--text-muted)" />
+                <span>{rec.total_parts} Parts</span>
+              </span>
             </div>
 
-            <h3 class="card-title" title={rec.title} on:click={() => handleInstantLoad(rec)}>{rec.title}</h3>
+            <h3 class="card-title" title={rec.title} on:click={() => handleCardPreview(rec)}>{rec.title}</h3>
 
             <div class="card-meta-bottom">
               <span class="card-time">
-                <Icon name="clock" size={11} color="var(--text-muted)" />
+                <Icon name="clock" size={12} color="var(--text-muted)" />
                 <span>{rec.local_time || 'Recently'}</span>
               </span>
-              <strong class="card-size">{rec.total_size_str || '0 B'}</strong>
+              <div class="card-size-wrapper">
+                <Icon name="hard-drive" size={12} color="var(--accent-primary)" />
+                <strong class="card-size">{rec.total_size_str || '0 B'}</strong>
+              </div>
             </div>
 
             <div class="card-actions-row">
               <button 
                 type="button"
                 class="btn-primary btn-sm"
-                on:click={() => handleInstantLoad(rec)}
+                on:click={(e) => handleInstantLoad(rec, e)}
               >
-                <Icon name="bolt" size={13} color="#ffffff" strokeWidth={2.5} />
+                <Icon name="zap" size={14} color="#ffffff" strokeWidth={2.5} />
                 <span>Instant Load (0s)</span>
               </button>
 
@@ -262,6 +279,7 @@
                 title="Push directly to JDownloader 2"
                 on:click={(e) => handleQuickPushJd(rec, e)}
               >
+                <Icon name="external-link" size={13} />
                 <span>JD2</span>
               </button>
             </div>
@@ -439,9 +457,9 @@
   /* Poster Grid */
   .games-poster-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
     grid-auto-rows: min-content;
-    gap: 16px;
+    gap: 18px;
     flex: 1;
     overflow-y: auto;
     padding: 4px 6px 40px 2px;
@@ -451,7 +469,7 @@
   .game-poster-card {
     display: flex;
     flex-direction: column;
-    min-height: 310px;
+    min-height: 330px;
     height: auto;
     overflow: hidden;
     cursor: pointer;
@@ -473,8 +491,8 @@
   .card-cover-container {
     position: relative;
     width: 100%;
-    height: 145px;
-    min-height: 145px;
+    height: 160px;
+    min-height: 160px;
     background: rgba(0, 0, 0, 0.4);
     overflow: hidden;
     flex-shrink: 0;
@@ -513,9 +531,9 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 3px 8px;
+    padding: 4px 9px;
     border-radius: 12px;
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 700;
     background: rgba(10, 12, 18, 0.9);
     backdrop-filter: blur(8px);
@@ -530,10 +548,10 @@
   }
 
   .card-body {
-    padding: 12px 14px;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 9px;
     flex: 1;
     width: 100%;
   }
@@ -545,13 +563,16 @@
   }
 
   .card-parts-count {
-    font-size: 11px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11.5px;
     color: var(--text-muted);
     font-family: var(--font-mono);
   }
 
   .card-title {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.35;
@@ -559,15 +580,27 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    min-height: 35px;
+    min-height: 38px;
   }
 
   .card-meta-bottom {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 11px;
+    font-size: 11.5px;
     color: var(--text-secondary);
+  }
+
+  .card-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .card-size-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
   }
 
   .card-time {

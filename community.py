@@ -182,15 +182,35 @@ def _http_request(url: str, method: str = "GET", data: Optional[Dict[str, Any]] 
         return None
 
 
-def get_community_games(firebase_url: Optional[str] = None) -> List[Dict[str, Any]]:
+_COMMUNITY_GAMES_CACHE: Optional[List[Dict[str, Any]]] = None
+_COMMUNITY_GAMES_CACHE_TIME: float = 0.0
+_COMMUNITY_CACHE_LOCK = threading.Lock()
+
+
+def invalidate_community_cache():
+    """Invalidates the in-memory community feed cache."""
+    global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
+    with _COMMUNITY_CACHE_LOCK:
+        _COMMUNITY_GAMES_CACHE = None
+        _COMMUNITY_GAMES_CACHE_TIME = 0.0
+
+
+def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """
     Fetch all game metadata records from Community Cloud Firebase Realtime Database.
+    Cached in-memory for 25 seconds for instant multi-client response times.
     Falls back gracefully to local demo data if server is unreachable.
     """
+    global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
+
+    now = time.time()
+    if not force_refresh and _COMMUNITY_GAMES_CACHE is not None and (now - _COMMUNITY_GAMES_CACHE_TIME < 25.0):
+        return _COMMUNITY_GAMES_CACHE
+
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
     endpoint = f"{base_url}/games_meta.json"
 
-    data = _http_request(endpoint, method="GET", timeout=5.0)
+    data = _http_request(endpoint, method="GET", timeout=4.0)
 
     results = []
     if isinstance(data, dict) and data:
@@ -205,17 +225,6 @@ def get_community_games(firebase_url: Optional[str] = None) -> List[Dict[str, An
                 rec["age_str"] = age_str
                 rec["freshness"] = fresh
                 results.append(rec)
-
-        # Asynchronously enrich generic pastebin records in background
-        generic_items = [
-            r for r in results
-            if r.get("title") in ("FitGirl Pastebin Download", "FuckingFast Direct Parts") or not r.get("image_url")
-        ]
-        if generic_items:
-            def _enrich_worker():
-                for gi in generic_items[:3]:
-                    enrich_generic_record(gi["slug"], base_url)
-            threading.Thread(target=_enrich_worker, daemon=True).start()
     else:
         # Fallback to local demo repository
         for slug, item in DEMO_COMMUNITY_DATA.items():
@@ -233,6 +242,11 @@ def get_community_games(firebase_url: Optional[str] = None) -> List[Dict[str, An
         return r.get("timestamp_utc", "")
 
     results.sort(key=_sort_key, reverse=True)
+
+    with _COMMUNITY_CACHE_LOCK:
+        _COMMUNITY_GAMES_CACHE = results
+        _COMMUNITY_GAMES_CACHE_TIME = time.time()
+
     return results
 
 

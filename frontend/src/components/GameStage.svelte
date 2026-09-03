@@ -94,6 +94,7 @@
           <span><strong>{resolvedPartsCount}</strong> / {parts.length} Parts Resolved</span>
         </span>
         <span class="meta-pill size-pill">
+          <Icon name="hard-drive" size={13} color="var(--accent-primary)" />
           <span>Total Size: <strong>{totalSizeStr}</strong></span>
         </span>
         <span class="meta-status">

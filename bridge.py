@@ -131,10 +131,15 @@ class AppBridge:
     # Community Cloud Cache APIs
     # ==========================================
 
-    def get_community_feed(self) -> List[Dict[str, Any]]:
+    def get_community_feed(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
         """Fetches trending pre-resolved games from Community Firebase Cache."""
-        fb_url = self._settings.get("community_firebase_url")
-        return community.get_community_games(fb_url)
+        try:
+            fb_url = self._settings.get("community_firebase_url")
+            games = community.get_community_games(fb_url, force_refresh=force_refresh)
+            return games or []
+        except Exception as err:
+            print(f"[Bridge Error] get_community_feed: {err}")
+            return []
 
     def get_game_by_slug(self, slug: str) -> Dict[str, Any]:
         """Queries single game metadata by slug."""
@@ -175,6 +180,99 @@ class AppBridge:
         """Fetches live user count and global grabs."""
         fb_url = self._settings.get("community_firebase_url")
         return community.get_community_stats(fb_url)
+
+    def extract_game_palette(self, image_url: str) -> Dict[str, Any]:
+        """
+        Downloads game cover art via Python (bypassing browser CORS restrictions),
+        analyzes pixels using PIL and HSV space, and returns the signature vibrant
+        primary and harmonic secondary colors for YouTube-style ambient mode.
+        """
+        if not image_url or not isinstance(image_url, str):
+            return {
+                "primary": [16, 185, 129],
+                "secondary": [6, 182, 212],
+                "glow": "rgba(16, 185, 129, 0.35)"
+            }
+
+        if not hasattr(self, "_palette_cache"):
+            self._palette_cache = {}
+
+        if image_url in self._palette_cache:
+            return self._palette_cache[image_url]
+
+        try:
+            import urllib.request
+            import io
+            import colorsys
+            from PIL import Image
+
+            req = urllib.request.Request(
+                image_url,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            )
+            data = urllib.request.urlopen(req, timeout=5.0).read()
+            img = Image.open(io.BytesIO(data)).convert("RGB").resize((48, 48))
+
+            pixels = [img.getpixel((x, y)) for y in range(48) for x in range(48)]
+
+            scored = []
+            for r, g, b in pixels:
+                h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+                # Filter out pure whites, deep blacks, and muddy greys
+                if 0.16 < v < 0.95 and s > 0.22:
+                    score = (s * 2.0) + (1.0 - abs(v - 0.55))
+                    scored.append((score, (r, g, b), h))
+
+            if scored:
+                scored.sort(key=lambda item: item[0], reverse=True)
+                raw_primary = scored[0][1]
+                primary_h = scored[0][2]
+
+                # Boost brightness slightly for vibrant dark-theme readability
+                p_r = min(245, max(35, int(raw_primary[0] * 1.3)))
+                p_g = min(245, max(35, int(raw_primary[1] * 1.3)))
+                p_b = min(245, max(35, int(raw_primary[2] * 1.3)))
+                primary_rgb = (p_r, p_g, p_b)
+
+                secondary_rgb = None
+                for _, rgb, h in scored[1:]:
+                    hue_diff = abs(h - primary_h)
+                    if hue_diff > 0.5:
+                        hue_diff = 1.0 - hue_diff
+                    if hue_diff > 0.10 or abs(rgb[0] - raw_primary[0]) > 50:
+                        s_r = min(245, max(35, int(rgb[0] * 1.25)))
+                        s_g = min(245, max(35, int(rgb[1] * 1.25)))
+                        s_b = min(245, max(35, int(rgb[2] * 1.25)))
+                        secondary_rgb = (s_r, s_g, s_b)
+                        break
+
+                if not secondary_rgb:
+                    s_r = min(245, max(35, int(primary_rgb[0] * 0.7 + 45)))
+                    s_g = min(245, max(35, int(primary_rgb[1] * 0.85 + 50)))
+                    s_b = min(245, max(35, int(primary_rgb[2] * 1.25 + 60)))
+                    secondary_rgb = (s_r, s_g, s_b)
+
+                result = {
+                    "primary": list(primary_rgb),
+                    "secondary": list(secondary_rgb),
+                    "glow": f"rgba({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]}, 0.4)"
+                }
+                self._palette_cache[image_url] = result
+                return result
+        except Exception:
+            pass
+
+        # Deterministic fallback from url hash if network fails
+        import colorsys
+        h_val = sum(ord(c) for c in image_url) % 360
+        r_f, g_f, b_f = [int(x * 255) for x in colorsys.hsv_to_rgb(h_val / 360.0, 0.85, 0.65)]
+        fallback = {
+            "primary": [r_f, g_f, b_f],
+            "secondary": [min(255, r_f + 40), max(10, g_f - 30), max(10, b_f - 20)],
+            "glow": f"rgba({r_f}, {g_f}, {b_f}, 0.35)"
+        }
+        self._palette_cache[image_url] = fallback
+        return fallback
 
     # ==========================================
     # Extraction Pipeline

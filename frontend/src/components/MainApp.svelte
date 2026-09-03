@@ -25,13 +25,13 @@
 
   // Community Feed State
   let communityGames: GameRecord[] = [];
-  let isCommunityLoading = false;
+  let isCommunityLoading = true;
 
   // Modals & Sound
   let settingsOpen = false;
   let historyOpen = false;
   let audioMuted = false;
-  let currentTheme = 'cyber';
+  let currentTheme = 'adaptive';
 
   // URL Input
   let inputUrl = '';
@@ -227,14 +227,62 @@
     }
   }
 
+  let isFetchingCommunity = false;
+
   // Refresh Community Feed
-  function refreshCommunity() {
-    if (typeof window !== 'undefined' && (window as any).pywebview) {
-      isCommunityLoading = true;
-      (window as any).pywebview.api.get_community_feed().then((data: GameRecord[]) => {
-        communityGames = data || [];
+  function refreshCommunity(force: boolean = false) {
+    if (isFetchingCommunity && !force) return;
+    isFetchingCommunity = true;
+    isCommunityLoading = true;
+
+    function executeFetch() {
+      if (typeof window !== 'undefined' && (window as any).pywebview?.api?.get_community_feed) {
+        (window as any).pywebview.api.get_community_feed(force)
+          .then((data: GameRecord[]) => {
+            if (data && Array.isArray(data)) {
+              communityGames = data;
+            }
+            isCommunityLoading = false;
+            isFetchingCommunity = false;
+          })
+          .catch((err: any) => {
+            console.error('[Community] API error:', err);
+            isCommunityLoading = false;
+            isFetchingCommunity = false;
+          });
+      } else {
         isCommunityLoading = false;
-      });
+        isFetchingCommunity = false;
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      if ((window as any).pywebview?.api?.get_community_feed) {
+        executeFetch();
+      } else {
+        let bridgePoll: any = null;
+        const onReady = () => {
+          window.removeEventListener('pywebviewready', onReady);
+          if (bridgePoll) clearInterval(bridgePoll);
+          executeFetch();
+        };
+        window.addEventListener('pywebviewready', onReady);
+
+        let count = 0;
+        bridgePoll = setInterval(() => {
+          count++;
+          if ((window as any).pywebview?.api?.get_community_feed) {
+            clearInterval(bridgePoll);
+            window.removeEventListener('pywebviewready', onReady);
+            executeFetch();
+          } else if (count > 40) {
+            clearInterval(bridgePoll);
+            window.removeEventListener('pywebviewready', onReady);
+            isCommunityLoading = false;
+            isFetchingCommunity = false;
+          }
+        }, 100);
+      }
     }
   }
 
@@ -344,21 +392,18 @@
     document.documentElement.setAttribute('data-theme', currentTheme);
   }
 
+  $: activeNavIndex = historyOpen ? 2 : (currentView === 'stage' ? 1 : 0);
+
   onMount(() => {
     if (typeof window !== 'undefined') {
-      currentTheme = localStorage.getItem('app_theme') || 'cyber';
+      currentTheme = localStorage.getItem('app_theme') || 'adaptive';
       document.documentElement.setAttribute('data-theme', currentTheme);
       audioMuted = isAudioMuted();
 
       setupEventListeners();
       window.addEventListener('keydown', handleGlobalKeydown);
 
-      const checkBridge = setInterval(() => {
-        if ((window as any).pywebview && (window as any).pywebview.api) {
-          clearInterval(checkBridge);
-          refreshCommunity();
-        }
-      }, 100);
+      refreshCommunity();
     }
   });
 
@@ -371,7 +416,7 @@
 
 <div class="app-layout-root">
   <!-- Living Canvas Ambient Color Bleed Background -->
-  <LivingCanvas {coverUrl} theme={currentTheme} />
+  <LivingCanvas {coverUrl} theme={currentTheme} activeView={currentView} />
 
   <!-- Hidden SVG Filter for Apple Liquid Glass Refraction Effect -->
   <svg style="position: absolute; width: 0; height: 0; pointer-events: none;" aria-hidden="true">
@@ -392,45 +437,58 @@
       type="button" 
       class="sidebar-logo-btn" 
       title="Link Extractor v3.8"
-      on:click={() => { currentView = 'community'; playClickSound(); }}
+      on:click={() => { currentView = 'community'; historyOpen = false; playClickSound(); }}
     >
       <div class="logo-mark">
         <img src="/favicon.svg" alt="Link Extractor" class="brand-logo-img" />
       </div>
     </button>
 
-    <!-- Navigation Icon Group -->
-    <nav class="sidebar-nav">
+    <!-- Navigation Icon Group with Liquid Glass Magnifying Lens -->
+    <nav class="sidebar-nav" style="--tab-offset: {activeNavIndex * 64}px">
+      <!-- Sliding Liquid Glass Lens Magnifier (kube.io liquid glass effect) -->
+      <div class="liquid-glass-lens" aria-hidden="true">
+        <div class="lens-specular-lip"></div>
+        <div class="lens-caustic-glare"></div>
+      </div>
+
       <button 
         type="button"
         class="sidebar-item" 
-        class:active={currentView === 'community'}
+        class:active={currentView === 'community' && !historyOpen}
         title="Community Hub (Ctrl+1)"
-        on:click={() => { currentView = 'community'; playClickSound(); }}
+        on:click={() => { currentView = 'community'; historyOpen = false; playClickSound(); }}
       >
-        <Icon name="globe" size={20} />
-        <span class="nav-label">Hub</span>
+        <div class="tab-content-zoom">
+          <Icon name="globe" size={20} />
+          <span class="nav-label">Hub</span>
+        </div>
       </button>
 
       <button 
         type="button"
         class="sidebar-item" 
-        class:active={currentView === 'stage'}
+        class:active={currentView === 'stage' && !historyOpen}
         title="Active Game Stage (Ctrl+2)"
-        on:click={() => { currentView = 'stage'; playClickSound(); }}
+        on:click={() => { currentView = 'stage'; historyOpen = false; playClickSound(); }}
       >
-        <Icon name="gamepad" size={20} />
-        <span class="nav-label">Stage</span>
+        <div class="tab-content-zoom">
+          <Icon name="gamepad" size={20} />
+          <span class="nav-label">Stage</span>
+        </div>
       </button>
 
       <button 
         type="button"
         class="sidebar-item" 
+        class:active={historyOpen}
         title="Extraction Vault / History (Ctrl+3)"
         on:click={() => { historyOpen = true; playClickSound(); }}
       >
-        <Icon name="history" size={20} />
-        <span class="nav-label">Vault</span>
+        <div class="tab-content-zoom">
+          <Icon name="history" size={20} />
+          <span class="nav-label">Vault</span>
+        </div>
       </button>
     </nav>
 
@@ -670,7 +728,58 @@
     align-items: center;
   }
 
+  /* Kube.io Liquid Glass Magnifying Lens */
+  .liquid-glass-lens {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    pointer-events: none;
+    z-index: 0;
+    transform: translateY(var(--tab-offset));
+    transition: transform 0.44s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.6s ease;
+    background: 
+      radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.38) 0%, transparent 60%),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(0, 0, 0, 0.3) 100%),
+      var(--accent-gradient);
+    backdrop-filter: blur(28px) saturate(220%) contrast(110%);
+    -webkit-backdrop-filter: blur(28px) saturate(220%) contrast(110%);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    box-shadow: 
+      inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.8),
+      inset 0 -1.5px 2px 0 rgba(0, 0, 0, 0.5),
+      0 8px 24px -6px rgba(0, 0, 0, 0.6),
+      0 0 24px var(--accent-glow);
+    overflow: hidden;
+  }
+
+  .lens-specular-lip {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, transparent 100%);
+    border-radius: 14px 14px 50% 50%;
+    pointer-events: none;
+  }
+
+  .lens-caustic-glare {
+    position: absolute;
+    bottom: -10px;
+    left: 20%;
+    right: 20%;
+    height: 18px;
+    background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+    filter: blur(4px);
+    pointer-events: none;
+  }
+
   .sidebar-item {
+    position: relative;
+    z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -678,29 +787,35 @@
     width: 48px;
     height: 48px;
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: transparent;
+    border: 1px solid transparent;
     color: var(--text-muted);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    gap: 3px;
+    transition: color 0.25s ease;
   }
 
-  .sidebar-item:hover {
+  .sidebar-item:hover:not(.active) {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.25);
-    transform: scale(1.05);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  .tab-content-zoom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .sidebar-item.active {
     color: #ffffff;
-    background: var(--accent-gradient);
-    border-color: rgba(255, 255, 255, 0.4);
-    box-shadow: 
-      inset 0 1px 1px rgba(255, 255, 255, 0.6),
-      0 0 18px var(--accent-glow);
-    transform: scale(1.06);
+  }
+
+  .sidebar-item.active .tab-content-zoom {
+    transform: scale(1.15);
+    filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.5));
   }
 
   .nav-label {
