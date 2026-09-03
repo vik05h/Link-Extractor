@@ -1,5 +1,6 @@
 <script lang="ts">
-  import DefragMosaic, { type PartItem } from './DefragMosaic.svelte';
+  import DefragMosaic from './DefragMosaic.svelte';
+  import type { PartItem } from '../types';
   import SelectiveFilter from './SelectiveFilter.svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../utils/audio';

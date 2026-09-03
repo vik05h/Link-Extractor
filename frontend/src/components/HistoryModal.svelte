@@ -1,21 +1,21 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound } from '../utils/audio';
+  import type { HistoryRecord } from '../types';
 
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
-  export let onLoadHistoryItem: (rec: any) => void = () => {};
+  export let onLoadHistoryItem: (rec: HistoryRecord) => void = () => {};
   export let onPushJd2: (urls: string[], title: string) => void = () => {};
 
-  let records: any[] = [];
+  let records: HistoryRecord[] = [];
   let searchQuery: string = '';
   let isLoading = false;
 
   export function loadHistory() {
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       isLoading = true;
-      (window as any).pywebview.api.get_history().then((data: any[]) => {
+      (window as any).pywebview.api.get_history().then((data: HistoryRecord[]) => {
         records = data || [];
         isLoading = false;
       });

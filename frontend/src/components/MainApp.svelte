@@ -2,12 +2,12 @@
   import { onMount, onDestroy } from 'svelte';
   import LivingCanvas from './LivingCanvas.svelte';
   import GameStage from './GameStage.svelte';
-  import DiscoveryHub, { type GameRecord } from './DiscoveryHub.svelte';
+  import DiscoveryHub from './DiscoveryHub.svelte';
   import SettingsModal from './SettingsModal.svelte';
   import HistoryModal from './HistoryModal.svelte';
   import ClipboardSentinel from './ClipboardSentinel.svelte';
   import Icon from './icons/Icon.svelte';
-  import type { PartItem } from './DefragMosaic.svelte';
+  import type { PartItem, GameRecord } from '../types';
   import { playClickSound, playSuccessChime, toggleAudioMute, isAudioMuted } from '../utils/audio';
 
   // Navigation View: 'community' or 'stage'
@@ -99,18 +99,43 @@
     currentView = 'stage';
     statusMessage = 'Loaded instant pre-fetched direct links from Community Cache!';
 
+    // Immediately populate part slots so Defrag Matrix renders instantly
+    const totalParts = rec.total_parts || 0;
+    if (totalParts > 0) {
+      parts = Array.from({ length: totalParts }, (_, i) => ({
+        index: i + 1,
+        url: '',
+        direct_url: '',
+        filename: `Part ${i + 1}`,
+        status: 'pending',
+        size: ''
+      }));
+    } else {
+      parts = [];
+    }
+
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.get_game_urls(rec.slug).then((urls: string[]) => {
-        parts = (urls || []).map((u, i) => ({
-          index: i + 1,
-          url: u,
-          direct_url: u,
-          filename: u.includes('#') ? u.split('#').pop() : `Part ${i + 1}`,
-          status: 'resolved',
-          size: rec.total_size_str
-        }));
-        logs = [`[Community] Loaded ${urls.length} verified direct links for ${rec.title}`];
-        showToast(`Loaded ${rec.title} with 0s wait!`);
+        if (urls && urls.length > 0) {
+          parts = urls.map((u, i) => {
+            const raw = u.includes('#') ? u.split('#').pop() : `Part ${i + 1}`;
+            return {
+              index: i + 1,
+              url: u,
+              direct_url: u,
+              filename: decodeURIComponent(raw || `Part ${i + 1}`),
+              status: 'resolved',
+              size: rec.total_size_str
+            };
+          });
+          logs = [`[Community] Loaded ${urls.length} verified direct links for ${rec.title}`];
+          showToast(`Loaded ${urls.length} parts for ${rec.title} with 0s wait!`);
+        } else {
+          showToast(`No links cached for ${rec.title}. Try live extraction.`);
+        }
+      }).catch((err: any) => {
+        console.error('Failed to get game URLs:', err);
+        showToast('Error loading game URLs from cache');
       });
     }
   }
@@ -138,9 +163,30 @@
 
   // Push to JDownloader 2
   function handlePushToJd2(urls: string[], title: string) {
+    if (!urls || urls.length === 0) {
+      showToast('No URLs available to push to JDownloader 2.');
+      return;
+    }
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.push_to_jd2(urls, title, sourceUrl).then((res: any) => {
-        showToast(res.message || 'Pushed to JDownloader 2!');
+        showToast(res?.message || 'Pushed to JDownloader 2!');
+      }).catch(() => {
+        showToast('Error communicating with JDownloader 2');
+      });
+    }
+  }
+
+  // Push community game directly to JDownloader 2
+  function handlePushCommunityGameToJd2(slug: string, title: string) {
+    if (typeof window !== 'undefined' && (window as any).pywebview) {
+      (window as any).pywebview.api.get_game_urls(slug).then((urls: string[]) => {
+        if (urls && urls.length > 0) {
+          handlePushToJd2(urls, title);
+        } else {
+          showToast(`No cached direct links found for ${title}.`);
+        }
+      }).catch(() => {
+        showToast(`Failed to load links for ${title}`);
       });
     }
   }
@@ -448,13 +494,7 @@
           games={communityGames}
           isLoading={isCommunityLoading}
           onLoadRecord={handleLoadCommunityRecord}
-          onPushJd2={(slug, title) => {
-            if (typeof window !== 'undefined' && (window as any).pywebview) {
-              (window as any).pywebview.api.get_game_urls(slug).then((urls: string[]) => {
-                handlePushToJd2(urls, title);
-              });
-            }
-          }}
+          onPushJd2={handlePushCommunityGameToJd2}
           onRefresh={refreshCommunity}
         />
       {/if}

@@ -28,11 +28,11 @@ from history import HistoryManager
 class AppBridge:
     def __init__(self):
         self._window = None
-        self.settings = utils.load_settings()
-        self.history_mgr = HistoryManager()
-        self.cancel_event = threading.Event()
-        self.is_running = False
-        self.current_engine: Optional[engine.ResolutionEngine] = None
+        self._settings = utils.load_settings()
+        self._history_mgr = HistoryManager()
+        self._cancel_event = threading.Event()
+        self._is_running = False
+        self._current_engine: Optional[engine.ResolutionEngine] = None
         self._clipboard_thread = None
         self._clipboard_running = False
         self._last_clipboard_val = ""
@@ -52,6 +52,10 @@ class AppBridge:
             self._window.evaluate_js(js_code)
         except Exception as err:
             print(f"[Bridge Event Error] {event_name}: {err}")
+
+    # ==========================================
+    # Window Controls
+    # ==========================================
 
     def minimize_window(self):
         """Minimizes the native desktop window."""
@@ -89,7 +93,7 @@ class AppBridge:
         def _sentinel_loop():
             while self._clipboard_running:
                 try:
-                    if self.settings.get("clipboard_sentinel_enabled", True):
+                    if self._settings.get("clipboard_sentinel_enabled", True):
                         clip_val = (pyperclip.paste() or "").strip()
                         if clip_val and clip_val != self._last_clipboard_val:
                             self._last_clipboard_val = clip_val
@@ -128,28 +132,32 @@ class AppBridge:
     # ==========================================
 
     def get_community_feed(self) -> List[Dict[str, Any]]:
-        """Fetches all community pre-fetched records from Firebase."""
-        fb_url = self.settings.get("community_firebase_url")
-        return community.get_community_feed(fb_url)
+        """Fetches trending pre-resolved games from Community Firebase Cache."""
+        fb_url = self._settings.get("community_firebase_url")
+        return community.get_community_games(fb_url)
 
     def get_game_by_slug(self, slug: str) -> Dict[str, Any]:
         """Queries single game metadata by slug."""
-        fb_url = self.settings.get("community_firebase_url")
+        fb_url = self._settings.get("community_firebase_url")
         data = community.get_game_by_slug(slug, fb_url)
         return data or {}
 
     def get_game_urls(self, slug: str) -> List[str]:
-        """Fetches direct download URLs for a game slug from Firebase."""
-        fb_url = self.settings.get("community_firebase_url")
+        """Fetches direct URLs for a specific community game slug."""
+        fb_url = self._settings.get("community_firebase_url")
         return community.get_game_urls(slug, fb_url)
 
     def check_health(self, url: str) -> Dict[str, Any]:
-        """Performs a 1-byte HTTP range health check on Part 1."""
-        is_alive, msg = community.check_link_health(url)
-        return {
-            "is_alive": is_alive,
-            "message": msg
-        }
+        """Performs 1-byte Range check to verify if direct link is alive."""
+        try:
+            val_link = validator.validate_single_url(1, url, timeout=6.0)
+            return {
+                "is_alive": val_link.is_valid,
+                "status_code": val_link.status_code,
+                "message": val_link.content_length_str if val_link.is_valid else (val_link.error or "Link unreachable")
+            }
+        except Exception as err:
+            return {"is_alive": False, "status_code": 0, "message": str(err)}
 
     # ==========================================
     # Extraction Pipeline
@@ -157,16 +165,16 @@ class AppBridge:
 
     def start_extraction(self, url: str, concurrency: int = None) -> Dict[str, Any]:
         """Starts the asynchronous link extraction pipeline."""
-        if self.is_running:
+        if self._is_running:
             return {"status": "error", "message": "An extraction is already in progress."}
 
         target_url = (url or "").strip()
         if not target_url:
             return {"status": "error", "message": "Empty URL provided."}
 
-        self.cancel_event.clear()
-        self.is_running = True
-        concurrency = concurrency or self.settings.get("concurrency", 3)
+        self._cancel_event.clear()
+        self._is_running = True
+        concurrency = concurrency or self._settings.get("concurrency", 3)
 
         threading.Thread(
             target=self._run_extraction_pipeline,
@@ -198,8 +206,8 @@ class AppBridge:
 
                 target_pastebin = ff_pastebins[0]["url"]
                 self.dispatch_event("pipeline:status", {"status": "scraping", "message": "Decrypting Pastebin links..."})
-                self.current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
-                intermediate_urls = asyncio.run(self.current_engine.fetch_pastebin_links(target_pastebin))
+                self._current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
+                intermediate_urls = asyncio.run(self._current_engine.fetch_pastebin_links(target_pastebin))
 
                 if not intermediate_urls:
                     raise ValueError("No direct download parts found inside pastebin.")
@@ -212,8 +220,8 @@ class AppBridge:
 
             elif url_type == "fitgirl_pastebin":
                 self.dispatch_event("pipeline:status", {"status": "scraping", "message": "Decrypting Pastebin page..."})
-                self.current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
-                intermediate_urls = asyncio.run(self.current_engine.fetch_pastebin_links(target_url))
+                self._current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
+                intermediate_urls = asyncio.run(self._current_engine.fetch_pastebin_links(target_url))
                 game_title = "FitGirl Pastebin Repack"
             else:
                 intermediate_urls = [target_url]
@@ -250,16 +258,16 @@ class AppBridge:
                     "status": status
                 })
 
-            if not self.current_engine:
-                self.current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
+            if not self._current_engine:
+                self._current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
 
-            raw_results = self.current_engine.resolve_all(
+            raw_results = self._current_engine.resolve_all(
                 intermediate_urls,
                 on_progress=on_engine_progress,
-                cancel_event=self.cancel_event
+                cancel_event=self._cancel_event
             )
 
-            if self.cancel_event.is_set():
+            if self._cancel_event.is_set():
                 self.dispatch_event("pipeline:cancelled", {"message": "Extraction cancelled by user."})
                 return
 
@@ -268,7 +276,7 @@ class AppBridge:
                 raise RuntimeError("No direct download links could be resolved.")
 
             # Validation stage
-            auto_val = self.settings.get("auto_validate", True)
+            auto_val = self._settings.get("auto_validate", True)
             total_size_str = "0 B"
             total_size_bytes = 0
 
@@ -290,7 +298,7 @@ class AppBridge:
                     resolved_urls,
                     max_workers=15,
                     on_progress=on_val_prog,
-                    cancel_event=self.cancel_event
+                    cancel_event=self._cancel_event
                 )
 
                 if val_summary:
@@ -298,7 +306,7 @@ class AppBridge:
                     total_size_bytes = getattr(val_summary, 'total_bytes', 0)
 
             # Auto-save to SQLite History
-            self.history_mgr.add_record(
+            self._history_mgr.add_record(
                 title=game_title,
                 source_url=target_url,
                 total_parts=len(resolved_urls),
@@ -309,11 +317,11 @@ class AppBridge:
             )
 
             # Auto-upload to Community Cloud if enabled
-            if self.settings.get("community_auto_upload", True) and url_type == "fitgirl_game_page":
+            if self._settings.get("community_auto_upload", True) and url_type == "fitgirl_game_page":
                 try:
                     game_slug = scraper.extract_game_slug(target_url)
                     community.upload_game_record(
-                        game_slug=game_slug,
+                        slug=game_slug,
                         title=game_title,
                         image_url=cover_image,
                         source_url=target_url,
@@ -321,7 +329,7 @@ class AppBridge:
                         total_parts=len(resolved_urls),
                         total_size_str=total_size_str,
                         total_size_bytes=total_size_bytes,
-                        firebase_url=self.settings.get("community_firebase_url")
+                        firebase_url=self._settings.get("community_firebase_url")
                     )
                 except Exception as up_err:
                     print(f"[Community Auto-Upload Warning] {up_err}")
@@ -340,16 +348,16 @@ class AppBridge:
         except Exception as exc:
             self.dispatch_event("pipeline:error", {"message": str(exc)})
         finally:
-            self.is_running = False
-            self.current_engine = None
+            self._is_running = False
+            self._current_engine = None
 
     def cancel_pipeline(self) -> Dict[str, Any]:
         """Signals cancellation of active extraction."""
-        if not self.is_running:
+        if not self._is_running:
             return {"status": "idle"}
-        self.cancel_event.set()
-        if self.current_engine:
-            self.current_engine.cancel()
+        self._cancel_event.set()
+        if self._current_engine:
+            self._current_engine.cancel()
         self.dispatch_event("pipeline:status", {"status": "cancelling", "message": "Cancelling workers..."})
         return {"status": "cancelling"}
 
@@ -358,10 +366,10 @@ class AppBridge:
     # ==========================================
 
     def push_to_jd2(self, urls: List[str], title: str, source_url: str = "") -> Dict[str, Any]:
-        """Pushes direct URLs to JDownloader 2 via FlashGot API (port 9666)."""
+        """Pushes direct URLs to JDownloader 2 via FlashGot API (port 9666) with folderwatch fallback."""
         if not urls:
             return {"success": False, "message": "No URLs to push."}
-        port = self.settings.get("jd_port", 9666)
+        port = self._settings.get("jd_port", 9666)
         success, msg = integrations.push_to_jdownloader(
             urls,
             package_name=title or "FitGirl Repack",
@@ -375,7 +383,7 @@ class AppBridge:
         if not urls:
             return {"success": False, "message": "No URLs to export."}
 
-        safe_title = re.sub(r'[^a-zA-Z0-9_-]', '_', title or "repack").strip('_')
+        safe_title = re.sub(r'[^a-zA-Z0-9_-]', '_', title or "repack").strip('_') or "repack"
         out_dir = utils.get_export_dir()
         os.makedirs(out_dir, exist_ok=True)
 
@@ -399,9 +407,12 @@ class AppBridge:
         }
 
     def copy_to_clipboard(self, text: str) -> Dict[str, Any]:
-        """Copies given text to the system clipboard."""
-        pyperclip.copy(text)
-        return {"success": True}
+        """Copies given text to the system clipboard safely."""
+        try:
+            pyperclip.copy(text or "")
+            return {"success": True}
+        except Exception as err:
+            return {"success": False, "error": str(err)}
 
     # ==========================================
     # History SQLite Archive
@@ -410,7 +421,7 @@ class AppBridge:
     def get_history(self) -> List[Dict[str, Any]]:
         """Retrieves past extractions from SQLite."""
         try:
-            records = self.history_mgr.get_records()
+            records = self._history_mgr.get_records()
             return [
                 {
                     "id": r["id"],
@@ -430,7 +441,7 @@ class AppBridge:
     def search_history(self, query: str) -> List[Dict[str, Any]]:
         """Searches SQLite history records by game title."""
         try:
-            records = self.history_mgr.get_records(search_query=query)
+            records = self._history_mgr.get_records(search_query=query)
             return [
                 {
                     "id": r["id"],
@@ -448,8 +459,19 @@ class AppBridge:
 
     def delete_history_item(self, record_id: int) -> Dict[str, Any]:
         """Deletes a record from SQLite history."""
-        self.history_mgr.delete_record(record_id)
-        return {"success": True}
+        try:
+            self._history_mgr.delete_record(int(record_id))
+            return {"success": True}
+        except Exception as err:
+            return {"success": False, "error": str(err)}
+
+    def clear_history(self) -> Dict[str, Any]:
+        """Clears all records from SQLite history."""
+        try:
+            self._history_mgr.clear_history()
+            return {"success": True}
+        except Exception as err:
+            return {"success": False, "error": str(err)}
 
     # ==========================================
     # Settings & Updater
@@ -457,49 +479,24 @@ class AppBridge:
 
     def get_settings(self) -> Dict[str, Any]:
         """Returns loaded user settings."""
-        self.settings = utils.load_settings()
-        return self.settings
+        self._settings = utils.load_settings()
+        return self._settings
 
     def save_settings(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
         """Saves user settings to settings.json."""
-        self.settings.update(new_settings)
-        utils.save_settings(self.settings)
+        self._settings.update(new_settings)
+        utils.save_settings(self._settings)
         return {"success": True}
 
     def check_updates(self) -> Dict[str, Any]:
         """Checks GitHub Releases for new updates."""
         try:
-            is_avail, rel_info = updater.check_for_updates()
+            is_avail, rel_info, msg = updater.check_for_updates()
             return {
                 "available": is_avail,
                 "current_version": updater.CURRENT_VERSION,
-                "release_info": rel_info or {}
+                "release_info": rel_info or {},
+                "message": msg
             }
         except Exception as err:
             return {"available": False, "error": str(err)}
-
-    # ==========================================
-    # Community Cloud Cache
-    # ==========================================
-
-    def get_community_feed(self) -> List[Dict[str, Any]]:
-        """Fetches trending pre-resolved games from Community Firebase Cache."""
-        fb_url = self.settings.get("community_firebase_url")
-        return community.get_community_games(fb_url)
-
-    def get_game_urls(self, slug: str) -> List[str]:
-        """Fetches direct URLs for a specific community game slug."""
-        fb_url = self.settings.get("community_firebase_url")
-        return community.get_community_urls(slug, fb_url)
-
-    def check_health(self, url: str) -> Dict[str, Any]:
-        """Performs 1-byte Range check to verify if direct link is alive."""
-        try:
-            val_link = validator.validate_single_url(1, url, timeout=6.0)
-            return {
-                "is_alive": val_link.is_valid,
-                "status_code": val_link.status_code,
-                "message": val_link.content_length_str if val_link.is_valid else (val_link.error or "Link unreachable")
-            }
-        except Exception as err:
-            return {"is_alive": False, "status_code": 0, "message": str(err)}

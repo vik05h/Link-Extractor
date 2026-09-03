@@ -1,16 +1,6 @@
 <script lang="ts">
+  import type { PartItem } from '../types';
   import { playClickSound, playBypassSound } from '../utils/audio';
-
-  export interface PartItem {
-    index: number;
-    url: string;
-    direct_url?: string;
-    filename?: string;
-    size?: string;
-    status: 'pending' | 'decrypting' | 'resolved' | 'failed';
-    excluded?: boolean;
-    category?: 'core' | 'language' | 'optional';
-  }
 
   export let parts: PartItem[] = [];
   export let onCopyUrl: (url: string, index: number) => void = () => {};

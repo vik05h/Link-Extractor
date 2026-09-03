@@ -2,14 +2,9 @@
   import Icon from './icons/Icon.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { playBypassSound, playClickSound } from '../utils/audio';
+  import type { DetectedClip } from '../types';
 
   export let onResolveUrl: (url: string) => void = () => {};
-
-  interface DetectedClip {
-    url: string;
-    url_type: string;
-    slug: string;
-  }
 
   let detectedItem: DetectedClip | null = null;
   let autoDismissTimeout: any = null;

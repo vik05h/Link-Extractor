@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   import Icon from './icons/Icon.svelte';
-  import type { PartItem } from './DefragMosaic.svelte';
+  import type { PartItem } from '../types';
 
   export let parts: PartItem[] = [];
   const dispatch = createEventDispatcher();

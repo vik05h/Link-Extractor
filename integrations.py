@@ -105,10 +105,15 @@ def push_to_jdownloader(
             if resp.status in (200, 204):
                 return True, f"Successfully pushed {len(clean_urls)} links for '{package_name}' into JDownloader 2!"
             return True, f"Pushed {len(clean_urls)} links to JDownloader (Status {resp.status})."
-    except urllib.error.URLError:
+    except Exception as http_err:
+        # Dual-channel: Fallback to JDownloader folderwatch directory if HTTP port is busy/blocked
+        fw_dirs = get_jd_folderwatch_dirs()
+        if fw_dirs:
+            safe_pkg = re.sub(r'[^a-zA-Z0-9_-]', '_', package_name).strip('_') or "repack"
+            cj_path = os.path.join(fw_dirs[0], f"{safe_pkg}_{int(time.time())}.crawljob")
+            if export_crawljob(cj_path, clean_urls, package_name=package_name):
+                return True, f"Pushed {len(clean_urls)} links to JDownloader 2 via folderwatch!"
         return False, f"Could not connect to JDownloader 2 on port {port}. Please make sure JDownloader 2 is running."
-    except Exception as e:
-        return False, f"Push failed: {e}"
 
 
 def export_crawljob(

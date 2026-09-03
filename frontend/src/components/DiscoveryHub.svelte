@@ -2,23 +2,7 @@
   import { onMount } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playBypassSound } from '../utils/audio';
-
-  export interface GameRecord {
-    slug: string;
-    title: string;
-    image_url: string;
-    source_url: string;
-    total_parts: number;
-    total_size_str: string;
-    total_size_bytes?: number;
-    timestamp_utc: string;
-    local_time?: string;
-    age_str?: string;
-    freshness?: 'fresh' | 'aging' | 'expired';
-    uploader?: string;
-    health_status?: string;
-    health_color?: string;
-  }
+  import type { GameRecord } from '../types';
 
   export let games: GameRecord[] = [];
   export let isLoading: boolean = false;

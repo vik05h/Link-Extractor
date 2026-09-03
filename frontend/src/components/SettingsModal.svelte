@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, toggleAudioMute, isAudioMuted } from '../utils/audio';
+  import type { AppSettings } from '../types';
 
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
@@ -21,7 +22,7 @@
       soundEnabled = !isAudioMuted();
 
       if ((window as any).pywebview) {
-        (window as any).pywebview.api.get_settings().then((s: any) => {
+        (window as any).pywebview.api.get_settings().then((s: AppSettings) => {
           if (s) {
             concurrency = s.concurrency || 3;
             autoValidate = s.auto_validate ?? true;
