@@ -38,7 +38,7 @@
   $: excludedCount = parts.filter(p => p.excluded).length;
 </script>
 
-<div class="mosaic-container" on:mousemove={handleMouseMove}>
+<div class="mosaic-container" role="region" aria-label="Repack Defrag Matrix" on:mousemove={handleMouseMove}>
   <!-- Stats Header Pill -->
   <div class="mosaic-header">
     <div class="mosaic-title-group">
@@ -63,7 +63,7 @@
   </div>
 
   <!-- Interactive Matrix Grid -->
-  <div class="mosaic-grid" on:mouseleave={handleMouseLeave}>
+  <div class="mosaic-grid" role="group" aria-label="Defrag part blocks" on:mouseleave={handleMouseLeave}>
     {#each parts as part (part.index)}
       <!-- Part Block -->
       <button 

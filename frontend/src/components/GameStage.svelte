@@ -23,6 +23,13 @@
   let activeView: 'mosaic' | 'table' | 'log' = 'mosaic';
   let exportMenuOpen = false;
 
+  function handleCoverError(e: Event) {
+    const target = e.currentTarget as HTMLImageElement;
+    if (target && !target.src.startsWith('data:')) {
+      target.src = generateProceduralBannerSvg(gameTitle);
+    }
+  }
+
   function getActiveUrls(): string[] {
     return parts
       .filter(p => !p.excluded && (p.direct_url || p.url))
@@ -70,12 +77,7 @@
           src={coverUrl}
           alt={gameTitle}
           class="hero-cover"
-          on:error={(e) => {
-            const target = e.currentTarget as HTMLImageElement;
-            if (target && !target.src.startsWith('data:')) {
-              target.src = generateProceduralBannerSvg(gameTitle);
-            }
-          }}
+          on:error={handleCoverError}
         />
       {:else}
         <div class="hero-cover-placeholder">
@@ -108,6 +110,12 @@
           <Icon name="hard-drive" size={13} color="var(--accent-primary)" />
           <span>Total Size: <strong>{totalSizeStr}</strong></span>
         </span>
+        {#if sourceUrl}
+          <a href={sourceUrl} target="_blank" rel="noreferrer" class="meta-pill source-pill" title="Open source FitGirl repack page">
+            <Icon name="external-link" size={12} color="var(--accent-primary)" />
+            <span>FitGirl Page</span>
+          </a>
+        {/if}
         <span class="meta-status">
           {statusMessage}
         </span>

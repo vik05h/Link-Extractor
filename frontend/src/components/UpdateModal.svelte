@@ -373,6 +373,8 @@
     class="modal-backdrop" 
     role="dialog" 
     aria-modal="true"
+    tabindex="-1"
+    on:click|self={onClose}
     on:keydown={(e) => e.key === 'Escape' && step !== 'downloading' && onClose()}
   >
     <div class="modal-card glass-panel" role="document">

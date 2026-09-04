@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, toggleAudioMute, isAudioMuted } from '../utils/audio';
+  import { waitForBridge } from '../utils/bridgeReady';
   import type { AppSettings } from '../types';
 
   export let isOpen: boolean = false;
@@ -27,18 +28,20 @@
       currentTheme = localStorage.getItem('app_theme') || 'cyber';
       soundEnabled = !isAudioMuted();
 
-      if ((window as any).pywebview) {
-        (window as any).pywebview.api.get_settings().then((s: AppSettings) => {
-          if (s) {
-            concurrency = s.concurrency || 3;
-            autoValidate = s.auto_validate ?? true;
-            jdPort = s.jd_port || 9666;
-            autoUpload = s.community_auto_upload ?? true;
-            clipboardSentinel = s.clipboard_sentinel_enabled ?? true;
-            autoCrashReporting = s.auto_crash_reporting ?? true;
-          }
-        });
-      }
+      waitForBridge('get_settings').then((ready) => {
+        if (ready && (window as any).pywebview?.api?.get_settings) {
+          (window as any).pywebview.api.get_settings().then((s: AppSettings) => {
+            if (s) {
+              concurrency = s.concurrency || 3;
+              autoValidate = s.auto_validate ?? true;
+              jdPort = s.jd_port || 9666;
+              autoUpload = s.community_auto_upload ?? true;
+              clipboardSentinel = s.clipboard_sentinel_enabled ?? true;
+              autoCrashReporting = s.auto_crash_reporting ?? true;
+            }
+          }).catch(() => {});
+        }
+      });
     }
   });
 
@@ -89,8 +92,15 @@
 </script>
 
 {#if isOpen}
-  <div class="modal-backdrop" on:click={onClose} role="dialog" aria-modal="true">
-    <div class="modal-card glass-panel" on:click|stopPropagation role="document">
+  <div 
+    class="modal-backdrop" 
+    on:click|self={onClose} 
+    on:keydown={(e) => e.key === 'Escape' && onClose()} 
+    role="dialog" 
+    aria-modal="true" 
+    tabindex="-1"
+  >
+    <div class="modal-card glass-panel" role="document">
       <div class="modal-header">
         <div class="modal-title">
           <Icon name="settings" size={16} color="var(--accent-primary)" />

@@ -3,6 +3,7 @@
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playBypassSound } from '../utils/audio';
   import { generateProceduralBannerSvg } from '../utils/banner';
+  import { waitForBridge } from '../utils/bridgeReady';
   import type { GameRecord } from '../types';
 
   export let games: GameRecord[] = [];
@@ -67,27 +68,42 @@
     }
   }
 
+  function handleImageError(e: Event, title: string) {
+    const target = e.currentTarget as HTMLImageElement;
+    if (target && !target.src.startsWith('data:')) {
+      target.src = generateProceduralBannerSvg(title);
+    }
+  }
+
   function fetchStats() {
-    if (typeof window !== 'undefined' && (window as any).pywebview) {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api) {
       // Ping presence with window-scoped session ID
-      (window as any).pywebview.api.ping_presence(sessionId).then((res: any) => {
-        if (res && typeof res.live_gamers === 'number') {
-          liveGamers = res.live_gamers;
-        }
-      }).catch(() => {});
+      if ((window as any).pywebview.api.ping_presence) {
+        (window as any).pywebview.api.ping_presence(sessionId).then((res: any) => {
+          if (res && typeof res.live_gamers === 'number') {
+            liveGamers = res.live_gamers;
+          }
+        }).catch(() => {});
+      }
 
       // Query community stats
-      (window as any).pywebview.api.get_community_stats().then((res: any) => {
-        if (res) {
-          if (typeof res.live_gamers === 'number') liveGamers = res.live_gamers;
-          if (typeof res.total_grabs === 'number') totalGrabs = res.total_grabs;
-        }
-      }).catch(() => {});
+      if ((window as any).pywebview.api.get_community_stats) {
+        (window as any).pywebview.api.get_community_stats().then((res: any) => {
+          if (res) {
+            if (typeof res.live_gamers === 'number') liveGamers = res.live_gamers;
+            if (typeof res.total_grabs === 'number') totalGrabs = res.total_grabs;
+          }
+        }).catch(() => {});
+      }
     }
   }
 
   onMount(() => {
-    fetchStats();
+    waitForBridge('ping_presence').then((ready) => {
+      if (ready) {
+        fetchStats();
+      }
+    });
     heartbeatInterval = setInterval(fetchStats, 45000);
   });
 
@@ -101,7 +117,7 @@
     rec.health_color = 'var(--accent-secondary)';
     games = [...games];
 
-    if (typeof window !== 'undefined' && (window as any).pywebview) {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.get_game_urls) {
       (window as any).pywebview.api.get_game_urls(rec.slug).then((urls: string[]) => {
         if (!urls || urls.length === 0) {
           rec.health_status = 'No URLs';
@@ -109,17 +125,19 @@
           games = [...games];
           return;
         }
-        (window as any).pywebview.api.check_health(urls[0]).then((res: any) => {
-          if (res.is_alive) {
-            rec.health_status = `Part 1 Live (${res.message})`;
-            rec.health_color = 'var(--status-fresh)';
-            playBypassSound();
-          } else {
-            rec.health_status = `Expired (${res.message})`;
-            rec.health_color = 'var(--status-expired)';
-          }
-          games = [...games];
-        });
+        if ((window as any).pywebview?.api?.check_health) {
+          (window as any).pywebview.api.check_health(urls[0]).then((res: any) => {
+            if (res.is_alive) {
+              rec.health_status = `Part 1 Live (${res.message})`;
+              rec.health_color = 'var(--status-fresh)';
+              playBypassSound();
+            } else {
+              rec.health_status = `Expired (${res.message})`;
+              rec.health_color = 'var(--status-expired)';
+            }
+            games = [...games];
+          });
+        }
       });
     }
   }
@@ -136,7 +154,7 @@
     rec.used_count = (rec.used_count || 0) + 1;
     totalGrabs += 1;
     games = [...games];
-    if (typeof window !== 'undefined' && (window as any).pywebview) {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.track_game_usage) {
       (window as any).pywebview.api.track_game_usage(rec.slug).catch(() => {});
     }
     onLoadRecord(rec);
@@ -158,7 +176,7 @@
     rec.used_count = (rec.used_count || 0) + 1;
     totalGrabs += 1;
     games = [...games];
-    if (typeof window !== 'undefined' && (window as any).pywebview) {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.track_game_usage) {
       (window as any).pywebview.api.track_game_usage(rec.slug).catch(() => {});
     }
     onPushJd2(rec.slug, rec.title);
@@ -281,38 +299,42 @@
     </div>
   {:else if filteredGames.length === 0}
     <div class="hub-empty glass-panel">
-      <span>No community repacks found matching your search.</span>
+      <span class="empty-msg">No community repacks found matching your search.</span>
+      <button 
+        type="button" 
+        class="btn-retry-fetch" 
+        on:click={() => { onRefresh(); fetchStats(); }}
+      >
+        <Icon name="refresh" size={14} />
+        <span>Retry Fetch</span>
+      </button>
     </div>
   {:else}
     <div class="games-poster-grid">
       {#each filteredGames as rec (rec.slug)}
         <div class="game-poster-card glass-card">
           <!-- Poster Image -->
-          <div 
-            class="card-cover-container" 
-            role="button" 
-            tabindex="0"
-            on:click={() => handleCardPreview(rec)}
-            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleCardPreview(rec)}
-          >
-            {#if rec.image_url}
-              <img
-                src={rec.image_url}
-                alt={rec.title}
-                class="card-cover"
-                loading="lazy"
-                on:error={(e) => {
-                  const target = e.currentTarget as HTMLImageElement;
-                  if (target && !target.src.startsWith('data:')) {
-                    target.src = generateProceduralBannerSvg(rec.title);
-                  }
-                }}
-              />
-            {:else}
-              <div class="card-cover-placeholder">
-                <Icon name="gamepad" size={36} color="var(--accent-primary)" />
-              </div>
-            {/if}
+          <div class="card-cover-container">
+            <button 
+              type="button" 
+              class="card-cover-action" 
+              on:click={() => handleCardPreview(rec)}
+              aria-label="Preview {rec.title}"
+            >
+              {#if rec.image_url}
+                <img
+                  src={rec.image_url}
+                  alt={rec.title}
+                  class="card-cover"
+                  loading="lazy"
+                  on:error={(e) => handleImageError(e, rec.title)}
+                />
+              {:else}
+                <div class="card-cover-placeholder">
+                  <Icon name="gamepad" size={36} color="var(--accent-primary)" />
+                </div>
+              {/if}
+            </button>
 
             <!-- Floating Grabs Badge on Cover -->
             {#if rec.used_count && rec.used_count > 0}
@@ -616,6 +638,18 @@
     flex-shrink: 0;
   }
 
+  .card-cover-action {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    margin: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: inherit;
+  }
+
   .card-cover {
     width: 100%;
     height: 100%;
@@ -786,10 +820,48 @@
     transform: translateY(-1px);
   }
 
-  .hub-loading, .hub-empty {
+  .hub-loading {
     padding: 40px;
     text-align: center;
     color: var(--text-secondary);
+  }
+
+  .hub-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+
+  .empty-msg {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+  }
+
+  .btn-retry-fetch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 9999px;
+    background: rgba(0, 240, 160, 0.1);
+    border: 1px solid rgba(0, 240, 160, 0.35);
+    color: var(--accent-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-retry-fetch:hover {
+    background: rgba(0, 240, 160, 0.2);
+    border-color: var(--accent-primary);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(0, 240, 160, 0.2);
   }
 
   .dino-loader-banner {

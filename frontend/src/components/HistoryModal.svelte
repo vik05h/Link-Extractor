@@ -54,8 +54,15 @@
 </script>
 
 {#if isOpen}
-  <div class="modal-backdrop" on:click={onClose} role="dialog" aria-modal="true">
-    <div class="modal-card glass-panel" on:click|stopPropagation role="document">
+  <div 
+    class="modal-backdrop" 
+    on:click|self={onClose} 
+    on:keydown={(e) => e.key === 'Escape' && onClose()} 
+    role="dialog" 
+    aria-modal="true" 
+    tabindex="-1"
+  >
+    <div class="modal-card glass-panel" role="document">
       <div class="modal-header">
         <div class="modal-title">
           <Icon name="history" size={16} color="var(--accent-primary)" />
@@ -83,11 +90,13 @@
         {:else}
           <div class="records-list">
             {#each filteredRecords as r (r.id)}
-              <div 
-                class="history-item glass-card" 
-                on:click={() => handleSelect(r)}
-              >
-                <div class="history-info">
+              <div class="history-item glass-card">
+                <button 
+                  type="button" 
+                  class="history-info-btn" 
+                  on:click={() => handleSelect(r)}
+                  title="Load {r.game_title} into resolver"
+                >
                   <div class="history-title">{r.game_title}</div>
                   <div class="history-meta">
                     <span>{r.parts_count} Parts</span>
@@ -96,7 +105,7 @@
                     <span>•</span>
                     <span>{r.created_at || 'Recently'}</span>
                   </div>
-                </div>
+                </button>
 
                 <div class="history-actions">
                   <button 
@@ -216,9 +225,17 @@
     border-color: var(--accent-primary);
   }
 
-  .history-info {
+  .history-info-btn {
     flex: 1;
     min-width: 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    cursor: pointer;
+    color: inherit;
+    font-family: inherit;
   }
 
   .history-title {

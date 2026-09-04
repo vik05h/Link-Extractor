@@ -13,6 +13,7 @@
   import Icon from './icons/Icon.svelte';
   import type { PartItem, GameRecord } from '../types';
   import { playClickSound, playSuccessChime, toggleAudioMute, isAudioMuted } from '../utils/audio';
+  import { waitForBridge } from '../utils/bridgeReady';
 
   // Navigation View: 'community' or 'stage'
   let currentView: 'community' | 'stage' = 'community';
@@ -391,6 +392,7 @@
   }
 
   let isFetchingCommunity = false;
+  let hasStartupRetried = false;
 
   // Refresh Community Feed
   function refreshCommunity(force: boolean = false) {
@@ -398,55 +400,60 @@
     isFetchingCommunity = true;
     isCommunityLoading = true;
 
-    function executeFetch() {
-      if (typeof window !== 'undefined' && (window as any).pywebview?.api?.get_community_feed) {
-        (window as any).pywebview.api.get_community_feed(force)
-          .then((data: GameRecord[]) => {
+    // Safety timeout: ensure loading state never hangs indefinitely under any circumstances
+    const safetyTimer = setTimeout(() => {
+      if (isCommunityLoading) {
+        console.warn('[Community] Safety fallback timeout hit, releasing loader');
+        isCommunityLoading = false;
+        isFetchingCommunity = false;
+      }
+    }, 12000);
+
+    waitForBridge('get_community_feed', 7000).then((ready) => {
+      if (!ready || typeof window === 'undefined' || !(window as any).pywebview?.api?.get_community_feed) {
+        clearTimeout(safetyTimer);
+        isCommunityLoading = false;
+        isFetchingCommunity = false;
+        return;
+      }
+
+      (window as any).pywebview.api.get_community_feed(force)
+        .then((data: GameRecord[]) => {
+          clearTimeout(safetyTimer);
+          if (data && Array.isArray(data) && data.length > 0) {
+            communityGames = data;
+            isCommunityLoading = false;
+            isFetchingCommunity = false;
+          } else if (!force && !hasStartupRetried) {
+            // Initial startup load was empty — perform one graceful background auto-retry after 2.5s
+            hasStartupRetried = true;
+            isFetchingCommunity = false;
+            setTimeout(() => {
+              refreshCommunity(true);
+            }, 2500);
+          } else {
             if (data && Array.isArray(data)) {
               communityGames = data;
             }
             isCommunityLoading = false;
             isFetchingCommunity = false;
-          })
-          .catch((err: any) => {
-            console.error('[Community] API error:', err);
-            isCommunityLoading = false;
+          }
+        })
+        .catch((err: any) => {
+          clearTimeout(safetyTimer);
+          console.error('[Community] API error:', err);
+          if (!force && !hasStartupRetried) {
+            hasStartupRetried = true;
             isFetchingCommunity = false;
-          });
-      } else {
-        isCommunityLoading = false;
-        isFetchingCommunity = false;
-      }
-    }
-
-    if (typeof window !== 'undefined') {
-      if ((window as any).pywebview?.api?.get_community_feed) {
-        executeFetch();
-      } else {
-        let bridgePoll: any = null;
-        const onReady = () => {
-          window.removeEventListener('pywebviewready', onReady);
-          if (bridgePoll) clearInterval(bridgePoll);
-          executeFetch();
-        };
-        window.addEventListener('pywebviewready', onReady);
-
-        let count = 0;
-        bridgePoll = setInterval(() => {
-          count++;
-          if ((window as any).pywebview?.api?.get_community_feed) {
-            clearInterval(bridgePoll);
-            window.removeEventListener('pywebviewready', onReady);
-            executeFetch();
-          } else if (count > 40) {
-            clearInterval(bridgePoll);
-            window.removeEventListener('pywebviewready', onReady);
+            setTimeout(() => {
+              refreshCommunity(true);
+            }, 2500);
+          } else {
             isCommunityLoading = false;
             isFetchingCommunity = false;
           }
-        }, 100);
-      }
-    }
+        });
+    });
   }
 
   // Manual check for updates triggered from Settings
@@ -629,14 +636,16 @@
 
       refreshCommunity();
 
-      if ((window as any).pywebview?.api?.get_update_status) {
-        (window as any).pywebview.api.get_update_status().then((stat: any) => {
-          if (stat && stat.has_update) {
-            hasUpdateAvailable = true;
-            if (stat.release_info) updateReleaseInfo = stat.release_info;
-          }
-        }).catch(() => {});
-      }
+      waitForBridge('get_update_status', 6000).then((ready) => {
+        if (ready && (window as any).pywebview?.api?.get_update_status) {
+          (window as any).pywebview.api.get_update_status().then((stat: any) => {
+            if (stat && stat.has_update) {
+              hasUpdateAvailable = true;
+              if (stat.release_info) updateReleaseInfo = stat.release_info;
+            }
+          }).catch(() => {});
+        }
+      });
 
       // Check first-time visit for Onboarding Tour
       if (!localStorage.getItem('le_tour_completed')) {
