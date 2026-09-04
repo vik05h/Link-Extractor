@@ -11,23 +11,25 @@ from typing import Optional, Dict, Any, Tuple, Callable, List
 
 import utils
 
-CURRENT_VERSION = "v4.0.0"
+CURRENT_VERSION = "v3.8.0"
 GITHUB_REPO = "vik05h/Link-Extractor"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
-    "v4.0.0": {
-        "title": "Next-Gen Gaming Hub UI/UX Overhaul, Living Canvas & Defrag Mosaic",
+    "v3.8.0": {
+        "title": "Next-Gen Gaming Hub UI/UX Overhaul, Live Guided Tour & Community Issue Center",
         "highlights": [
-            "Complete architectural migration from legacy Flet UI to hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.",
+            "Complete architectural migration from legacy Flet UI in v3.5.0 to hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.",
+            "Interactive Live In-App Guided Tour actively spotlighting the URL bar, Community Vault, Defrag Stage, and Quick Actions with step-by-step onboarding.",
+            "Community Issue Center featuring public issue tracking, smart duplicate prevention with affected-user count incrementing, and passkey-protected Admin remarks.",
+            "Automated Firebase Crash Log capture intercepting unhandled Python and JavaScript errors with in-memory deduplication.",
             "Living Canvas dynamic ambient backlighting with mathematical vibrancy boosting extracting dominant colors from game cover art.",
             "Interactive Defrag Mosaic visualizer for real-time multi-part status tracking replacing static data tables.",
             "In-app automatic updater with live download speed HUD, percentage tracking, and detached Windows restart script.",
             "Multi-tier authoritative game artwork cascade extracting high-resolution FitGirl covers with procedural neon SVG fallback.",
             "Automated Pastebin metadata resolution extracting game names from archive filenames with FitGirl site search.",
             "Live concurrent gamer presence pulse indicator powered by zero-cost lightweight Firebase REST heartbeats.",
-            "Community link usage tracking recording and displaying download counts across shared repacks.",
             "Selective Repack Filter saving tens of gigabytes by filtering optional language and bonus packs.",
             "Background Clipboard Sentinel auto-detecting copied FitGirl links and Web Audio API synthesized gaming sound haptics."
         ],
@@ -198,8 +200,8 @@ def check_for_updates(
 
                 if latest_tuple > curr_tuple or force_available:
                     if force_available and latest_tuple <= curr_tuple:
-                        release_info["latest_version"] = "v4.1.0"
-                        release_info["name"] = "Link Extractor v4.1.0"
+                        release_info["latest_version"] = "v3.9.0"
+                        release_info["name"] = "Link Extractor v3.9.0"
                     return True, release_info, f"New version {release_info['latest_version']} is available!"
                 else:
                     return False, release_info, f"You are running the latest version ({current_version})."

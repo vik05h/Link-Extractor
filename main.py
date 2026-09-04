@@ -16,7 +16,40 @@ os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(
 
 import utils
 import updater
+import community
+import traceback
 from bridge import AppBridge
+
+
+def _handle_unhandled_exception(exc_type, exc_value, exc_traceback):
+    tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    try:
+        community.report_crash_log(
+            error_type=exc_type.__name__,
+            error_message=str(exc_value),
+            traceback_str=tb_str,
+            context="unhandled_main_thread"
+        )
+    except Exception:
+        pass
+    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+
+sys.excepthook = _handle_unhandled_exception
+
+if hasattr(threading, "excepthook"):
+    def _handle_thread_exception(args):
+        tb_str = "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback))
+        try:
+            community.report_crash_log(
+                error_type=args.exc_type.__name__,
+                error_message=str(args.exc_value),
+                traceback_str=tb_str,
+                context=f"thread_{getattr(args.thread, 'name', 'worker')}"
+            )
+        except Exception:
+            pass
+    threading.excepthook = _handle_thread_exception
 
 
 def main():

@@ -6,7 +6,7 @@
   export let isOpen: boolean = false;
   export let releaseInfo: any = null;
   export let isFrozen: boolean = false;
-  export let currentVersion: string = 'v4.0.0';
+  export let currentVersion: string = 'v3.8.0';
   export let onClose: () => void = () => {};
   export let onShowToast: (msg: string) => void = () => {};
 
@@ -26,19 +26,21 @@
 
   const FALLBACK_CHANGELOGS = [
     {
-      version: 'v4.0.0',
-      title: 'Next-Gen Gaming Hub UI/UX Overhaul, Living Canvas & Defrag Mosaic',
+      version: 'v3.8.0',
+      title: 'Next-Gen Gaming Hub UI/UX Overhaul, Live Guided Tour & Community Issue Center',
       is_current: true,
       previous_version: 'v3.5.0',
       highlights: [
         'Complete architectural migration from legacy Flet UI to hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.',
+        'Interactive Live In-App Guided Tour actively spotlighting the URL bar, Community Vault, Defrag Stage, and Quick Actions with step-by-step onboarding.',
+        'Community Issue Center featuring public issue tracking, smart duplicate prevention with affected-user count incrementing, and passkey-protected Admin remarks.',
+        'Automated Firebase Crash Log capture intercepting unhandled Python and JavaScript errors with in-memory deduplication.',
         'Living Canvas dynamic ambient backlighting with mathematical vibrancy boosting extracting dominant colors from game cover art.',
         'Interactive Defrag Mosaic visualizer for real-time multi-part status tracking replacing static data tables.',
         'In-app automatic updater with live download speed HUD, percentage tracking, and detached Windows restart script.',
         'Multi-tier authoritative game artwork cascade extracting high-resolution FitGirl covers with procedural neon SVG fallback.',
         'Automated Pastebin metadata resolution extracting game names from archive filenames with FitGirl site search.',
         'Live concurrent gamer presence pulse indicator powered by zero-cost lightweight Firebase REST heartbeats.',
-        'Community link usage tracking recording and displaying download counts across shared repacks.',
         'Selective Repack Filter saving tens of gigabytes by filtering optional language and bonus packs.',
         'Background Clipboard Sentinel auto-detecting copied FitGirl links and Web Audio API synthesized gaming sound haptics.'
       ],

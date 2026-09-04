@@ -19,7 +19,7 @@
 
 | Component | Technology | Purpose |
 | :--- | :--- | :--- |
-| **GUI Framework** | Astro 5 + Svelte 5 + WebView2 (`pywebview`) | Hardware-accelerated desktop web UI with Living Canvas, Defrag Mosaic, and Apple Liquid Glass design (migrated from legacy Flet in v4.0.0) |
+| **GUI Framework** | Astro 5 + Svelte 5 + WebView2 (`pywebview`) | Hardware-accelerated desktop web UI with Living Canvas, Defrag Mosaic, and Apple Liquid Glass design (migrated from legacy Flet in v3.8.0) |
 | **Automation Engine** | `playwright` (async) | Headless/Headed Chromium & Edge worker pool for JS decryption |
 | **HTML Parsing** | `beautifulsoup4`, `lxml` | Fast extraction of pastebin links and game titles |
 | **Local Storage** | `sqlite3` | Persistent local extraction history and fast search |

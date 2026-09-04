@@ -43,10 +43,26 @@ export interface AppSettings {
   jd_port?: number;
   community_auto_upload?: boolean;
   clipboard_sentinel_enabled?: boolean;
+  auto_crash_reporting?: boolean;
 }
 
 export interface DetectedClip {
   url: string;
   url_type: string;
   slug: string;
+}
+
+export interface IssueReport {
+  id: string;
+  subject: string;
+  category: string;
+  description: string;
+  screenshot_data?: string;
+  status: 'open' | 'investigating' | 'fixed' | 'closed';
+  affected_users_count: number;
+  admin_remark?: string;
+  created_at: string;
+  app_version?: string;
+  os_info?: string;
+  user_voted?: boolean;
 }

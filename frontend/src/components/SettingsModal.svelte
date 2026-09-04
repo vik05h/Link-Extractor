@@ -8,7 +8,9 @@
   export let onClose: () => void = () => {};
   export let onThemeChange: (theme: string) => void = () => {};
   export let onCheckUpdates: () => void = () => {};
-  export let currentVersion: string = 'v4.0.0';
+  export let onOpenTour: () => void = () => {};
+  export let onOpenIssueCenter: () => void = () => {};
+  export let currentVersion: string = 'v3.8.0';
 
   let currentTheme = 'cyber';
   let isCheckingUpdates = false;
@@ -17,6 +19,7 @@
   let jdPort = 9666;
   let autoUpload = true;
   let clipboardSentinel = true;
+  let autoCrashReporting = true;
   let soundEnabled = true;
 
   onMount(() => {
@@ -32,6 +35,7 @@
             jdPort = s.jd_port || 9666;
             autoUpload = s.community_auto_upload ?? true;
             clipboardSentinel = s.clipboard_sentinel_enabled ?? true;
+            autoCrashReporting = s.auto_crash_reporting ?? true;
           }
         });
       }
@@ -73,7 +77,8 @@
         auto_validate: autoValidate,
         jd_port: jdPort,
         community_auto_upload: autoUpload,
-        clipboard_sentinel_enabled: clipboardSentinel
+        clipboard_sentinel_enabled: clipboardSentinel,
+        auto_crash_reporting: autoCrashReporting
       }).then(() => {
         onClose();
       });
@@ -192,6 +197,14 @@
             <input id="auto-upload-toggle" type="checkbox" bind:checked={autoUpload} class="toggle-checkbox" />
           </label>
 
+          <label class="setting-toggle-row" for="auto-crash-toggle">
+            <div>
+              <div class="toggle-title">Anonymous Crash Diagnostics</div>
+              <div class="setting-subtext">Automatically transmits sanitized error traces to Firebase to expedite bug fixes</div>
+            </div>
+            <input id="auto-crash-toggle" type="checkbox" bind:checked={autoCrashReporting} class="toggle-checkbox" />
+          </label>
+
           <div class="setting-toggle-row">
             <div>
               <label for="jd-port-input" class="toggle-title">JDownloader 2 FlashGot Port</label>
@@ -209,7 +222,7 @@
 
         <!-- Version & Updates Card -->
         <div class="setting-group">
-          <span class="setting-label">VERSION & UPDATES</span>
+          <span class="setting-label">VERSION & COMMUNITY</span>
           <div class="version-card glass-panel">
             <div class="version-meta">
               <div class="version-name-row">
@@ -229,6 +242,25 @@
                 <Icon name="refresh" size={14} color="var(--accent-primary)" />
               </span>
               <span>{isCheckingUpdates ? 'Checking GitHub...' : 'Check for Updates'}</span>
+            </button>
+          </div>
+
+          <div class="community-actions-row">
+            <button 
+              type="button" 
+              class="btn-secondary tour-btn"
+              on:click={() => { onClose(); onOpenTour(); }}
+            >
+              <Icon name="help-circle" size={14} color="var(--accent-secondary)" />
+              <span>Replay Guided Tour</span>
+            </button>
+            <button 
+              type="button" 
+              class="btn-secondary issue-btn"
+              on:click={() => { onClose(); onOpenIssueCenter(); }}
+            >
+              <Icon name="bug" size={14} color="#f43f5e" />
+              <span>Community Issue Center</span>
             </button>
           </div>
         </div>
@@ -497,5 +529,22 @@
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
+  }
+
+  .community-actions-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .community-actions-row .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 11.5px;
+    padding: 8px 12px;
+    border-radius: 6px;
   }
 </style>

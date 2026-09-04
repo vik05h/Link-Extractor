@@ -195,7 +195,7 @@
   }
 </script>
 
-<div class="discovery-hub-container">
+<div class="discovery-hub-container" id="tour-discovery-hub">
   <!-- Hub Search & Filters Bar -->
   <div class="hub-header-bar glass-panel">
     <div class="search-box-wrapper">
@@ -302,7 +302,7 @@
                 class="card-cover"
                 loading="lazy"
                 on:error={(e) => {
-                  const target = e.currentTarget;
+                  const target = e.currentTarget as HTMLImageElement;
                   if (target && !target.src.startsWith('data:')) {
                     target.src = generateProceduralBannerSvg(rec.title);
                   }

@@ -7,6 +7,7 @@ Dispatches real-time events to the frontend via JavaScript CustomEvents.
 """
 
 import os
+import sys
 import re
 import json
 import time
@@ -961,3 +962,114 @@ class AppBridge:
         """Reveals the updates folder in Windows Explorer."""
         folder = updater.open_updates_folder()
         return {"status": "opened", "path": folder}
+
+    # ==========================================
+    # Community Issue Center & Crash Telemetry
+    # ==========================================
+
+    def get_all_reports(self) -> Dict[str, Any]:
+        """Fetch all public issue reports."""
+        success, reports, msg = community.fetch_all_reports()
+        return {
+            "success": success,
+            "reports": reports,
+            "message": msg
+        }
+
+    def submit_report(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Submit a new bug report or feature request with duplicate check."""
+        subject = data.get("subject", "")
+        category = data.get("category", "Bug Report")
+        description = data.get("description", "")
+        screenshot_data = data.get("screenshot_data", "")
+        telemetry = {
+            "app_version": updater.CURRENT_VERSION,
+            "platform": sys.platform,
+            "theme": getattr(self, "_settings", {}).get("theme", "")
+        }
+
+        success, res_str, record = community.submit_user_report(
+            subject=subject,
+            category=category,
+            description=description,
+            screenshot_data=screenshot_data,
+            telemetry=telemetry
+        )
+
+        if success:
+            return {
+                "success": True,
+                "is_duplicate": False,
+                "report_id": res_str,
+                "record": record,
+                "message": "Report submitted successfully!"
+            }
+        elif res_str == "duplicate":
+            return {
+                "success": False,
+                "is_duplicate": True,
+                "record": record,
+                "message": "This issue is already in the report logs. We have added your vote (+1) to help prioritize it!"
+            }
+        else:
+            return {
+                "success": False,
+                "is_duplicate": False,
+                "message": res_str or "Failed to submit report."
+            }
+
+    def upvote_report(self, report_id: str) -> Dict[str, Any]:
+        """Increment affected users count for an existing report."""
+        success, new_count = community.increment_report_affected(str(report_id))
+        return {
+            "success": success,
+            "new_count": new_count
+        }
+
+    def admin_update_report(self, report_id_or_data: Any, new_status: str = "open", admin_remark: str = "", admin_pin: str = "") -> Dict[str, Any]:
+        """Update report status and admin remark with secret PIN ('0505'). Supports dict or positional args."""
+        if isinstance(report_id_or_data, dict):
+            report_id = report_id_or_data.get("report_id", "")
+            new_status = report_id_or_data.get("status", "open")
+            admin_remark = report_id_or_data.get("admin_remark", "")
+            admin_pin = report_id_or_data.get("admin_pin", "")
+        else:
+            report_id = str(report_id_or_data)
+
+        success, msg = community.update_report_status_and_remark(
+            report_id=report_id,
+            new_status=new_status,
+            admin_remark=admin_remark,
+            admin_pin=admin_pin
+        )
+        return {
+            "success": success,
+            "message": msg
+        }
+
+    def report_client_crash(self, message_or_data: Any, stack_trace: str = "") -> Dict[str, Any]:
+        """Log unhandled frontend or client crash to Firebase RTDB. Supports dict or (msg, stack) positional."""
+        settings = self.get_settings()
+        if settings.get("auto_crash_reporting") is False:
+            return {"success": True, "status": "opted_out"}
+
+        if isinstance(message_or_data, dict):
+            error_type = message_or_data.get("error_type", "ClientError")
+            error_message = message_or_data.get("error_message", "")
+            traceback_str = message_or_data.get("traceback", "")
+            context = message_or_data.get("context", "frontend_runtime")
+        else:
+            error_type = "ClientError"
+            error_message = str(message_or_data)
+            traceback_str = str(stack_trace)
+            context = "frontend_runtime"
+
+        success, res_id = community.report_crash_log(
+            error_type=error_type,
+            error_message=error_message,
+            traceback_str=traceback_str,
+            context=context,
+            telemetry={"client": "WebView2_Svelte"}
+        )
+        return {"success": success, "crash_id": res_id}
+

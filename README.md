@@ -13,7 +13,7 @@
   <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-0284C7.svg" alt="CC BY-NC-SA 4.0" /></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-10B981.svg" alt="Python" /></a>
   <a href="https://astro.build"><img src="https://img.shields.io/badge/UI-Astro_Svelte_WebView2-F59E0B.svg" alt="UI" /></a>
-  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v4.0.0-blue.svg" alt="Release" /></a>
+  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.8.0-blue.svg" alt="Release" /></a>
 </p>
 
 ---
@@ -46,14 +46,16 @@ graph LR
     E --> H[SQLite History Archive]
 ```
 
-- **Interactive Live In-App Guided Tour & Dynamic Spotlight (v3.5.0)**: Real-time screen-switching onboarding guide, animated glowing border spotlighting on target cards, and responsive poster grid view with hover elevation and zoom.
+- **Interactive Onboarding Guided Tour (v3.8.0)**: Dynamic 5-step spotlight overlay guiding new users through the URL command deck, Community Hub, Defrag Matrix, and quick launcher buttons with audio haptics and instant replay in Settings.
+- **Community Issue Center & Smart Duplicate Intercept (v3.8.0)**: Full-featured issue tracking board with live similarity search to halt duplicate tickets, automated +1 upvoting, screenshot clipboard paste (`Ctrl+V`), and secure Admin status resolution (PIN `0505`).
+- **Automated Crash Telemetry (v3.8.0)**: Python unhandled exceptions (`sys.excepthook`) and frontend errors (`window.onerror`) are transparently captured and deduplicated in Firebase RTDB with user opt-out control.
+- **Next-Gen Gaming Hub UI (Astro + Svelte + WebView2)**: Hardware-accelerated desktop web architecture, Living Canvas dynamic ambient lighting, Defrag Mosaic real-time visualizer, and Apple Liquid Glass design (migrated completely from legacy Flet in v3.8.0).
 - **60 FPS & 120 FPS High-Refresh Rate Mode**: Custom frame pacing and micro-transition presets in Settings for high-refresh gaming monitors (120Hz/144Hz/240Hz).
 - **Clarified 1-Byte Health Check**: Instant 1-byte HTTP Range verification on Part 1 with explicit status badging and total repack size separation.
 - **Community Cloud Cache & Shared Link Hub (Phase 3)**: Instant decentralized link sharing powered by Firebase Realtime Database lightweight REST API. Skip browser automation entirely when games are already resolved.
 - **Pixel Dino Arcade Loading Animation**: Retro 8-bit arcade Pixel Dino running loader with live cloud status updates.
 - **3D-Styled Game Cards with Local Timezone Intelligence**: Game cover thumbnails, depth lighting, localized timestamps (e.g. `21 Aug 2026, 05:25 PM IST`), freshness badges, and 4 quick actions (`Use Instant`, `Push JD2`, `Copy URLs`, `Health Check`).
 - **Concurrent Tab Pool (3x-6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
-- **Next-Gen Gaming Hub UI (Astro + Svelte + WebView2)**: Hardware-accelerated desktop web architecture, Living Canvas dynamic ambient lighting, Defrag Mosaic real-time visualizer, and Apple Liquid Glass design (migrated completely from legacy Flet in v4.0.0).
 - **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using lightweight 1-byte HTTP range requests.
 - **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
 - **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.

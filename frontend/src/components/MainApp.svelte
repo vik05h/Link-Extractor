@@ -7,6 +7,8 @@
   import HistoryModal from './HistoryModal.svelte';
   import CacheConflictModal from './CacheConflictModal.svelte';
   import UpdateModal from './UpdateModal.svelte';
+  import OnboardingTour from './OnboardingTour.svelte';
+  import ReportIssueModal from './ReportIssueModal.svelte';
   import ClipboardSentinel from './ClipboardSentinel.svelte';
   import Icon from './icons/Icon.svelte';
   import type { PartItem, GameRecord } from '../types';
@@ -23,7 +25,7 @@
   let isRunning = false;
   let statusMessage = 'Paste any FitGirl URL or click a Community Repack to begin.';
   let parts: PartItem[] = [];
-  let logs: string[] = ['[System] Link Extractor v4.0 Turbo Engine initialized.'];
+  let logs: string[] = ['[System] Link Extractor v3.8 Turbo Engine initialized.'];
 
   // Community Feed State
   let communityGames: GameRecord[] = [];
@@ -37,12 +39,14 @@
   let pendingTargetUrl = '';
   let audioMuted = false;
   let currentTheme = 'adaptive';
+  let tourOpen = false;
+  let reportModalOpen = false;
 
   // Auto-Updater State
   let updateModalOpen = false;
   let updateReleaseInfo: any = null;
   let isFrozenApp = false;
-  let appCurrentVersion = 'v4.0.0';
+  let appCurrentVersion = 'v3.8.0';
   let hasUpdateAvailable = false;
 
   // URL Input
@@ -633,6 +637,34 @@
           }
         }).catch(() => {});
       }
+
+      // Check first-time visit for Onboarding Tour
+      if (!localStorage.getItem('le_tour_completed')) {
+        setTimeout(() => {
+          tourOpen = true;
+        }, 700);
+      }
+
+      // Global Client-Side Crash Diagnostic Listener
+      window.onerror = (message, source, lineno, colno, error) => {
+        try {
+          const stack = error?.stack || `Error at ${source}:${lineno}:${colno}`;
+          if ((window as any).pywebview?.api?.report_client_crash) {
+            (window as any).pywebview.api.report_client_crash(String(message), stack);
+          }
+        } catch {}
+      };
+
+      window.onunhandledrejection = (event) => {
+        try {
+          const reason = event.reason;
+          const msg = reason?.message || String(reason);
+          const stack = reason?.stack || 'Unhandled Promise Rejection';
+          if ((window as any).pywebview?.api?.report_client_crash) {
+            (window as any).pywebview.api.report_client_crash(msg, stack);
+          }
+        } catch {}
+      };
     }
   });
 
@@ -665,7 +697,7 @@
     <button 
       type="button" 
       class="sidebar-logo-btn" 
-      title="Link Extractor v4.0"
+      title="Link Extractor v3.8"
       on:click={() => { currentView = 'community'; historyOpen = false; playClickSound(); }}
     >
       <div class="logo-mark">
@@ -722,12 +754,30 @@
     </nav>
 
     <!-- Bottom Utility Controls -->
-    <div class="sidebar-footer">
+    <div class="sidebar-footer" id="tour-sidebar-footer">
+      <button 
+        type="button" 
+        class="sidebar-icon-btn tour-trigger-btn" 
+        title="Interactive Guided Tour"
+        on:click={() => { playClickSound(); tourOpen = true; }}
+      >
+        <Icon name="help-circle" size={18} />
+      </button>
+
+      <button 
+        type="button" 
+        class="sidebar-icon-btn issue-trigger-btn" 
+        title="Community Issue Center (Bugs & Feedback)"
+        on:click={() => { playClickSound(); reportModalOpen = true; }}
+      >
+        <Icon name="bug" size={18} color="#f43f5e" />
+      </button>
+
       <button 
         type="button" 
         class="sidebar-icon-btn update-btn" 
         class:has-update={hasUpdateAvailable}
-        title={hasUpdateAvailable ? "Update Available! View What's New & Download" : "What's New & Updates (v4.0.0)"}
+        title={hasUpdateAvailable ? "Update Available! View What's New & Download" : "What's New & Updates (v3.8.0)"}
         on:click={() => { playClickSound(); updateModalOpen = true; }}
       >
         <Icon name="sparkles" size={18} />
@@ -737,7 +787,7 @@
       </button>
 
       <button 
-        type="button"
+        type="button" 
         class="sidebar-icon-btn" 
         title={audioMuted ? 'Unmute Audio Haptics' : 'Mute Audio Haptics'}
         on:click={() => { audioMuted = toggleAudioMute(); }}
@@ -759,7 +809,7 @@
   <!-- Main Viewport Area -->
   <div class="main-viewport">
     <!-- Top Command Deck (URL Input Bar) -->
-    <header class="top-command-deck glass-panel">
+    <header class="top-command-deck glass-panel" id="tour-url-bar">
       <div class="input-field-container">
         <span class="input-leading-icon">
           <Icon name="link" size={16} color="var(--text-muted)" />
@@ -856,6 +906,8 @@
     onClose={() => settingsOpen = false}
     onThemeChange={(t) => currentTheme = t}
     onCheckUpdates={handleManualCheckUpdates}
+    onOpenTour={() => { tourOpen = true; }}
+    onOpenIssueCenter={() => { reportModalOpen = true; }}
     currentVersion={appCurrentVersion}
   />
 
@@ -865,6 +917,17 @@
     isFrozen={isFrozenApp}
     currentVersion={appCurrentVersion}
     onClose={() => updateModalOpen = false}
+    onShowToast={showToast}
+  />
+
+  <OnboardingTour
+    isOpen={tourOpen}
+    onClose={() => tourOpen = false}
+  />
+
+  <ReportIssueModal
+    isOpen={reportModalOpen}
+    onClose={() => reportModalOpen = false}
     onShowToast={showToast}
   />
 </div>
@@ -1124,6 +1187,18 @@
 
   .sidebar-icon-btn.update-btn:hover {
     color: var(--accent-primary);
+  }
+
+  .sidebar-icon-btn.tour-trigger-btn:hover {
+    color: var(--accent-secondary);
+    background: rgba(6, 182, 212, 0.12);
+    border-color: rgba(6, 182, 212, 0.3);
+  }
+
+  .sidebar-icon-btn.issue-trigger-btn:hover {
+    color: #f43f5e;
+    background: rgba(244, 63, 94, 0.12);
+    border-color: rgba(244, 63, 94, 0.3);
   }
 
   .update-pulse-dot {

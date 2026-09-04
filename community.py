@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import json
 import time
@@ -648,4 +649,244 @@ def enrich_generic_record(slug: str, base_url: str):
                 _http_request(f"{base_url}/games_meta/{slug}.json", method="PATCH", data=patch_data, timeout=5.0)
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Community Issue Reporting & Crash Telemetry
+# ---------------------------------------------------------------------------
+
+_reported_crash_hashes = set()
+_crash_lock = threading.Lock()
+ADMIN_SECRET_PIN = "0505"
+
+
+def fetch_all_reports(firebase_url: Optional[str] = None) -> Tuple[bool, List[Dict[str, Any]], str]:
+    """
+    Fetch all public bug reports from Firebase RTDB (/reports.json).
+    Returns (success: bool, reports: list, message: str).
+    """
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    url = f"{base_url}/reports.json"
+    try:
+        data = _http_request(url, method="GET", timeout=5.0)
+        if isinstance(data, dict):
+            reports = []
+            for rid, item in data.items():
+                if isinstance(item, dict):
+                    rec = item.copy()
+                    rec["id"] = rid
+                    reports.append(rec)
+            reports.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+            return True, reports, f"Loaded {len(reports)} reports"
+        elif data is None:
+            return True, [], "No reports found"
+        return True, [], "Empty reports"
+    except Exception as e:
+        return False, [], f"Failed to fetch reports: {e}"
+
+
+def _compute_similarity(text1: str, text2: str) -> float:
+    """Compute word token Jaccard similarity between two strings with basic stemming."""
+    def _tokenize(t: str) -> set:
+        clean = re.sub(r'[^a-zA-Z0-9\s]', ' ', t.lower())
+        words = []
+        for w in clean.split():
+            if len(w) > 2:
+                if w.endswith('ing') and len(w) > 5:
+                    w = w[:-3]
+                elif w.endswith('s') and len(w) > 4:
+                    w = w[:-1]
+                elif w.endswith('ed') and len(w) > 4:
+                    w = w[:-2]
+                words.append(w)
+        return set(words)
+
+    s1 = _tokenize(text1)
+    s2 = _tokenize(text2)
+    if not s1 or not s2:
+        return 0.0
+    intersection = len(s1.intersection(s2))
+    union = len(s1.union(s2))
+    return intersection / union if union > 0 else 0.0
+
+
+def find_duplicate_report(subject: str, existing_reports: List[Dict[str, Any]], threshold: float = 0.55) -> Optional[Dict[str, Any]]:
+    """
+    Find if a report with matching or similar subject already exists.
+    Returns the matching report dict or None.
+    """
+    clean_subj = subject.strip().lower()
+    if not clean_subj or len(clean_subj) < 4:
+        return None
+
+    best_match = None
+    highest_score = 0.0
+
+    for rep in existing_reports:
+        rep_subj = rep.get("subject", "").strip().lower()
+        if not rep_subj:
+            continue
+        if clean_subj == rep_subj or clean_subj in rep_subj or rep_subj in clean_subj:
+            return rep
+
+        sim = _compute_similarity(clean_subj, rep_subj)
+        if sim > highest_score and sim >= threshold:
+            highest_score = sim
+            best_match = rep
+
+    return best_match
+
+
+def submit_user_report(
+    subject: str,
+    category: str,
+    description: str,
+    screenshot_data: Optional[str] = None,
+    telemetry: Optional[Dict[str, Any]] = None,
+    firebase_url: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Submit a user report. Checks for duplicates against existing reports.
+    If duplicate exists, increments affected_users_count and returns (False, "duplicate", existing_record).
+    If new, posts to /reports/{report_id}.json and returns (True, report_id, new_record).
+    """
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    clean_subject = (subject or "").strip()
+    clean_desc = (description or "").strip()
+    clean_category = (category or "Bug Report").strip()
+
+    if not clean_subject:
+        return False, "Subject cannot be empty", None
+
+    success, existing_reports, _ = fetch_all_reports(base_url)
+    if success and existing_reports:
+        duplicate = find_duplicate_report(clean_subject, existing_reports)
+        if duplicate:
+            dup_id = duplicate.get("id")
+            if dup_id:
+                increment_report_affected(dup_id, firebase_url=base_url)
+                duplicate["affected_users_count"] = int(duplicate.get("affected_users_count", 1)) + 1
+            return False, "duplicate", duplicate
+
+    report_id = f"rep_{int(time.time())}_{os.urandom(3).hex()}"
+    now_iso = get_current_utc_iso()
+
+    safe_screenshot = screenshot_data
+    if safe_screenshot and len(safe_screenshot) > 800 * 1024:
+        safe_screenshot = safe_screenshot[:800 * 1024]
+
+    report_payload = {
+        "subject": clean_subject[:150],
+        "category": clean_category[:50],
+        "description": clean_desc[:3000],
+        "screenshot_data": safe_screenshot or "",
+        "status": "open",
+        "affected_users_count": 1,
+        "admin_remark": "",
+        "created_at": now_iso,
+        "app_version": updater.CURRENT_VERSION,
+        "os_info": sys.platform,
+        "telemetry": telemetry or {}
+    }
+
+    url = f"{base_url}/reports/{report_id}.json"
+    res = _http_request(url, method="PUT", data=report_payload, timeout=6.0)
+    if res is not None:
+        report_payload["id"] = report_id
+        return True, report_id, report_payload
+
+    return False, "Failed to connect to reporting server", None
+
+
+def increment_report_affected(report_id: str, firebase_url: Optional[str] = None) -> Tuple[bool, int]:
+    """Increment affected_users_count for an existing issue report."""
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    url = f"{base_url}/reports/{report_id}.json"
+    data = _http_request(url, method="GET", timeout=4.0)
+    current_count = 1
+    if isinstance(data, dict):
+        current_count = int(data.get("affected_users_count", 1))
+    new_count = current_count + 1
+    _http_request(url, method="PATCH", data={"affected_users_count": new_count}, timeout=4.0)
+    return True, new_count
+
+
+def update_report_status_and_remark(
+    report_id: str,
+    new_status: str,
+    admin_remark: str,
+    admin_pin: str,
+    firebase_url: Optional[str] = None
+) -> Tuple[bool, str]:
+    """
+    Update status and admin remark on a report. Requires valid admin_pin ('0505').
+    """
+    if str(admin_pin).strip() != ADMIN_SECRET_PIN:
+        return False, "Unauthorized: Invalid admin passkey"
+
+    valid_statuses = {"open", "investigating", "fixed", "closed"}
+    status_clean = (new_status or "open").lower().strip()
+    if status_clean not in valid_statuses:
+        status_clean = "open"
+
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    url = f"{base_url}/reports/{report_id}.json"
+
+    patch_data = {
+        "status": status_clean,
+        "admin_remark": (admin_remark or "").strip(),
+        "updated_at": get_current_utc_iso()
+    }
+
+    res = _http_request(url, method="PATCH", data=patch_data, timeout=5.0)
+    if res is not None:
+        return True, f"Report {report_id} updated to {status_clean}"
+    return False, "Failed to update report"
+
+
+def report_crash_log(
+    error_type: str,
+    error_message: str,
+    traceback_str: str,
+    context: str = "runtime",
+    telemetry: Optional[Dict[str, Any]] = None,
+    firebase_url: Optional[str] = None
+) -> Tuple[bool, str]:
+    """
+    Report an unhandled crash or exception to Firebase RTDB (/crash_logs).
+    Includes in-memory deduplication to avoid flooding repetitive error loops.
+    """
+    import hashlib
+    sig_raw = f"{error_type}:{traceback_str[:120]}"
+    sig_hash = hashlib.md5(sig_raw.encode("utf-8", errors="ignore")).hexdigest()
+
+    with _crash_lock:
+        if sig_hash in _reported_crash_hashes:
+            return True, "already_reported"
+        _reported_crash_hashes.add(sig_hash)
+
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    crash_id = f"crash_{int(time.time())}_{sig_hash[:6]}"
+    now_iso = get_current_utc_iso()
+
+    payload = {
+        "error_type": str(error_type)[:100],
+        "error_message": str(error_message)[:500],
+        "traceback": str(traceback_str)[:5000],
+        "context": str(context)[:50],
+        "app_version": updater.CURRENT_VERSION,
+        "platform": sys.platform,
+        "timestamp_utc": now_iso,
+        "telemetry": telemetry or {}
+    }
+
+    def _async_send():
+        try:
+            _http_request(f"{base_url}/crash_logs/{crash_id}.json", method="PUT", data=payload, timeout=5.0)
+        except Exception:
+            pass
+
+    threading.Thread(target=_async_send, daemon=True).start()
+    return True, crash_id
+
 

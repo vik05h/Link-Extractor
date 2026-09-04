@@ -61,7 +61,7 @@
   $: hasParts = parts.length > 0;
 </script>
 
-<div class="game-stage-container">
+<div class="game-stage-container" id="tour-game-stage">
   <!-- Top Hero Header -->
   <div class="stage-hero glass-panel">
     <div class="hero-cover-wrapper">
@@ -71,7 +71,7 @@
           alt={gameTitle}
           class="hero-cover"
           on:error={(e) => {
-            const target = e.currentTarget;
+            const target = e.currentTarget as HTMLImageElement;
             if (target && !target.src.startsWith('data:')) {
               target.src = generateProceduralBannerSvg(gameTitle);
             }
@@ -154,7 +154,7 @@
     </div>
 
     <!-- Quick Action Launcher Buttons -->
-    <div class="stage-actions">
+    <div class="stage-actions" id="tour-quick-actions">
       {#if isRunning}
         <button type="button" class="btn-secondary btn-cancel" on:click={onCancel}>
           <Icon name="close" size={14} color="var(--status-expired)" />
