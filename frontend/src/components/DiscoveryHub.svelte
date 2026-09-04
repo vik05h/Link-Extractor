@@ -629,13 +629,26 @@
     padding: 0;
     border: 1px solid var(--border-subtle);
     flex-shrink: 0;
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+    will-change: transform, box-shadow;
+    animation: cardEntrance 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
   }
 
   .game-poster-card:hover {
-    transform: translateY(-3px);
+    transform: translate3d(0, -4px, 0);
     border-color: var(--accent-primary);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 12px var(--accent-glow);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6), 0 0 16px var(--accent-glow);
+  }
+
+  @keyframes cardEntrance {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 14px, 0) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
   }
 
   .card-cover-container {

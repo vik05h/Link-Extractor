@@ -63,7 +63,7 @@
   </div>
 
   <!-- Interactive Matrix Grid -->
-  <div class="mosaic-grid" role="group" aria-label="Defrag part blocks" on:mouseleave={handleMouseLeave}>
+  <div class="mosaic-grid" class:is-decrypting={activeCount > 0} role="group" aria-label="Defrag part blocks" on:mouseleave={handleMouseLeave}>
     {#each parts as part (part.index)}
       <!-- Part Block -->
       <button 
@@ -195,12 +195,44 @@
 
   /* Mosaic Responsive Grid */
   .mosaic-grid {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
     gap: 6px;
     max-height: 280px;
     overflow-y: auto;
     padding-right: 4px;
+  }
+
+  .mosaic-grid.is-decrypting::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--accent-secondary), #ffffff, var(--accent-secondary), transparent);
+    box-shadow: 0 0 14px var(--accent-secondary), 0 0 24px var(--accent-secondary);
+    pointer-events: none;
+    z-index: 20;
+    animation: radarScan 2.4s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @keyframes radarScan {
+    0% {
+      top: 0%;
+      opacity: 0.1;
+    }
+    15% {
+      opacity: 1;
+    }
+    85% {
+      opacity: 1;
+    }
+    100% {
+      top: 100%;
+      opacity: 0.1;
+    }
   }
 
   .mosaic-block {
@@ -253,7 +285,21 @@
     color: #060d17;
     font-weight: 700;
     box-shadow: 0 0 12px var(--accent-glow);
-    animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: popIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  @keyframes popIn {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.7;
+    }
+    60% {
+      transform: scale(1.18);
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
   }
 
   .mosaic-block.failed {

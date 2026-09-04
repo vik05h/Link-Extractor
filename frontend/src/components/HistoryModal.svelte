@@ -139,12 +139,14 @@
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
+    animation: backdropFadeIn 0.22s ease-out;
   }
 
   .modal-card {
@@ -154,8 +156,25 @@
     display: flex;
     flex-direction: column;
     background: rgba(14, 18, 27, 0.96);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 0, 0, 0.5);
     overflow: hidden;
+    animation: modalScaleIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes backdropFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes modalScaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.94) translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
   }
 
   .modal-header {

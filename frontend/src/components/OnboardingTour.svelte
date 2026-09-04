@@ -186,31 +186,17 @@
 
 {#if isOpen}
   <div class="tour-backdrop" role="dialog" aria-modal="true" aria-label="Onboarding Tour" tabindex="-1">
-    <!-- SVG Mask Definition for Crystal-Clear Cutout -->
-    <svg class="tour-mask-defs" aria-hidden="true">
-      <defs>
-        <mask id="tour-spotlight-hole-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%">
-          <!-- White background (blurred & dimmed) -->
-          <rect width="100%" height="100%" fill="white" />
-          <!-- Black rectangle (100% transparent cutout hole: no blur, no dimming) -->
-          {#if spotlightRect.visible}
-            <rect 
-              class="spotlight-mask-rect"
-              x={spotlightRect.left} 
-              y={spotlightRect.top} 
-              width={spotlightRect.width} 
-              height={spotlightRect.height} 
-              rx="12" 
-              ry="12"
-              fill="black" 
-            />
-          {/if}
-        </mask>
-      </defs>
-    </svg>
-
-    <!-- Dimmed & Blurred Layer with Transparent Cutout Hole -->
-    <div class="tour-backdrop-dim"></div>
+    <!-- Deep 18px Gaussian-Blurred Backdrop with Polygon Cutout Hole -->
+    <div 
+      class="tour-backdrop-dim"
+      class:has-spotlight={spotlightRect.visible}
+      style="
+        --hole-left: {spotlightRect.left}px;
+        --hole-top: {spotlightRect.top}px;
+        --hole-right: {spotlightRect.left + spotlightRect.width}px;
+        --hole-bottom: {spotlightRect.top + spotlightRect.height}px;
+      "
+    ></div>
 
     {#if spotlightRect.visible}
       <div 
@@ -413,30 +399,29 @@
     animation: tourFadeIn 0.25s ease-out;
   }
 
-  .tour-mask-defs {
-    position: absolute;
-    width: 0;
-    height: 0;
-    pointer-events: none;
-  }
-
-  .spotlight-mask-rect {
-    transition: 
-      x 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      y 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
   .tour-backdrop-dim {
     position: absolute;
     inset: 0;
-    background: rgba(3, 6, 12, 0.78);
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    -webkit-mask: url(#tour-spotlight-hole-mask);
-    mask: url(#tour-spotlight-hole-mask);
+    background: rgba(3, 6, 12, 0.84);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
     pointer-events: auto;
+    transition: clip-path 0.35s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+  }
+
+  .tour-backdrop-dim.has-spotlight {
+    clip-path: polygon(
+      0% 0%, 
+      0% 100%, 
+      var(--hole-left) 100%, 
+      var(--hole-left) var(--hole-bottom), 
+      var(--hole-right) var(--hole-bottom), 
+      var(--hole-right) var(--hole-top), 
+      var(--hole-left) var(--hole-top), 
+      var(--hole-left) 100%, 
+      100% 100%, 
+      100% 0%
+    );
   }
 
   @keyframes tourFadeIn {
@@ -451,16 +436,34 @@
     border-radius: 12px;
     border: 2px solid var(--accent-primary);
     box-shadow: 
-      0 0 35px rgba(0, 240, 160, 0.45),
-      0 0 10px rgba(0, 240, 160, 0.7),
-      inset 0 0 16px rgba(0, 240, 160, 0.25);
-    filter: drop-shadow(0 0 8px rgba(0, 240, 160, 0.35));
+      0 0 35px rgba(0, 240, 160, 0.5),
+      0 0 12px rgba(0, 240, 160, 0.8),
+      inset 0 0 16px rgba(0, 240, 160, 0.3);
+    filter: drop-shadow(0 0 10px rgba(0, 240, 160, 0.45));
     transition: 
       top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 9001;
+    animation: spotlightPulse 2s infinite ease-in-out;
+  }
+
+  @keyframes spotlightPulse {
+    0%, 100% {
+      border-color: var(--accent-primary);
+      box-shadow: 
+        0 0 30px rgba(0, 240, 160, 0.45),
+        0 0 10px rgba(0, 240, 160, 0.7),
+        inset 0 0 16px rgba(0, 240, 160, 0.25);
+    }
+    50% {
+      border-color: var(--accent-secondary);
+      box-shadow: 
+        0 0 45px rgba(6, 182, 212, 0.55),
+        0 0 16px rgba(6, 182, 212, 0.85),
+        inset 0 0 22px rgba(6, 182, 212, 0.35);
+    }
   }
 
   .spotlight-beacon-corner {

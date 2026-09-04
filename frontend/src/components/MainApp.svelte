@@ -1330,12 +1330,48 @@
   }
 
   .btn-resolve {
+    position: relative;
+    overflow: hidden;
     flex-shrink: 0;
     padding: 10px 20px;
     font-family: var(--font-display);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    transition: transform 0.15s ease, box-shadow 0.2s ease, filter 0.15s ease;
+  }
+
+  .btn-resolve::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -60%;
+    width: 40%;
+    height: 200%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.4),
+      transparent
+    );
+    transform: rotate(25deg);
+    animation: btnSheen 4.5s infinite ease-in-out;
+    pointer-events: none;
+  }
+
+  @keyframes btnSheen {
+    0%, 75% {
+      left: -60%;
+    }
+    100% {
+      left: 140%;
+    }
+  }
+
+  .btn-resolve:active,
+  .sidebar-item:active,
+  .sidebar-icon-btn:active {
+    transform: scale(0.96);
   }
 
   /* Active Screen Body */
@@ -1344,6 +1380,18 @@
     overflow-y: auto;
     min-height: 0;
     display: flex;
+    animation: screenEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes screenEnter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 10px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
   }
 
   /* Toast */
