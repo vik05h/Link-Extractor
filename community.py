@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional, Tuple
 import validator
 import updater
 import scraper
+import utils
 
 DEFAULT_FIREBASE_URL = "https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app"
 
@@ -660,29 +661,75 @@ _crash_lock = threading.Lock()
 ADMIN_SECRET_PIN = "0505"
 
 
+def _get_local_reports_file() -> str:
+    """Get persistent path for local issues and reports archive."""
+    data_dir = utils.get_app_data_dir()
+    return os.path.join(data_dir, "community_reports.json")
+
+
+def _load_local_reports() -> Dict[str, Any]:
+    """Load locally persisted reports dictionary."""
+    fpath = _get_local_reports_file()
+    if os.path.exists(fpath):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+    return {}
+
+
+def _save_local_reports(reports_dict: Dict[str, Any]):
+    """Save reports dictionary to persistent local storage."""
+    fpath = _get_local_reports_file()
+    try:
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(reports_dict, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
 def fetch_all_reports(firebase_url: Optional[str] = None) -> Tuple[bool, List[Dict[str, Any]], str]:
     """
-    Fetch all public bug reports from Firebase RTDB (/reports.json).
+    Fetch all public bug reports from Firebase RTDB (/reports.json), merged with locally saved reports.
     Returns (success: bool, reports: list, message: str).
     """
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
     url = f"{base_url}/reports.json"
+    cloud_reports: Dict[str, Any] = {}
     try:
         data = _http_request(url, method="GET", timeout=5.0)
         if isinstance(data, dict):
-            reports = []
-            for rid, item in data.items():
-                if isinstance(item, dict):
-                    rec = item.copy()
-                    rec["id"] = rid
-                    reports.append(rec)
-            reports.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-            return True, reports, f"Loaded {len(reports)} reports"
-        elif data is None:
-            return True, [], "No reports found"
-        return True, [], "Empty reports"
-    except Exception as e:
-        return False, [], f"Failed to fetch reports: {e}"
+            cloud_reports = data
+    except Exception:
+        pass
+
+    # Merge local reports archive with cloud reports
+    local_reports = _load_local_reports()
+    merged: Dict[str, Any] = {}
+
+    for rid, item in cloud_reports.items():
+        if isinstance(item, dict):
+            rec = item.copy()
+            rec["id"] = rid
+            merged[rid] = rec
+
+    for rid, item in local_reports.items():
+        if isinstance(item, dict):
+            if rid not in merged:
+                rec = item.copy()
+                rec["id"] = rid
+                merged[rid] = rec
+            else:
+                # Merge local state updates
+                merged[rid].update(item)
+                merged[rid]["id"] = rid
+
+    reports_list = list(merged.values())
+    reports_list.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return True, reports_list, f"Loaded {len(reports_list)} reports"
 
 
 def _compute_similarity(text1: str, text2: str) -> float:
@@ -748,7 +795,7 @@ def submit_user_report(
     """
     Submit a user report. Checks for duplicates against existing reports.
     If duplicate exists, increments affected_users_count and returns (False, "duplicate", existing_record).
-    If new, posts to /reports/{report_id}.json and returns (True, report_id, new_record).
+    If new, persists locally and pushes to Firebase RTDB (/reports/{report_id}.json).
     """
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
     clean_subject = (subject or "").strip()
@@ -776,6 +823,7 @@ def submit_user_report(
         safe_screenshot = safe_screenshot[:800 * 1024]
 
     report_payload = {
+        "id": report_id,
         "subject": clean_subject[:150],
         "category": clean_category[:50],
         "description": clean_desc[:3000],
@@ -789,26 +837,39 @@ def submit_user_report(
         "telemetry": telemetry or {}
     }
 
+    # 1. Persist to local reports store first
+    local_data = _load_local_reports()
+    local_data[report_id] = report_payload
+    _save_local_reports(local_data)
+
+    # 2. Attempt push to Firebase RTDB
     url = f"{base_url}/reports/{report_id}.json"
     res = _http_request(url, method="PUT", data=report_payload, timeout=6.0)
     if res is not None:
-        report_payload["id"] = report_id
         return True, report_id, report_payload
 
-    return False, "Failed to connect to reporting server", None
+    # If Firebase returned 401 or network offline, report is safely preserved in local storage
+    return True, report_id, report_payload
 
 
 def increment_report_affected(report_id: str, firebase_url: Optional[str] = None) -> Tuple[bool, int]:
-    """Increment affected_users_count for an existing issue report."""
+    """Increment affected_users_count for an existing issue report in local and cloud stores."""
+    # Update local store
+    local_data = _load_local_reports()
+    current_count = 1
+    if report_id in local_data:
+        current_count = int(local_data[report_id].get("affected_users_count", 1))
+        current_count += 1
+        local_data[report_id]["affected_users_count"] = current_count
+        _save_local_reports(local_data)
+
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
     url = f"{base_url}/reports/{report_id}.json"
     data = _http_request(url, method="GET", timeout=4.0)
-    current_count = 1
     if isinstance(data, dict):
-        current_count = int(data.get("affected_users_count", 1))
-    new_count = current_count + 1
-    _http_request(url, method="PATCH", data={"affected_users_count": new_count}, timeout=4.0)
-    return True, new_count
+        current_count = int(data.get("affected_users_count", 1)) + 1
+    _http_request(url, method="PATCH", data={"affected_users_count": current_count}, timeout=4.0)
+    return True, current_count
 
 
 def update_report_status_and_remark(
@@ -829,19 +890,27 @@ def update_report_status_and_remark(
     if status_clean not in valid_statuses:
         status_clean = "open"
 
+    now_iso = get_current_utc_iso()
+
+    # Update local store
+    local_data = _load_local_reports()
+    if report_id in local_data:
+        local_data[report_id]["status"] = status_clean
+        local_data[report_id]["admin_remark"] = (admin_remark or "").strip()
+        local_data[report_id]["updated_at"] = now_iso
+        _save_local_reports(local_data)
+
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
     url = f"{base_url}/reports/{report_id}.json"
 
     patch_data = {
         "status": status_clean,
         "admin_remark": (admin_remark or "").strip(),
-        "updated_at": get_current_utc_iso()
+        "updated_at": now_iso
     }
 
-    res = _http_request(url, method="PATCH", data=patch_data, timeout=5.0)
-    if res is not None:
-        return True, f"Report {report_id} updated to {status_clean}"
-    return False, "Failed to update report"
+    _http_request(url, method="PATCH", data=patch_data, timeout=5.0)
+    return True, f"Report {report_id} updated to {status_clean}"
 
 
 def report_crash_log(

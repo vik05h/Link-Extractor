@@ -56,6 +56,8 @@ history.db-shm
 *.sqlite
 *.sqlite3
 settings.json
+community_reports.json
+crash_logs.json
 resolved_direct_urls.txt
 *_direct_urls.txt
 *.crawljob
