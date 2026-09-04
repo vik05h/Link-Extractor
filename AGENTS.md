@@ -54,7 +54,7 @@ python -c "import main, bridge, engine, scraper, validator, history, integration
 ### Build Standalone Executable
 ```powershell
 # Kill running instances first
-Get-Process -Name LinkExtractor, flet, main -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name LinkExtractor, main -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
 pyinstaller LinkExtractor_Single.spec --noconfirm
 ```
@@ -69,13 +69,10 @@ python scratch/security_pen_test.py
 
 ## 4. Solved Technical Gotchas
 
-* **Win32 Taskbar Icon Binding**: Flet's runner (`flet.exe`) displays a default Flutter icon. `apply_windows_native_icon()` uses `ctypes` (`SendMessageW(WM_SETICON)` + `SetClassLongPtrW(GCLP_HICON)`) on startup to bind `app_icon.ico` directly to the window class.
-* **Flet AnimatedSwitcher Hot-Swap**: `AnimatedSwitcher` locks duration at `initState()`. To change animation style at runtime, wrap in `screen_holder = ft.Container(...)` and rebuild `screen_holder.content = create_screen_switcher(cfg, cur_screen)`.
-* **PyInstaller Icon JSON Dependency**: Flet 0.86+ requires `collect_all('flet')` in `LinkExtractor_Single.spec` to bundle internal icon mappings.
-* **Adaptive Scrolling**: All screen containers must include `scroll=ft.ScrollMode.ADAPTIVE` on the outer `ft.Column` to prevent UI truncation on smaller monitors.
-* **Flet Native Async Event Loop**: Synchronous `def main(page: ft.Page)` causes background `page.update()` calls to stall in the socket outgoing buffer until an incoming UI event wakes the thread. Entrypoint must use `async def main(page: ft.Page)` with `page.run_task(...)` for immediate real-time frame dispatch.
-* **Off-Screen Headed Browser**: Launching visible browser instances (`headless=False`) causes Windows to steal foreground focus and throttle VSync frame delivery to the background Flet app. Chromium/Edge must be launched with `--window-position=-3000,-3000` to maintain 100% Cloudflare Turnstile token resolution without stealing window focus.
-* **DataTable Rebuild State Model**: Flet does not detect deep mutations on child controls inside existing `DataCell`s. Maintain a state model (`_row_states`) and use `rebuild_table()` to re-populate rows upon state changes.
+* **WebView2 RPC Bridge Reflection Recursion**: pywebview iterates over public attributes of the exposed API object when generating JavaScript bindings. Assigning the window instance directly as `self.window` triggered recursive COM interface inspection and crashed with `RecursionError` or thread deadlocks. Always store window references in private attributes (`self._window`).
+* **Off-Screen Headed Browser**: Launching visible browser instances (`headless=False`) causes Windows to steal foreground focus and throttle VSync frame delivery to the background application. Chromium/Edge must be launched with `--window-position=-3000,-3000` to maintain 100% Cloudflare Turnstile token resolution without stealing window focus.
+* **PyInstaller Single-File Web Assets**: PyInstaller single-file binaries unpack to `%TEMP%/_MEIxxxxxx`. The WebView2 frontend must be bundled via `('dist_web', 'dist_web')` in `LinkExtractor_Single.spec` and resolved at runtime via `utils.get_resource_path('dist_web')`.
+* **Legacy Flet UI Context (v3.5.0 and earlier)**: Prior to v4.0.0, Link Extractor used Python `flet` (Flutter runner). The legacy codebase suffered from thread buffer stalls, COM taskbar icon binding issues, and heavyweight memory usage. In v4.0.0, the entire `ui/` directory was deleted and replaced by Astro 5 + Svelte 5 + Windows WebView2, completely eliminating Flutter runner dependencies.
 
 ---
 

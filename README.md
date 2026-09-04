@@ -53,7 +53,7 @@ graph LR
 - **Pixel Dino Arcade Loading Animation**: Retro 8-bit arcade Pixel Dino running loader with live cloud status updates.
 - **3D-Styled Game Cards with Local Timezone Intelligence**: Game cover thumbnails, depth lighting, localized timestamps (e.g. `21 Aug 2026, 05:25 PM IST`), freshness badges, and 4 quick actions (`Use Instant`, `Push JD2`, `Copy URLs`, `Health Check`).
 - **Concurrent Tab Pool (3x-6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
-- **Material 3 UI (Flutter Engine)**: Smooth 60-120 FPS animations, Navigation Rail, live interactive DataTable, and 8 dynamic color palettes.
+- **Next-Gen Gaming Hub UI (Astro + Svelte + WebView2)**: Hardware-accelerated desktop web architecture, Living Canvas dynamic ambient lighting, Defrag Mosaic real-time visualizer, and Apple Liquid Glass design (migrated completely from legacy Flet in v4.0.0).
 - **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using lightweight 1-byte HTTP range requests.
 - **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
 - **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.
@@ -152,7 +152,7 @@ git clone https://github.com/vik05h/Link-Extractor.git
 cd Link-Extractor
 
 # 2. Install dependencies
-pip install flet playwright pyperclip
+pip install pywebview playwright pyperclip requests beautifulsoup4
 
 # 3. Install browser binaries (one-time setup)
 playwright install chromium

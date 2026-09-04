@@ -19,7 +19,7 @@
 
 | Component | Technology | Purpose |
 | :--- | :--- | :--- |
-| **GUI Framework** | `flet` (0.86+) / Flutter | Desktop Material 3 application with reactive themes & transitions |
+| **GUI Framework** | Astro 5 + Svelte 5 + WebView2 (`pywebview`) | Hardware-accelerated desktop web UI with Living Canvas, Defrag Mosaic, and Apple Liquid Glass design (migrated from legacy Flet in v4.0.0) |
 | **Automation Engine** | `playwright` (async) | Headless/Headed Chromium & Edge worker pool for JS decryption |
 | **HTML Parsing** | `beautifulsoup4`, `lxml` | Fast extraction of pastebin links and game titles |
 | **Local Storage** | `sqlite3` | Persistent local extraction history and fast search |
@@ -174,5 +174,5 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 2. **Never Hardcode System Paths**: Always use `get_app_data_dir()`, `get_resource_path()`, or `get_export_dir()`.
 3. **Verify Build Correctness**: When modifying GUI or dependencies, re-verify with `pyinstaller LinkExtractor_Single.spec --noconfirm`.
 4. **Preserve Cancellation Integrity**: Aborted extractions must never be persisted to `history.db`.
-5. **No Emojis in Documentation or UI**: Maintain professional, clean typography across all documentation files and UI labels/buttons. Use Material Icons (`ft.Icons.*`) instead of Unicode emoji in Flet controls.
+5. **No Emojis in Documentation or UI**: Maintain professional, clean typography across all documentation files and UI labels/buttons. Use SVG components (`<Icon />`) instead of Unicode emojis in frontend components.
 6. **Verify Validator API Signatures**: Before calling any `validator.*` function, check `validator.py` for the exact function name and positional argument order. Silent `AttributeError` or `TypeError` from wrong names/ordering is a recurring trap.
