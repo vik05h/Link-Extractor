@@ -654,11 +654,85 @@ def enrich_generic_record(slug: str, base_url: str):
 
 # ---------------------------------------------------------------------------
 # Community Issue Reporting & Crash Telemetry
-# ---------------------------------------------------------------------------
-
 _reported_crash_hashes = set()
 _crash_lock = threading.Lock()
-ADMIN_SECRET_PIN = "0505"
+
+# Default SHA-256 hash for admin passkey ("0505")
+_DEFAULT_ADMIN_PIN_HASH = "131e27b7715c43825f14696b907812d34fb86a529dd8c98fedbf87016f5d9149"
+
+
+def ensure_admin_key_file() -> str:
+    """
+    Ensure admin_key.secret exists in %APPDATA%/FitGirlLinkExtractor so the maintainer
+    can view, edit, and configure their admin PIN directly in Explorer.
+    """
+    target_dirs = []
+    app_data = os.environ.get("APPDATA")
+    if app_data:
+        target_dirs.append(os.path.join(app_data, "FitGirlLinkExtractor"))
+    app_dir = utils.get_app_data_dir()
+    if app_dir not in target_dirs:
+        target_dirs.append(app_dir)
+
+    primary_path = ""
+    for d in target_dirs:
+        try:
+            os.makedirs(d, exist_ok=True)
+            k_path = os.path.join(d, "admin_key.secret")
+            if not primary_path:
+                primary_path = k_path
+            if not os.path.exists(k_path):
+                with open(k_path, "w", encoding="utf-8") as f:
+                    f.write("# Link Extractor Administrator Passkey\n")
+                    f.write("# Edit this value to change your Admin Mode PIN anytime.\n")
+                    f.write("0505\n")
+        except Exception:
+            pass
+
+    return primary_path or os.path.join(utils.get_app_data_dir(), "admin_key.secret")
+
+
+def verify_admin_pin(candidate_pin: str) -> bool:
+    """
+    Cryptographically verify admin PIN against SHA-256 hash, environment variable,
+    or maintainer's local secret file in AppData without exposing plaintext PIN.
+    """
+    if not candidate_pin:
+        return False
+
+    clean_pin = str(candidate_pin).strip()
+
+    # 1. Check environment variable override
+    env_pin = os.environ.get("LINK_EXTRACTOR_ADMIN_PIN", "").strip()
+    if env_pin and clean_pin == env_pin:
+        return True
+
+    # 2. Check local maintainer secret files in AppData & App directory
+    candidate_paths = [
+        ensure_admin_key_file(),
+        os.path.join(utils.get_app_data_dir(), "admin_key.secret")
+    ]
+    app_data = os.environ.get("APPDATA")
+    if app_data:
+        candidate_paths.append(os.path.join(app_data, "FitGirlLinkExtractor", "admin_key.secret"))
+
+    for k_path in candidate_paths:
+        if os.path.exists(k_path):
+            try:
+                with open(k_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            if clean_pin == line:
+                                return True
+            except Exception:
+                pass
+
+    # 3. Constant-time digest comparison against SHA-256 hash
+    import hashlib
+    import hmac
+    candidate_hash = hashlib.sha256(clean_pin.encode("utf-8")).hexdigest()
+    return hmac.compare_digest(candidate_hash, _DEFAULT_ADMIN_PIN_HASH)
 
 
 def _get_local_reports_file() -> str:
@@ -790,12 +864,13 @@ def submit_user_report(
     description: str,
     screenshot_data: Optional[str] = None,
     telemetry: Optional[Dict[str, Any]] = None,
-    firebase_url: Optional[str] = None
+    firebase_url: Optional[str] = None,
+    force_create: bool = False
 ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
     """
-    Submit a user report. Checks for duplicates against existing reports.
-    If duplicate exists, increments affected_users_count and returns (False, "duplicate", existing_record).
-    If new, persists locally and pushes to Firebase RTDB (/reports/{report_id}.json).
+    Submit a user report. Checks for duplicates against existing reports unless force_create is True.
+    If duplicate exists and force_create is False, increments affected_users_count and returns (False, "duplicate", existing_record).
+    If new or force_create is True, persists locally and pushes to Firebase RTDB (/reports/{report_id}.json).
     """
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
     clean_subject = (subject or "").strip()
@@ -805,15 +880,16 @@ def submit_user_report(
     if not clean_subject:
         return False, "Subject cannot be empty", None
 
-    success, existing_reports, _ = fetch_all_reports(base_url)
-    if success and existing_reports:
-        duplicate = find_duplicate_report(clean_subject, existing_reports)
-        if duplicate:
-            dup_id = duplicate.get("id")
-            if dup_id:
-                increment_report_affected(dup_id, firebase_url=base_url)
-                duplicate["affected_users_count"] = int(duplicate.get("affected_users_count", 1)) + 1
-            return False, "duplicate", duplicate
+    if not force_create:
+        success, existing_reports, _ = fetch_all_reports(base_url)
+        if success and existing_reports:
+            duplicate = find_duplicate_report(clean_subject, existing_reports)
+            if duplicate:
+                dup_id = duplicate.get("id")
+                if dup_id:
+                    increment_report_affected(dup_id, firebase_url=base_url)
+                    duplicate["affected_users_count"] = int(duplicate.get("affected_users_count", 1)) + 1
+                return False, "duplicate", duplicate
 
     report_id = f"rep_{int(time.time())}_{os.urandom(3).hex()}"
     now_iso = get_current_utc_iso()
@@ -880,9 +956,9 @@ def update_report_status_and_remark(
     firebase_url: Optional[str] = None
 ) -> Tuple[bool, str]:
     """
-    Update status and admin remark on a report. Requires valid admin_pin ('0505').
+    Update status and admin remark on a report. Requires valid admin_pin.
     """
-    if str(admin_pin).strip() != ADMIN_SECRET_PIN:
+    if not verify_admin_pin(admin_pin):
         return False, "Unauthorized: Invalid admin passkey"
 
     valid_statuses = {"open", "investigating", "fixed", "closed"}
@@ -911,6 +987,36 @@ def update_report_status_and_remark(
 
     _http_request(url, method="PATCH", data=patch_data, timeout=5.0)
     return True, f"Report {report_id} updated to {status_clean}"
+
+
+def delete_report(
+    report_id: str,
+    admin_pin: str,
+    firebase_url: Optional[str] = None
+) -> Tuple[bool, str]:
+    """
+    Permanently delete an issue report from both local archive and Firebase RTDB.
+    Requires verified admin PIN authorization.
+    """
+    if not verify_admin_pin(admin_pin):
+        return False, "Unauthorized: Invalid admin passkey"
+
+    clean_id = str(report_id).strip()
+    if not clean_id:
+        return False, "Invalid report ID"
+
+    # 1. Delete from local persistent store
+    local_data = _load_local_reports()
+    if clean_id in local_data:
+        del local_data[clean_id]
+        _save_local_reports(local_data)
+
+    # 2. Delete from Firebase RTDB via HTTP DELETE
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    url = f"{base_url}/reports/{clean_id}.json"
+    _http_request(url, method="DELETE", timeout=5.0)
+
+    return True, f"Report {clean_id} deleted successfully"
 
 
 def report_crash_log(

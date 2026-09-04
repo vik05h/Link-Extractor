@@ -988,12 +988,14 @@ class AppBridge:
             "theme": getattr(self, "_settings", {}).get("theme", "")
         }
 
+        force_create = bool(data.get("force_create", False))
         success, res_str, record = community.submit_user_report(
             subject=subject,
             category=category,
             description=description,
             screenshot_data=screenshot_data,
-            telemetry=telemetry
+            telemetry=telemetry,
+            force_create=force_create
         )
 
         if success:
@@ -1026,8 +1028,16 @@ class AppBridge:
             "new_count": new_count
         }
 
+    def verify_admin_pin(self, candidate_pin: str) -> Dict[str, Any]:
+        """Verify admin PIN securely against SHA-256 hash or environment variable."""
+        valid = community.verify_admin_pin(str(candidate_pin))
+        return {
+            "success": valid,
+            "message": "Admin authorization granted" if valid else "Invalid admin passkey"
+        }
+
     def admin_update_report(self, report_id_or_data: Any, new_status: str = "open", admin_remark: str = "", admin_pin: str = "") -> Dict[str, Any]:
-        """Update report status and admin remark with secret PIN ('0505'). Supports dict or positional args."""
+        """Update report status and admin remark with secret PIN. Supports dict or positional args."""
         if isinstance(report_id_or_data, dict):
             report_id = report_id_or_data.get("report_id", "")
             new_status = report_id_or_data.get("status", "open")
@@ -1040,6 +1050,23 @@ class AppBridge:
             report_id=report_id,
             new_status=new_status,
             admin_remark=admin_remark,
+            admin_pin=admin_pin
+        )
+        return {
+            "success": success,
+            "message": msg
+        }
+
+    def admin_delete_report(self, report_id_or_data: Any, admin_pin: str = "") -> Dict[str, Any]:
+        """Delete an issue report with admin authorization. Supports dict or positional args."""
+        if isinstance(report_id_or_data, dict):
+            report_id = report_id_or_data.get("report_id", "")
+            admin_pin = report_id_or_data.get("admin_pin", "")
+        else:
+            report_id = str(report_id_or_data)
+
+        success, msg = community.delete_report(
+            report_id=report_id,
             admin_pin=admin_pin
         )
         return {

@@ -9,10 +9,12 @@
   export let onUpvote: (id: string) => void = () => {};
   export let onPreviewImage: (url: string) => void = () => {};
   export let onAdminSave: (id: string, status: string, remark: string) => Promise<void> | void = () => {};
+  export let onAdminDelete: (id: string) => Promise<void> | void = () => {};
 
   let editingStatus: string = report.status || 'open';
   let editingRemark: string = report.admin_remark || '';
   let isSaving: boolean = false;
+  let isDeleting: boolean = false;
 
   $: editingStatus = report.status || 'open';
   $: editingRemark = report.admin_remark || '';
@@ -39,6 +41,17 @@
       await onAdminSave(report.id, editingStatus, editingRemark);
     } finally {
       isSaving = false;
+    }
+  }
+
+  async function handleDeleteClick() {
+    if (confirm(`Are you sure you want to permanently delete this report?\n\nSubject: "${report.subject}"`)) {
+      isDeleting = true;
+      try {
+        await onAdminDelete(report.id);
+      } finally {
+        isDeleting = false;
+      }
     }
   }
 </script>
@@ -125,9 +138,21 @@
   <!-- Admin Tools Panel (when unlocked) -->
   {#if isAdminMode}
     <div class="admin-tools-panel">
-      <div class="admin-panel-title">
-        <Icon name="settings" size={13} color="var(--accent-primary)" />
-        <span>ADMIN EDIT: {report.id}</span>
+      <div class="admin-panel-top">
+        <div class="admin-panel-title">
+          <Icon name="settings" size={13} color="var(--accent-primary)" />
+          <span>ADMIN EDIT: {report.id}</span>
+        </div>
+        <button 
+          type="button" 
+          class="btn-delete-report"
+          title="Delete this ticket permanently"
+          disabled={isDeleting}
+          on:click={handleDeleteClick}
+        >
+          <Icon name="trash" size={12} color="#f43f5e" />
+          <span>{isDeleting ? 'Deleting...' : 'Delete Report'}</span>
+        </button>
       </div>
 
       <div class="admin-edit-grid">
@@ -379,6 +404,13 @@
     background: rgba(0, 0, 0, 0.4);
     border: 1px dashed rgba(0, 240, 160, 0.3);
   }
+  .admin-panel-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
   .admin-panel-title {
     display: flex;
     align-items: center;
@@ -386,7 +418,30 @@
     font-size: 0.72rem;
     font-weight: 700;
     color: var(--accent-primary);
-    margin-bottom: 8px;
+  }
+  .btn-delete-report {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #f43f5e;
+    background: rgba(244, 63, 94, 0.1);
+    border: 1px solid rgba(244, 63, 94, 0.28);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .btn-delete-report:hover:not(:disabled) {
+    background: rgba(244, 63, 94, 0.22);
+    border-color: rgba(244, 63, 94, 0.55);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(244, 63, 94, 0.25);
+  }
+  .btn-delete-report:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .admin-edit-grid {
     display: flex;

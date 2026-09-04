@@ -58,6 +58,8 @@ history.db-shm
 settings.json
 community_reports.json
 crash_logs.json
+admin_key.secret
+*.secret
 resolved_direct_urls.txt
 *_direct_urls.txt
 *.crawljob

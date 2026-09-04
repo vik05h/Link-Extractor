@@ -25,12 +25,16 @@
 
   // Admin Mode State
   let isAdminMode: boolean = false;
+  let sessionAdminPin: string = '';
   let showPinModal: boolean = false;
 
   // Sub-modal states
   let duplicateModalOpen: boolean = false;
   let interceptedReport: IssueReport | null = null;
   let previewImageUrl: string = '';
+
+  // Pending submission payload for force-create bypass
+  let pendingReportPayload: { category: string; subject: string; description: string; screenshotData: string } | null = null;
 
   // Upvoted IDs (persisted locally so user doesn't spam)
   let upvotedIds: Set<string> = new Set();
@@ -46,9 +50,6 @@
         try {
           upvotedIds = new Set(JSON.parse(storedVotes));
         } catch {}
-      }
-      if (localStorage.getItem('le_admin_mode') === 'true') {
-        isAdminMode = true;
       }
     }
   });
@@ -93,9 +94,10 @@
     submitFormRef?.handlePaste(e);
   }
 
-  // Submit Report Handler
-  async function handleSubmitReport(payload: { category: string; subject: string; description: string; screenshotData: string }) {
+  // Submit Report Handler (supports forceCreate to bypass duplicate intercept)
+  async function handleSubmitReport(payload: { category: string; subject: string; description: string; screenshotData: string }, forceCreate: boolean = false) {
     isSubmittingReport = true;
+    pendingReportPayload = payload;
 
     if (typeof window !== 'undefined' && (window as any).pywebview?.api?.submit_report) {
       try {
@@ -103,7 +105,8 @@
           subject: payload.subject,
           category: payload.category,
           description: payload.description,
-          screenshot_data: payload.screenshotData
+          screenshot_data: payload.screenshotData,
+          force_create: forceCreate
         });
 
         if (res.is_duplicate && res.record) {
@@ -115,6 +118,8 @@
           localStorage.setItem('le_upvoted_reports', JSON.stringify(Array.from(upvotedIds)));
           loadReports();
         } else if (res.success) {
+          duplicateModalOpen = false;
+          pendingReportPayload = null;
           playSuccessChime();
           onShowToast('Report submitted successfully! Thank you for helping improve Link Extractor.');
           submitFormRef?.resetForm();
@@ -131,6 +136,14 @@
     } else {
       isSubmittingReport = false;
       onShowToast('Reporting server bridge unavailable in preview mode.');
+    }
+  }
+
+  // Force-create bypass when user explicitly chooses "Different Issue? Submit Anyway"
+  function handleSubmitAnyway() {
+    duplicateModalOpen = false;
+    if (pendingReportPayload) {
+      handleSubmitReport(pendingReportPayload, true);
     }
   }
 
@@ -161,17 +174,17 @@
     searchQuery = matchedSubject;
   }
 
-  // Admin Pin Authentication
-  function handleAdminUnlockSuccess() {
+  // Admin Pin Authentication (Session-based, no hardcoded PIN in frontend)
+  function handleAdminUnlockSuccess(pin: string) {
     isAdminMode = true;
+    sessionAdminPin = pin;
     showPinModal = false;
-    localStorage.setItem('le_admin_mode', 'true');
     onShowToast('Admin Mode unlocked! You can now update ticket statuses and post official remarks.');
   }
 
   function handleExitAdminMode() {
     isAdminMode = false;
-    localStorage.removeItem('le_admin_mode');
+    sessionAdminPin = '';
     onShowToast('Admin Mode locked.');
   }
 
@@ -184,7 +197,7 @@
           report_id: reportId,
           status: newStatus,
           admin_remark: newRemark,
-          admin_pin: '0505'
+          admin_pin: sessionAdminPin
         });
 
         if (res && res.success) {
@@ -201,6 +214,29 @@
         }
       } catch (err) {
         onShowToast('Network error updating ticket.');
+      }
+    }
+  }
+
+  // Admin Delete Report
+  async function handleAdminDelete(reportId: string) {
+    playClickSound();
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.admin_delete_report) {
+      try {
+        const res = await (window as any).pywebview.api.admin_delete_report({
+          report_id: reportId,
+          admin_pin: sessionAdminPin
+        });
+
+        if (res && res.success) {
+          playSuccessChime();
+          onShowToast('Report permanently deleted.');
+          reports = reports.filter(r => r.id !== reportId);
+        } else {
+          onShowToast(res?.message || 'Failed to delete report.');
+        }
+      } catch (err) {
+        onShowToast('Network error deleting report.');
       }
     }
   }
@@ -377,6 +413,7 @@
                   onUpvote={handleUpvote}
                   onPreviewImage={(url) => previewImageUrl = url}
                   onAdminSave={handleAdminSave}
+                  onAdminDelete={handleAdminDelete}
                 />
               {/each}
             {/if}
@@ -406,6 +443,7 @@
   report={interceptedReport}
   onClose={() => duplicateModalOpen = false}
   onViewInTracker={handleDuplicateViewInTracker}
+  onSubmitAnyway={handleSubmitAnyway}
 />
 
 <!-- Admin Secret PIN Modal -->

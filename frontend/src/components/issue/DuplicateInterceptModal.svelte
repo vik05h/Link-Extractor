@@ -6,6 +6,7 @@
   export let report: IssueReport | null = null;
   export let onClose: () => void = () => {};
   export let onViewInTracker: (subject: string) => void = () => {};
+  export let onSubmitAnyway: () => void = () => {};
 </script>
 
 {#if isOpen && report}
@@ -61,10 +62,21 @@
       <div class="dup-footer">
         <button 
           type="button" 
+          class="btn-secondary btn-submit-anyway" 
+          on:click={onSubmitAnyway}
+          title="Create a new independent report if your issue is different"
+        >
+          <Icon name="bolt" size={13} color="var(--accent-primary)" />
+          <span>Different Issue? Submit Anyway</span>
+        </button>
+
+        <button 
+          type="button" 
           class="btn-primary" 
           on:click={() => onViewInTracker(report?.subject || '')}
         >
-          <span>View in Known Issues Tracker</span>
+          <Icon name="thumbs-up" size={13} />
+          <span>I Have This Issue (+1 & View)</span>
         </button>
       </div>
     </div>
@@ -241,6 +253,15 @@
 
   .dup-footer {
     display: flex;
+    align-items: center;
     justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .btn-submit-anyway {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
   }
 </style>

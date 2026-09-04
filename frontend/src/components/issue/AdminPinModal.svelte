@@ -4,29 +4,60 @@
 
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
-  export let onSuccess: () => void = () => {};
+  export let onSuccess: (pin: string) => void = () => {};
 
   let pinInput: string = '';
   let pinError: string = '';
+  let isVerifying: boolean = false;
 
   function focusPinInput(el: HTMLElement) {
     setTimeout(() => el.focus(), 60);
   }
 
-  function verifyAdminPin() {
-    if (pinInput.trim() === '0505') {
-      playSuccessChime();
-      pinError = '';
-      pinInput = '';
-      onSuccess();
+  async function verifyAdminPin() {
+    const candidate = pinInput.trim();
+    if (!candidate) {
+      pinError = 'Please enter the admin passkey.';
+      return;
+    }
+
+    isVerifying = true;
+    pinError = '';
+
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.verify_admin_pin) {
+      try {
+        const res = await (window as any).pywebview.api.verify_admin_pin(candidate);
+        if (res && res.success) {
+          playSuccessChime();
+          pinError = '';
+          pinInput = '';
+          onSuccess(candidate);
+        } else {
+          pinError = res?.message || 'Invalid admin passkey.';
+        }
+      } catch (err) {
+        pinError = 'Authentication service unavailable.';
+      } finally {
+        isVerifying = false;
+      }
     } else {
-      pinError = 'Invalid admin passkey.';
+      // Fallback for browser preview mode
+      if (candidate === '0505') {
+        playSuccessChime();
+        pinError = '';
+        pinInput = '';
+        onSuccess(candidate);
+      } else {
+        pinError = 'Invalid admin passkey.';
+      }
+      isVerifying = false;
     }
   }
 
   $: if (!isOpen) {
     pinInput = '';
     pinError = '';
+    isVerifying = false;
   }
 </script>
 
@@ -67,8 +98,8 @@
           <button type="button" class="btn-secondary btn-sm" on:click={onClose}>
             Cancel
           </button>
-          <button type="submit" class="btn-primary btn-sm">
-            Unlock Admin Mode
+          <button type="submit" class="btn-primary btn-sm" disabled={isVerifying}>
+            {isVerifying ? 'Verifying...' : 'Unlock Admin Mode'}
           </button>
         </div>
       </form>
