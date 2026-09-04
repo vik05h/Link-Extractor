@@ -124,9 +124,16 @@ def format_localized_timestamp(iso_str: str) -> Tuple[str, str, str]:
         dt_utc = parse_iso_timestamp(iso_str)
         dt_local = dt_utc.astimezone()
 
-        # Format local date and time with timezone name
-        tz_name = dt_local.strftime("%Z") or dt_local.strftime("%z")
-        local_time_str = dt_local.strftime(f"%d %b %Y, %I:%M %p {tz_name}").strip()
+        # Format local date and time with compact timezone name
+        raw_tz = dt_local.strftime("%Z") or ""
+        if len(raw_tz) > 5:
+            # Abbreviate Windows full timezone name (e.g. India Standard Time -> IST)
+            tz_abbr = "".join([c for c in raw_tz if c.isupper()])
+        else:
+            tz_abbr = raw_tz
+
+        time_part = dt_local.strftime("%d %b %Y, %I:%M %p")
+        local_time_str = f"{time_part} {tz_abbr}".strip() if tz_abbr else time_part
 
         # Calculate relative difference
         now_local = datetime.now(dt_local.tzinfo)
@@ -237,11 +244,87 @@ def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool 
             rec["freshness"] = fresh
             results.append(rec)
 
-    # Sort descending by timestamp
-    def _sort_key(r):
-        return r.get("timestamp_utc", "")
+    # Sort descending by timestamp initially
+    results.sort(key=lambda r: r.get("timestamp_utc", ""), reverse=True)
 
-    results.sort(key=_sort_key, reverse=True)
+    # Intelligent Canonical Deduplication
+    deduped = []
+    seen_identities = {}
+    stale_prune_slugs = []
+
+    for r in results:
+        title = (r.get("title") or "").strip()
+        img = (r.get("image_url") or "").strip()
+        src = (r.get("source_url") or "").strip()
+        slug = r.get("slug", "")
+
+        is_generic_title = title.lower() in (
+            "fuckingfast direct parts", "fitgirl pastebin download",
+            "direct repack", "fitgirl repack"
+        ) or title.startswith("Part ")
+
+        canonical_key = None
+
+        # 1. Clean core title (collapses duplicates with different image hosts)
+        norm_title = re.sub(r'[^a-z0-9]', '', title.lower())
+        norm_core = re.sub(r'(deluxeedition|completeedition|ultimateedition|jackdawedition|bonusost|bonuscontent|repack|repak|v\d+.*)', '', norm_title)
+
+        if len(norm_core) > 5 and not is_generic_title:
+            canonical_key = f"title:{norm_core[:24]}"
+        elif img and img.startswith("http") and not img.startswith("data:"):
+            canonical_key = f"img:{img}"
+        elif src and "fitgirl-repacks.site" in src:
+            clean_path = urllib.parse.urlparse(src).path.strip("/")
+            if clean_path:
+                canonical_key = f"src:{clean_path}"
+        else:
+            canonical_key = f"slug:{slug}"
+
+        if canonical_key in seen_identities:
+            existing_idx = seen_identities[canonical_key]
+            existing_rec = deduped[existing_idx]
+            existing_is_generic = existing_rec.get("title", "").lower() in (
+                "fuckingfast direct parts", "fitgirl pastebin download",
+                "direct repack", "fitgirl repack"
+            )
+
+            if existing_is_generic and not is_generic_title:
+                # Prefer record with actual game title
+                stale_prune_slugs.append(existing_rec.get("slug"))
+                r["used_count"] = max(r.get("used_count", 0), existing_rec.get("used_count", 0))
+                deduped[existing_idx] = r
+            elif not existing_is_generic and is_generic_title:
+                # Keep existing real record
+                stale_prune_slugs.append(slug)
+                existing_rec["used_count"] = max(existing_rec.get("used_count", 0), r.get("used_count", 0))
+            else:
+                # Both generic or both real -> keep newer record
+                ts_cur = r.get("timestamp_utc", "")
+                ts_ext = existing_rec.get("timestamp_utc", "")
+                if ts_cur > ts_ext:
+                    stale_prune_slugs.append(existing_rec.get("slug"))
+                    r["used_count"] = max(r.get("used_count", 0), existing_rec.get("used_count", 0))
+                    deduped[existing_idx] = r
+                else:
+                    stale_prune_slugs.append(slug)
+                    existing_rec["used_count"] = max(existing_rec.get("used_count", 0), r.get("used_count", 0))
+        else:
+            seen_identities[canonical_key] = len(deduped)
+            deduped.append(r)
+
+    # Asynchronously prune stale ghost duplicates from Firebase
+    if stale_prune_slugs:
+        def _prune_worker(slugs):
+            for s in slugs:
+                if s and s not in ("grand-theft-auto-v", "elden-ring-shadow-of-the-erdtree", "cyberpunk-2077-phantom-liberty"):
+                    try:
+                        _http_request(f"{base_url}/games_meta/{s}.json", method="DELETE", timeout=3.0)
+                        _http_request(f"{base_url}/games_urls/{s}.json", method="DELETE", timeout=3.0)
+                    except Exception:
+                        pass
+        threading.Thread(target=_prune_worker, args=(stale_prune_slugs,), daemon=True).start()
+
+    results = deduped
 
     with _COMMUNITY_CACHE_LOCK:
         _COMMUNITY_GAMES_CACHE = results
@@ -314,6 +397,7 @@ def upload_game_record(
     Upload or update a game extraction record in Firebase Realtime Database.
     Enforces overwrite rule (updates if newer).
     """
+    global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
     if not urls:
         return False, "No URLs provided for upload."
 
@@ -331,6 +415,14 @@ def upload_game_record(
     if not valid_urls:
         return False, "URLs do not match valid fuckingfast pattern."
 
+    # Preserve existing used_count if updating existing game
+    used_count = 0
+    existing = get_game_by_slug(clean_slug, firebase_url)
+    if existing and isinstance(existing, dict):
+        used_count = int(existing.get("used_count", 0))
+    elif clean_slug in DEMO_COMMUNITY_DATA:
+        used_count = int(DEMO_COMMUNITY_DATA[clean_slug].get("used_count", 0))
+
     meta_payload = {
         "title": title.strip() or "FitGirl Repack",
         "source_url": source_url.strip(),
@@ -340,6 +432,7 @@ def upload_game_record(
         "resolved_count": len(valid_urls),
         "total_size_str": total_size_str or "0 B",
         "total_size_bytes": total_size_bytes or 0,
+        "used_count": used_count,
         "uploader": uploader or "Community",
         "app_version": updater.CURRENT_VERSION
     }
@@ -356,10 +449,24 @@ def upload_game_record(
     res_meta = _http_request(meta_endpoint, method="PUT", data=meta_payload, timeout=6.0)
     res_urls = _http_request(urls_endpoint, method="PUT", data=url_payload, timeout=6.0)
 
-    # Also update in-memory cache
+    # Also update in-memory demo cache
     DEMO_COMMUNITY_DATA[clean_slug] = meta_payload
     DEMO_COMMUNITY_DATA[clean_slug]["slug"] = clean_slug
     DEMO_COMMUNITY_URLS[clean_slug] = valid_urls
+
+    # Update active community feed cache with fresh entry
+    with _COMMUNITY_CACHE_LOCK:
+        if _COMMUNITY_GAMES_CACHE is not None:
+            updated_item = dict(meta_payload)
+            updated_item["slug"] = clean_slug
+            loc_time, age_str, fresh = format_localized_timestamp(utc_now)
+            updated_item["local_time"] = loc_time
+            updated_item["age_str"] = age_str
+            updated_item["freshness"] = fresh
+
+            _COMMUNITY_GAMES_CACHE = [item for item in _COMMUNITY_GAMES_CACHE if item.get("slug") != clean_slug]
+            _COMMUNITY_GAMES_CACHE.insert(0, updated_item)
+            _COMMUNITY_GAMES_CACHE_TIME = time.time()
 
     if res_meta is not None or res_urls is not None:
         return True, f"Successfully published '{title}' to Community Cloud Cache!"
@@ -448,7 +555,7 @@ def ping_presence(session_id: str, app_version: str = "", firebase_url: Optional
             try:
                 t_dt = parse_iso_timestamp(data["t"])
                 delta = abs((now_dt - t_dt).total_seconds())
-                if delta <= 180:
+                if delta <= 300:
                     active_count += 1
                 else:
                     stale_keys.append(sid)
@@ -511,7 +618,7 @@ def get_community_stats(firebase_url: Optional[str] = None) -> Dict[str, Any]:
                 if isinstance(data, dict) and "t" in data:
                     try:
                         t_dt = parse_iso_timestamp(data["t"])
-                        if abs((now_dt - t_dt).total_seconds()) <= 180:
+                        if abs((now_dt - t_dt).total_seconds()) <= 300:
                             count += 1
                     except Exception:
                         pass

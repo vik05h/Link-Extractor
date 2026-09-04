@@ -86,6 +86,20 @@
     }
   }
 
+  function hslToRgb(h: number, s: number, l: number) {
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    if (h < 60) { r = c; g = x; }
+    else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; }
+    else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; }
+    else { r = c; b = x; }
+    return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+  }
+
   function deriveHashPalette(seedStr: string) {
     let hash = 0;
     for (let i = 0; i < seedStr.length; i++) {
@@ -95,22 +109,8 @@
     const hue1 = Math.abs(hash) % 360;
     const hue2 = (hue1 + 50) % 360;
 
-    function hslToRgb(h: number, s: number, l: number) {
-      const c = (1 - Math.abs(2 * l - 1)) * s;
-      const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-      const m = l - c / 2;
-      let r = 0, g = 0, b = 0;
-      if (h < 60) { r = c; g = x; }
-      else if (h < 120) { r = x; g = c; }
-      else if (h < 180) { g = c; b = x; }
-      else if (h < 240) { g = x; b = c; }
-      else if (h < 300) { r = x; b = c; }
-      else { r = c; b = x; }
-      return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
-    }
-
-    const [r1, g1, b1] = hslToRgb(hue1, 0.88, 0.54);
-    const [r2, g2, b2] = hslToRgb(hue2, 0.82, 0.50);
+    const [r1, g1, b1] = hslToRgb(hue1, 0.90, 0.70);
+    const [r2, g2, b2] = hslToRgb(hue2, 0.85, 0.68);
     setPalette(r1, g1, b1, r2, g2, b2);
   }
 
@@ -156,10 +156,28 @@
         for (let i = 0; i < data.length; i += 16) {
           r1 += data[i]; g1 += data[i + 1]; b1 += data[i + 2]; count++;
         }
-        r1 = Math.min(245, Math.max(35, Math.floor((r1 / count) * 1.3)));
-        g1 = Math.min(245, Math.max(35, Math.floor((g1 / count) * 1.3)));
-        b1 = Math.min(245, Math.max(35, Math.floor((b1 / count) * 1.3)));
-        setPalette(r1, g1, b1);
+        const avgR = (r1 / count) / 255;
+        const avgG = (g1 / count) / 255;
+        const avgB = (b1 / count) / 255;
+        const max = Math.max(avgR, avgG, avgB);
+        const min = Math.min(avgR, avgG, avgB);
+        let h = 0, s = 0;
+        const l = (max + min) / 2;
+        if (max !== min) {
+          const d = max - min;
+          s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+          switch (max) {
+            case avgR: h = ((avgG - avgB) / d + (avgG < avgB ? 6 : 0)) * 60; break;
+            case avgG: h = ((avgB - avgR) / d + 2) * 60; break;
+            case avgB: h = ((avgR - avgG) / d + 4) * 60; break;
+          }
+        }
+        // Vibrancy boost: Lightness clamped to [0.66, 0.76], Saturation clamped to >= 0.82
+        const targetL = Math.max(0.66, Math.min(0.76, Math.max(l, 0.68)));
+        const targetS = Math.max(0.82, Math.min(1.0, Math.max(s * 1.3, 0.85)));
+        const [vr, vg, vb] = hslToRgb(h, targetS, targetL);
+        const [sr, sg, sb] = hslToRgb((h + 45) % 360, 0.85, 0.68);
+        setPalette(vr, vg, vb, sr, sg, sb);
       } catch {
         deriveHashPalette(url);
       }

@@ -7,6 +7,7 @@
   export let games: GameRecord[] = [];
   export let isLoading: boolean = false;
   export let onLoadRecord: (rec: GameRecord) => void = () => {};
+  export let onReextract: (rec: GameRecord) => void = () => {};
   export let onPushJd2: (slug: string, title: string) => void = () => {};
   export let onRefresh: () => void = () => {};
 
@@ -16,32 +17,77 @@
   let totalGrabs = 0;
   let heartbeatInterval: any = null;
 
-  const sessionId = (typeof window !== 'undefined' && localStorage.getItem('le_session_id')) 
-    || 'usr_' + Math.random().toString(36).substring(2, 10);
+  // Generate unique session per window/instance using sessionStorage + high-entropy timestamp
+  const sessionId = (typeof window !== 'undefined' && sessionStorage.getItem('le_window_session_id')) 
+    || 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
   if (typeof window !== 'undefined') {
-    localStorage.setItem('le_session_id', sessionId);
+    sessionStorage.setItem('le_window_session_id', sessionId);
   }
 
-  function pingPresence() {
+  // Format exact timestamp strictly using user system locale, clock, and timezone
+  function formatUserDateTime(isoStr?: string, fallback?: string): string {
+    if (!isoStr) return fallback || 'Recently';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return fallback || 'Recently';
+      return d.toLocaleString(undefined, {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return fallback || 'Recently';
+    }
+  }
+
+  // Calculate dynamic relative age from current system time
+  function formatUserRelativeAge(isoStr?: string, fallback?: string): string {
+    if (!isoStr) return fallback || 'recent';
+    try {
+      const d = new Date(isoStr);
+      if (isNaN(d.getTime())) return fallback || 'recent';
+      const diffSecs = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+      if (diffSecs < 60) return 'Just now';
+      if (diffSecs < 3600) {
+        const mins = Math.floor(diffSecs / 60);
+        return `${mins} min${mins !== 1 ? 's' : ''} ago`;
+      }
+      if (diffSecs < 86400) {
+        const hrs = Math.floor(diffSecs / 3600);
+        return `${hrs} hour${hrs !== 1 ? 's' : ''} ago`;
+      }
+      const days = Math.floor(diffSecs / 86400);
+      return `${days} day${days !== 1 ? 's' : ''} ago`;
+    } catch {
+      return fallback || 'recent';
+    }
+  }
+
+  function fetchStats() {
     if (typeof window !== 'undefined' && (window as any).pywebview) {
+      // Ping presence with window-scoped session ID
       (window as any).pywebview.api.ping_presence(sessionId).then((res: any) => {
         if (res && typeof res.live_gamers === 'number') {
           liveGamers = res.live_gamers;
         }
       }).catch(() => {});
 
-      (window as any).pywebview.api.get_community_stats().then((stats: any) => {
-        if (stats) {
-          if (typeof stats.live_gamers === 'number') liveGamers = stats.live_gamers;
-          if (typeof stats.total_grabs === 'number') totalGrabs = stats.total_grabs;
+      // Query community stats
+      (window as any).pywebview.api.get_community_stats().then((res: any) => {
+        if (res) {
+          if (typeof res.live_gamers === 'number') liveGamers = res.live_gamers;
+          if (typeof res.total_grabs === 'number') totalGrabs = res.total_grabs;
         }
       }).catch(() => {});
     }
   }
 
   onMount(() => {
-    pingPresence();
-    heartbeatInterval = setInterval(pingPresence, 90000);
+    fetchStats();
+    heartbeatInterval = setInterval(fetchStats, 45000);
   });
 
   onDestroy(() => {
@@ -95,9 +141,19 @@
     onLoadRecord(rec);
   }
 
+  function handleReextract(rec: GameRecord, e?: MouseEvent) {
+    if (e) e.stopPropagation();
+    playClickSound();
+    onReextract(rec);
+  }
+
   function handleQuickPushJd(rec: GameRecord, e: MouseEvent) {
     e.stopPropagation();
     playClickSound();
+    if (rec.freshness === 'expired') {
+      onReextract(rec);
+      return;
+    }
     rec.used_count = (rec.used_count || 0) + 1;
     totalGrabs += 1;
     games = [...games];
@@ -107,12 +163,35 @@
     onPushJd2(rec.slug, rec.title);
   }
 
-  // Filtered games
-  $: filteredGames = games.filter(g => {
-    const matchesSearch = !searchQuery || g.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = selectedFilter === 'all' || (g.freshness || 'fresh') === selectedFilter;
-    return matchesSearch && matchesFilter;
-  });
+  let filteredGames: GameRecord[] = [];
+
+  // Filtered games with client-side canonical deduplication to prevent ghost duplicates
+  $: {
+    const rawList = games.filter(g => {
+      const matchesSearch = !searchQuery || g.title.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesFilter = selectedFilter === 'all' || (g.freshness || 'fresh') === selectedFilter;
+      return matchesSearch && matchesFilter;
+    });
+
+    const seen = new Map<string, GameRecord>();
+    for (const g of rawList) {
+      const norm = g.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .replace(/(deluxeedition|completeedition|ultimateedition|bonusost|bonuscontent|repack|repak|v\d+.*)/g, '')
+        .slice(0, 24);
+      const key = norm.length > 5 ? `t:${norm}` : `s:${g.slug}`;
+      if (!seen.has(key)) {
+        seen.set(key, g);
+      } else {
+        const prev = seen.get(key)!;
+        if ((g.timestamp_utc || '') > (prev.timestamp_utc || '')) {
+          seen.set(key, g);
+        }
+      }
+    }
+    filteredGames = Array.from(seen.values());
+  }
 </script>
 
 <div class="discovery-hub-container">
@@ -183,7 +262,7 @@
         <span>Expired</span>
       </button>
 
-      <button type="button" class="btn-icon" title="Refresh Community Feed" on:click={() => { onRefresh(); pingPresence(); }}>
+      <button type="button" class="btn-icon" title="Refresh Community Feed" on:click={() => { onRefresh(); fetchStats(); }}>
         <Icon name="refresh" size={16} />
       </button>
     </div>
@@ -208,7 +287,13 @@
       {#each filteredGames as rec (rec.slug)}
         <div class="game-poster-card glass-card">
           <!-- Poster Image -->
-          <div class="card-cover-container" on:click={() => handleCardPreview(rec)}>
+          <div 
+            class="card-cover-container" 
+            role="button" 
+            tabindex="0"
+            on:click={() => handleCardPreview(rec)}
+            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleCardPreview(rec)}
+          >
             {#if rec.image_url}
               <img src={rec.image_url} alt={rec.title} class="card-cover" loading="lazy" />
             {:else}
@@ -227,7 +312,7 @@
 
             <div class="card-cover-overlay">
               <button 
-                type="button"
+                type="button" 
                 class="btn-health-pill" 
                 style="color: {rec.health_color || 'var(--text-secondary)'};"
                 on:click={(e) => handleHealthCheck(rec, e)}
@@ -242,7 +327,7 @@
           <div class="card-body">
             <div class="card-meta-top">
               <span class="badge badge-{rec.freshness || 'fresh'}">
-                {(rec.freshness || 'fresh').toUpperCase()} ({rec.age_str || 'recent'})
+                {(rec.freshness || 'fresh').toUpperCase()} ({formatUserRelativeAge(rec.timestamp_utc, rec.age_str)})
               </span>
               <span class="card-parts-count">
                 <Icon name="package" size={12} color="var(--text-muted)" />
@@ -250,12 +335,21 @@
               </span>
             </div>
 
-            <h3 class="card-title" title={rec.title} on:click={() => handleCardPreview(rec)}>{rec.title}</h3>
+            <h3 class="card-title">
+              <button 
+                type="button" 
+                class="card-title-btn" 
+                title={rec.title} 
+                on:click={() => handleCardPreview(rec)}
+              >
+                {rec.title}
+              </button>
+            </h3>
 
             <div class="card-meta-bottom">
               <span class="card-time">
                 <Icon name="clock" size={12} color="var(--text-muted)" />
-                <span>{rec.local_time || 'Recently'}</span>
+                <span>{formatUserDateTime(rec.timestamp_utc, rec.local_time)}</span>
               </span>
               <div class="card-size-wrapper">
                 <Icon name="hard-drive" size={12} color="var(--accent-primary)" />
@@ -264,19 +358,31 @@
             </div>
 
             <div class="card-actions-row">
-              <button 
-                type="button"
-                class="btn-primary btn-sm"
-                on:click={(e) => handleInstantLoad(rec, e)}
-              >
-                <Icon name="zap" size={14} color="#ffffff" strokeWidth={2.5} />
-                <span>Instant Load (0s)</span>
-              </button>
+              {#if rec.freshness === 'expired'}
+                <button 
+                  type="button"
+                  class="btn-primary btn-sm btn-reextract"
+                  title="Cached links are outdated ({formatUserRelativeAge(rec.timestamp_utc, rec.age_str)}). Click to resolve fresh mirrors."
+                  on:click={(e) => handleReextract(rec, e)}
+                >
+                  <Icon name="refresh" size={13} color="#002e1c" strokeWidth={2.4} />
+                  <span>Extract Fresh</span>
+                </button>
+              {:else}
+                <button 
+                  type="button"
+                  class="btn-primary btn-sm"
+                  on:click={(e) => handleInstantLoad(rec, e)}
+                >
+                  <Icon name="zap" size={14} color="#ffffff" strokeWidth={2.5} />
+                  <span>Instant Load (0s)</span>
+                </button>
+              {/if}
 
               <button 
                 type="button"
                 class="btn-secondary btn-sm"
-                title="Push directly to JDownloader 2"
+                title={rec.freshness === 'expired' ? 'Links are expired. Click to re-extract fresh mirrors before pushing to JD2' : 'Push directly to JDownloader 2'}
                 on:click={(e) => handleQuickPushJd(rec, e)}
               >
                 <Icon name="external-link" size={13} />
@@ -578,9 +684,35 @@
     line-height: 1.35;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     min-height: 38px;
+    margin: 0;
+  }
+
+  .card-title-btn {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    transition: color 0.18s ease;
+  }
+
+  .card-title-btn:hover {
+    color: var(--accent-primary);
   }
 
   .card-meta-bottom {
@@ -627,6 +759,19 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
+  }
+
+  .btn-reextract {
+    background: linear-gradient(135deg, #00f0a0, #06b6d4) !important;
+    color: #002e1c !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 14px rgba(0, 240, 160, 0.25) !important;
+  }
+
+  .btn-reextract:hover {
+    background: linear-gradient(135deg, #34d399, #38bdf8) !important;
+    box-shadow: 0 6px 18px rgba(0, 240, 160, 0.45) !important;
+    transform: translateY(-1px);
   }
 
   .hub-loading, .hub-empty {

@@ -12,6 +12,7 @@ import json
 import time
 import asyncio
 import threading
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 import pyperclip
 
@@ -36,6 +37,9 @@ class AppBridge:
         self._clipboard_thread = None
         self._clipboard_running = False
         self._last_clipboard_val = ""
+        self._duplicate_wait_event = threading.Event()
+        self._duplicate_action = None
+        self._instance_id = f"proc_{os.getpid()}_{int(time.time()) % 10000}"
 
     def bind_window(self, window):
         """Binds the active pywebview window reference."""
@@ -127,6 +131,146 @@ class AppBridge:
             "slug": slug
         }
 
+    def check_existing_game(self, url_or_slug: str) -> Dict[str, Any]:
+        """
+        Checks if a game already exists in Firebase Community Cloud or SQLite History.
+        Returns match status and record details.
+        """
+        clean_input = (url_or_slug or "").strip()
+        if not clean_input:
+            return {"exists": False}
+
+        # 1. Derive slug candidates
+        slug = ""
+        if "http://" in clean_input or "https://" in clean_input:
+            slug = scraper.extract_game_slug(clean_input)
+        else:
+            slug = community.sanitize_slug(clean_input)
+        fallback_slug = community.generate_game_slug(clean_input)
+
+        # 2. Check Firebase Community Cache
+        fb_url = self._settings.get("community_firebase_url")
+        comm_rec = None
+
+        cached_list = community.get_community_games(fb_url, force_refresh=False)
+        clean_lower = clean_input.lower()
+        for item in cached_list:
+            item_slug = item.get("slug", "")
+            item_title = item.get("title", "").lower()
+            item_src = item.get("source_url", "").lower()
+
+            if slug and (slug == item_slug or slug in item_src):
+                comm_rec = item
+                break
+            if clean_input and (clean_input == item.get("source_url") or (len(clean_lower) >= 4 and clean_lower in item_title)):
+                comm_rec = item
+                break
+            if fallback_slug and (fallback_slug == item_slug or fallback_slug in item_src):
+                comm_rec = item
+                break
+
+        if not comm_rec and slug:
+            single = community.get_game_by_slug(slug, fb_url)
+            if single and single.get("title"):
+                comm_rec = single
+
+        if comm_rec:
+            target_slug = comm_rec.get("slug") or slug
+            urls = community.get_game_urls(target_slug, fb_url)
+
+            # Check if record is expired (> 24h old or marked 'expired')
+            iso_ts = comm_rec.get("timestamp_utc", "")
+            freshness = comm_rec.get("freshness", "fresh")
+            is_expired = freshness == "expired"
+            if iso_ts and not is_expired:
+                try:
+                    dt_utc = community.parse_iso_timestamp(iso_ts)
+                    age_hours = (datetime.now(timezone.utc) - dt_utc).total_seconds() / 3600.0
+                    if age_hours >= 24.0:
+                        is_expired = True
+                        freshness = "expired"
+                except Exception:
+                    pass
+
+            return {
+                "exists": True,
+                "source": "community",
+                "is_expired": is_expired,
+                "record": {
+                    "slug": target_slug,
+                    "title": comm_rec.get("title", "FitGirl Repack"),
+                    "image_url": comm_rec.get("image_url", ""),
+                    "source_url": comm_rec.get("source_url", clean_input),
+                    "total_parts": comm_rec.get("total_parts", len(urls)),
+                    "total_size_str": comm_rec.get("total_size_str", "0 B"),
+                    "age_str": comm_rec.get("age_str", "Recently"),
+                    "timestamp_utc": comm_rec.get("timestamp_utc", ""),
+                    "freshness": freshness,
+                    "is_expired": is_expired,
+                    "used_count": comm_rec.get("used_count", 0),
+                    "urls": urls
+                }
+            }
+
+        # 3. Check SQLite Local History
+        try:
+            hist_records = self._history_mgr.get_records(limit=200)
+            matched_hist = None
+            for r in hist_records:
+                src = (r.get("source_url") or "").strip()
+                title = (r.get("title") or "").strip()
+                if clean_input and (clean_input == src or (src and src in clean_input)):
+                    matched_hist = r
+                    break
+                if slug and (slug in community.generate_game_slug(src, title)):
+                    matched_hist = r
+                    break
+                if clean_input.lower() in title.lower() and len(clean_input) > 4:
+                    matched_hist = r
+                    break
+
+            if matched_hist:
+                derived_slug = community.generate_game_slug(matched_hist.get("source_url", ""), matched_hist.get("title", ""))
+                hist_ts = matched_hist.get("timestamp", "")
+                is_expired = False
+                try:
+                    dt_hist = datetime.strptime(hist_ts, "%Y-%m-%d %H:%M:%S")
+                    if (datetime.now() - dt_hist).total_seconds() >= 86400:
+                        is_expired = True
+                except Exception:
+                    pass
+
+                return {
+                    "exists": True,
+                    "source": "history",
+                    "is_expired": is_expired,
+                    "record": {
+                        "slug": derived_slug,
+                        "title": matched_hist.get("title", "FitGirl Repack"),
+                        "image_url": "",
+                        "source_url": matched_hist.get("source_url", clean_input),
+                        "total_parts": matched_hist.get("total_parts", len(matched_hist.get("urls", []))),
+                        "total_size_str": matched_hist.get("total_size_str", "0 B"),
+                        "age_str": hist_ts or "Local History",
+                        "timestamp_utc": hist_ts,
+                        "freshness": "expired" if is_expired else "fresh",
+                        "is_expired": is_expired,
+                        "used_count": 0,
+                        "urls": matched_hist.get("urls", [])
+                    }
+                }
+        except Exception as e:
+            print(f"[Bridge Check Error] SQLite check failed: {e}")
+
+        return {"exists": False}
+
+    def decide_duplicate(self, action: str) -> Dict[str, Any]:
+        """Handles user response to duplicate detected modal: 'instant' or 'fresh'."""
+        self._duplicate_action = action
+        if hasattr(self, "_duplicate_wait_event") and self._duplicate_wait_event:
+            self._duplicate_wait_event.set()
+        return {"status": "ok", "action": action}
+
     # ==========================================
     # Community Cloud Cache APIs
     # ==========================================
@@ -167,7 +311,8 @@ class AppBridge:
     def ping_presence(self, session_id: str = "") -> Dict[str, Any]:
         """Pings user presence heartbeat and returns online gamers count."""
         fb_url = self._settings.get("community_firebase_url")
-        active = community.ping_presence(session_id, updater.CURRENT_VERSION, fb_url)
+        sid = (session_id or "").strip() or self._instance_id
+        active = community.ping_presence(sid, updater.CURRENT_VERSION, fb_url)
         return {"live_gamers": active}
 
     def track_game_usage(self, slug: str) -> Dict[str, Any]:
@@ -212,45 +357,40 @@ class AppBridge:
             )
             data = urllib.request.urlopen(req, timeout=5.0).read()
             img = Image.open(io.BytesIO(data)).convert("RGB").resize((48, 48))
-
             pixels = [img.getpixel((x, y)) for y in range(48) for x in range(48)]
+
+            def to_vibrant(h, l, s, min_l=0.66, max_l=0.76, min_s=0.82):
+                target_l = max(min_l, min(max_l, max(l, 0.68)))
+                target_s = max(min_s, min(1.0, max(s * 1.3, 0.85)))
+                rf, gf, bf = colorsys.hls_to_rgb(h, target_l, target_s)
+                return (int(round(rf * 255)), int(round(gf * 255)), int(round(bf * 255)))
 
             scored = []
             for r, g, b in pixels:
-                h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+                h, l, s = colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
                 # Filter out pure whites, deep blacks, and muddy greys
-                if 0.16 < v < 0.95 and s > 0.22:
-                    score = (s * 2.0) + (1.0 - abs(v - 0.55))
-                    scored.append((score, (r, g, b), h))
+                if 0.10 < l < 0.94 and s > 0.16:
+                    score = (s * 2.5) + (1.0 - abs(l - 0.50))
+                    scored.append((score, (r, g, b), h, l, s))
 
             if scored:
                 scored.sort(key=lambda item: item[0], reverse=True)
-                raw_primary = scored[0][1]
-                primary_h = scored[0][2]
-
-                # Boost brightness slightly for vibrant dark-theme readability
-                p_r = min(245, max(35, int(raw_primary[0] * 1.3)))
-                p_g = min(245, max(35, int(raw_primary[1] * 1.3)))
-                p_b = min(245, max(35, int(raw_primary[2] * 1.3)))
-                primary_rgb = (p_r, p_g, p_b)
+                best = scored[0]
+                primary_h, primary_l, primary_s = best[2], best[3], best[4]
+                primary_rgb = to_vibrant(primary_h, primary_l, primary_s)
 
                 secondary_rgb = None
-                for _, rgb, h in scored[1:]:
+                for _, rgb, h, l, s in scored[1:]:
                     hue_diff = abs(h - primary_h)
                     if hue_diff > 0.5:
                         hue_diff = 1.0 - hue_diff
-                    if hue_diff > 0.10 or abs(rgb[0] - raw_primary[0]) > 50:
-                        s_r = min(245, max(35, int(rgb[0] * 1.25)))
-                        s_g = min(245, max(35, int(rgb[1] * 1.25)))
-                        s_b = min(245, max(35, int(rgb[2] * 1.25)))
-                        secondary_rgb = (s_r, s_g, s_b)
+                    if hue_diff > 0.10:
+                        secondary_rgb = to_vibrant(h, l, s)
                         break
 
                 if not secondary_rgb:
-                    s_r = min(245, max(35, int(primary_rgb[0] * 0.7 + 45)))
-                    s_g = min(245, max(35, int(primary_rgb[1] * 0.85 + 50)))
-                    s_b = min(245, max(35, int(primary_rgb[2] * 1.25 + 60)))
-                    secondary_rgb = (s_r, s_g, s_b)
+                    sec_h = (primary_h + 0.12) % 1.0
+                    secondary_rgb = to_vibrant(sec_h, 0.70, 0.88)
 
                 result = {
                     "primary": list(primary_rgb),
@@ -265,10 +405,11 @@ class AppBridge:
         # Deterministic fallback from url hash if network fails
         import colorsys
         h_val = sum(ord(c) for c in image_url) % 360
-        r_f, g_f, b_f = [int(x * 255) for x in colorsys.hsv_to_rgb(h_val / 360.0, 0.85, 0.65)]
+        r_f, g_f, b_f = [int(round(x * 255)) for x in colorsys.hls_to_rgb(h_val / 360.0, 0.70, 0.88)]
+        s_f, s_g, s_b = [int(round(x * 255)) for x in colorsys.hls_to_rgb(((h_val + 45) % 360) / 360.0, 0.68, 0.85)]
         fallback = {
             "primary": [r_f, g_f, b_f],
-            "secondary": [min(255, r_f + 40), max(10, g_f - 30), max(10, b_f - 20)],
+            "secondary": [s_f, s_g, s_b],
             "glow": f"rgba({r_f}, {g_f}, {b_f}, 0.35)"
         }
         self._palette_cache[image_url] = fallback
@@ -278,7 +419,7 @@ class AppBridge:
     # Extraction Pipeline
     # ==========================================
 
-    def start_extraction(self, url: str, concurrency: int = None) -> Dict[str, Any]:
+    def start_extraction(self, url: str, concurrency: int = None, force_fresh: bool = False) -> Dict[str, Any]:
         """Starts the asynchronous link extraction pipeline."""
         if self._is_running:
             return {"status": "error", "message": "An extraction is already in progress."}
@@ -288,18 +429,20 @@ class AppBridge:
             return {"status": "error", "message": "Empty URL provided."}
 
         self._cancel_event.clear()
+        self._duplicate_wait_event.clear()
+        self._duplicate_action = None
         self._is_running = True
         concurrency = concurrency or self._settings.get("concurrency", 3)
 
         threading.Thread(
             target=self._run_extraction_pipeline,
-            args=(target_url, concurrency),
+            args=(target_url, concurrency, force_fresh),
             daemon=True
         ).start()
 
         return {"status": "started", "target_url": target_url}
 
-    def _run_extraction_pipeline(self, target_url: str, concurrency: int):
+    def _run_extraction_pipeline(self, target_url: str, concurrency: int, force_fresh: bool = False):
         game_title = "Game Repack"
         cover_image = ""
         resolved_urls = []
@@ -350,6 +493,29 @@ class AppBridge:
                     "image_url": cover_image,
                     "parts_count": len(intermediate_urls)
                 })
+
+                # Mid-scrape duplicate check for pastebin
+                if not force_fresh:
+                    discovered_slug = scraper.extract_game_slug(target_url, game_title)
+                    dup_check = self.check_existing_game(discovered_slug)
+                    if not dup_check.get("exists"):
+                        dup_check = self.check_existing_game(game_title)
+                    if not dup_check.get("exists"):
+                        dup_check = self.check_existing_game(target_url)
+
+                    if dup_check.get("exists"):
+                        if dup_check.get("is_expired"):
+                            rec_age = dup_check.get("record", {}).get("age_str", "outdated")
+                            self.dispatch_event("pipeline:status", {
+                                "status": "resolving",
+                                "message": f"Cached links are outdated ({rec_age}). Resolving fresh mirrors to update database..."
+                            })
+                        else:
+                            self.dispatch_event("pipeline:duplicate_detected", dup_check.get("record"))
+                            self._duplicate_wait_event.wait(timeout=60.0)
+                            if self._duplicate_action == "instant":
+                                self.dispatch_event("pipeline:cancelled", {"message": "Switched to Instant Cached Links."})
+                                return
             else:
                 intermediate_urls = [target_url]
                 game_title = "Direct Repack"
@@ -413,13 +579,25 @@ class AppBridge:
                     "message": f"Sending 1-byte Range HTTP requests to verify {len(resolved_urls)} parts..."
                 })
 
-                def on_val_prog(curr, tot, p_url, p_size, is_ok):
+                def on_val_prog(*args):
+                    if len(args) == 3:
+                        curr, tot, item = args
+                        p_url = getattr(item, 'url', '') if item else ""
+                        p_size = getattr(item, 'content_length_str', 'Unknown') if item else "Unknown"
+                        is_ok = getattr(item, 'is_valid', False) if item else False
+                        idx = getattr(item, 'index', None) if item else None
+                    elif len(args) >= 5:
+                        curr, tot, p_url, p_size, is_ok = args[:5]
+                        idx = None
+                    else:
+                        return
                     self.dispatch_event("pipeline:val_update", {
                         "current": curr,
                         "total": tot,
                         "url": p_url,
                         "size": p_size,
-                        "valid": is_ok
+                        "valid": is_ok,
+                        "index": idx
                     })
 
                 val_summary = validator.validate_links(
@@ -447,7 +625,7 @@ class AppBridge:
             # Auto-upload to Community Cloud if enabled
             if self._settings.get("community_auto_upload", True) and game_title not in ("Direct Repack", "FitGirl Repack"):
                 try:
-                    game_slug = scraper.extract_game_slug(target_url, game_title)
+                    game_slug = community.generate_game_slug(target_url, game_title)
                     community.upload_game_record(
                         slug=game_slug,
                         title=game_title,
@@ -459,6 +637,7 @@ class AppBridge:
                         total_size_bytes=total_size_bytes,
                         firebase_url=self._settings.get("community_firebase_url")
                     )
+                    self.dispatch_event("community:feed_updated", {"slug": game_slug, "title": game_title})
                 except Exception as up_err:
                     print(f"[Community Auto-Upload Warning] {up_err}")
 
@@ -484,8 +663,13 @@ class AppBridge:
         if not self._is_running:
             return {"status": "idle"}
         self._cancel_event.set()
-        if self._current_engine:
-            self._current_engine.cancel()
+        if hasattr(self, "_duplicate_wait_event") and self._duplicate_wait_event:
+            self._duplicate_wait_event.set()
+        if self._current_engine and hasattr(self._current_engine, "cancel"):
+            try:
+                self._current_engine.cancel()
+            except Exception:
+                pass
         self.dispatch_event("pipeline:status", {"status": "cancelling", "message": "Cancelling workers..."})
         return {"status": "cancelling"}
 

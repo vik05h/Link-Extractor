@@ -239,8 +239,9 @@
   .mosaic-block.resolved {
     background: var(--accent-primary);
     border-color: var(--accent-primary);
-    color: #052e16;
-    box-shadow: 0 0 10px var(--accent-glow);
+    color: #060d17;
+    font-weight: 700;
+    box-shadow: 0 0 12px var(--accent-glow);
     animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
 

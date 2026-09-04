@@ -5,6 +5,7 @@
   import DiscoveryHub from './DiscoveryHub.svelte';
   import SettingsModal from './SettingsModal.svelte';
   import HistoryModal from './HistoryModal.svelte';
+  import CacheConflictModal from './CacheConflictModal.svelte';
   import ClipboardSentinel from './ClipboardSentinel.svelte';
   import Icon from './icons/Icon.svelte';
   import type { PartItem, GameRecord } from '../types';
@@ -30,6 +31,9 @@
   // Modals & Sound
   let settingsOpen = false;
   let historyOpen = false;
+  let conflictModalOpen = false;
+  let conflictRecord: any = null;
+  let pendingTargetUrl = '';
   let audioMuted = false;
   let currentTheme = 'adaptive';
 
@@ -62,24 +66,129 @@
     }
   }
 
-  // Start Extraction
-  function startExtraction(urlToExtract?: string) {
+  function isRecordExpired(rec: any): boolean {
+    if (!rec) return false;
+    if (rec.is_expired) return true;
+    if (rec.freshness === 'expired') return true;
+    if (typeof rec.age_str === 'string' && (rec.age_str.includes('day') || rec.age_str.includes('week') || rec.age_str.includes('month'))) {
+      return true;
+    }
+    if (rec.timestamp_utc) {
+      try {
+        const t = new Date(rec.timestamp_utc).getTime();
+        if (!isNaN(t) && (Date.now() - t) >= 86400000) { // 24 hours
+          return true;
+        }
+      } catch {}
+    }
+    return false;
+  }
+
+  // Start Extraction with Duplicate Check
+  function startExtraction(urlToExtract?: string, forceFresh: boolean = false) {
     const target = (urlToExtract || inputUrl).trim();
     if (!target) {
       showToast('Please paste a valid FitGirl game or pastebin URL.');
       return;
     }
 
+    // Check if game already exists in DB before extracting, unless forceFresh is specified
+    if (!forceFresh) {
+      // 1. Fast client-side check against loaded community games
+      const slugMatch = target.includes('fitgirl-repacks.site')
+        ? target.split('/').filter(Boolean).pop()
+        : '';
+
+      const fastMatch = communityGames.find(g => 
+        (slugMatch && g.slug === slugMatch) ||
+        g.source_url === target ||
+        (slugMatch && g.source_url && g.source_url.includes(slugMatch))
+      );
+
+      if (fastMatch) {
+        if (isRecordExpired(fastMatch)) {
+          // Cached links are outdated (>24h). Do not suggest dead links; automatically extract fresh mirrors
+          const ageStr = fastMatch.age_str || '2+ days ago';
+          showToast(`Cached links for "${fastMatch.title}" are outdated (${ageStr}). Resolving fresh mirrors to update database...`);
+          executeExtraction(target, true);
+          return;
+        }
+        pendingTargetUrl = target;
+        conflictRecord = {
+          ...fastMatch,
+          source: 'community'
+        };
+        conflictModalOpen = true;
+        return;
+      }
+
+      // 2. Bridge check against Firebase RTDB & SQLite history
+      if (typeof window !== 'undefined' && (window as any).pywebview?.api?.check_existing_game) {
+        (window as any).pywebview.api.check_existing_game(target).then((res: any) => {
+          if (res && res.exists && res.record) {
+            if (res.is_expired || isRecordExpired(res.record)) {
+              const ageStr = res.record.age_str || '2+ days ago';
+              showToast(`Cached links for "${res.record.title}" are outdated (${ageStr}). Resolving fresh mirrors to update database...`);
+              executeExtraction(target, true);
+            } else {
+              pendingTargetUrl = target;
+              conflictRecord = res.record;
+              conflictModalOpen = true;
+            }
+          } else {
+            executeExtraction(target, false);
+          }
+        }).catch(() => {
+          executeExtraction(target, false);
+        });
+        return;
+      }
+    }
+
+    executeExtraction(target, forceFresh);
+  }
+
+  function executeExtraction(target: string, forceFresh: boolean) {
     playClickSound();
     isRunning = true;
     currentView = 'stage';
     sourceUrl = target;
     statusMessage = 'Connecting to high-speed resolution pool...';
     parts = [];
-    logs = [`[Pipeline] Starting multi-tab extraction for: ${target}`];
+    logs = [`[Pipeline] Starting multi-tab extraction for: ${target} ${forceFresh ? '(Overwrite Mode)' : ''}`];
 
     if (typeof window !== 'undefined' && (window as any).pywebview) {
-      (window as any).pywebview.api.start_extraction(target);
+      (window as any).pywebview.api.start_extraction(target, null, forceFresh);
+    }
+  }
+
+  function handleSelectInstantConflict() {
+    conflictModalOpen = false;
+    if (conflictRecord) {
+      if (typeof window !== 'undefined' && (window as any).pywebview?.api?.decide_duplicate) {
+        (window as any).pywebview.api.decide_duplicate('instant');
+      }
+      handleLoadCommunityRecord(conflictRecord);
+    }
+  }
+
+  function handleSelectFreshConflict() {
+    conflictModalOpen = false;
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.decide_duplicate) {
+      (window as any).pywebview.api.decide_duplicate('fresh');
+    }
+    const target = pendingTargetUrl || sourceUrl || inputUrl;
+    if (target) {
+      executeExtraction(target, true);
+    }
+  }
+
+  function handleCloseConflictModal() {
+    conflictModalOpen = false;
+    conflictRecord = null;
+    pendingTargetUrl = '';
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.decide_duplicate) {
+      (window as any).pywebview.api.decide_duplicate('cancel');
     }
   }
 
@@ -91,13 +200,36 @@
   }
 
   // Load Community Record directly into Stage
-  function handleLoadCommunityRecord(rec: GameRecord) {
+  function handleLoadCommunityRecord(rec: any) {
+    if (!rec) return;
+    activeGameSlug = rec.slug || '';
+    trackActiveGameUsage();
+
     gameTitle = rec.title;
     coverUrl = rec.image_url;
     sourceUrl = rec.source_url;
     totalSizeStr = rec.total_size_str;
     currentView = 'stage';
     statusMessage = 'Loaded instant pre-fetched direct links from Community Cache!';
+
+    // If direct URLs are already included on the record (e.g. from history or check_existing_game)
+    if (rec.urls && Array.isArray(rec.urls) && rec.urls.length > 0) {
+      parts = rec.urls.map((u: string, i: number) => {
+        const raw = u.includes('#') ? u.split('#').pop() : `Part ${i + 1}`;
+        return {
+          index: i + 1,
+          url: u,
+          direct_url: u,
+          filename: decodeURIComponent(raw || `Part ${i + 1}`),
+          status: 'resolved',
+          size: rec.total_size_str || ''
+        };
+      });
+
+      logs = [`[Database] Loaded ${rec.urls.length} verified direct links for ${gameTitle} with 0s wait!`];
+      showToast(`Loaded ${rec.urls.length} parts for ${gameTitle} with 0s wait!`);
+      return;
+    }
 
     // Immediately populate part slots so Defrag Matrix renders instantly
     const totalParts = rec.total_parts || 0;
@@ -114,7 +246,7 @@
       parts = [];
     }
 
-    if (typeof window !== 'undefined' && (window as any).pywebview) {
+    if (typeof window !== 'undefined' && (window as any).pywebview && rec.slug) {
       (window as any).pywebview.api.get_game_urls(rec.slug).then((urls: string[]) => {
         if (urls && urls.length > 0) {
           parts = urls.map((u, i) => {
@@ -156,6 +288,13 @@
         showToast('Error loading game URLs from cache');
       });
     }
+  }
+
+  function handleReextractGame(rec: any) {
+    if (!rec) return;
+    const target = rec.source_url || rec.slug;
+    showToast(`Cached links for "${rec.title}" are outdated (${rec.age_str || '2+ days ago'}). Resolving fresh mirrors...`);
+    startExtraction(target, true);
   }
 
   // Load History Item directly into Stage
@@ -304,6 +443,7 @@
       if (e.key === 'Escape') {
         settingsOpen = false;
         historyOpen = false;
+        conflictModalOpen = false;
       }
       return;
     }
@@ -311,6 +451,7 @@
     if (e.key === 'Escape') {
       settingsOpen = false;
       historyOpen = false;
+      conflictModalOpen = false;
     } else if ((e.ctrlKey || e.metaKey) && e.key === '1') {
       e.preventDefault();
       currentView = 'community';
@@ -373,7 +514,8 @@
       if (v) {
         logs = [...logs, `[Validator] Verified: ${v.current}/${v.total} (${v.size})`];
         parts = parts.map((p, idx) => {
-          if (idx + 1 === v.current || p.direct_url === v.url || p.url === v.url) {
+          if ((v.index !== undefined && v.index !== null && (idx === v.index || p.index === v.index + 1)) ||
+              p.direct_url === v.url || p.url === v.url || idx + 1 === v.current) {
             return { ...p, size: v.size };
           }
           return p;
@@ -396,6 +538,19 @@
       statusMessage = 'Extraction cancelled.';
       logs = [...logs, `[Cancelled] Stopped by user.`];
       showToast('Extraction cancelled.');
+    });
+
+    window.addEventListener('pipeline:duplicate_detected' as any, (e: CustomEvent) => {
+      const rec = e.detail;
+      if (rec) {
+        pendingTargetUrl = sourceUrl || inputUrl;
+        conflictRecord = rec;
+        conflictModalOpen = true;
+      }
+    });
+
+    window.addEventListener('community:feed_updated' as any, () => {
+      refreshCommunity(true);
     });
 
     window.addEventListener('pipeline:error' as any, (e: CustomEvent) => {
@@ -592,6 +747,7 @@
           games={communityGames}
           isLoading={isCommunityLoading}
           onLoadRecord={handleLoadCommunityRecord}
+          onReextract={handleReextractGame}
           onPushJd2={handlePushCommunityGameToJd2}
           onRefresh={refreshCommunity}
         />
@@ -611,6 +767,14 @@
   <ClipboardSentinel onResolveUrl={(url) => { inputUrl = url; startExtraction(url); }} />
 
   <!-- Modals -->
+  <CacheConflictModal
+    isOpen={conflictModalOpen}
+    record={conflictRecord}
+    onSelectInstant={handleSelectInstantConflict}
+    onSelectFresh={handleSelectFreshConflict}
+    onClose={handleCloseConflictModal}
+  />
+
   <HistoryModal 
     isOpen={historyOpen}
     onClose={() => historyOpen = false}

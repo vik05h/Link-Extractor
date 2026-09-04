@@ -393,3 +393,8 @@ def resolve_pastebin_metadata(pastebin_url: str, part_urls: List[str]) -> Dict[s
         "slug": final_slug
     }
 
+
+def extract_game_slug(url: str, title: str = "") -> str:
+    """Extract canonical slug from URL or game title."""
+    import community
+    return community.generate_game_slug(url, title)
