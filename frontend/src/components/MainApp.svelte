@@ -23,7 +23,7 @@
   let isRunning = false;
   let statusMessage = 'Paste any FitGirl URL or click a Community Repack to begin.';
   let parts: PartItem[] = [];
-  let logs: string[] = ['[System] Link Extractor v3.8 Turbo Engine initialized.'];
+  let logs: string[] = ['[System] Link Extractor v4.0 Turbo Engine initialized.'];
 
   // Community Feed State
   let communityGames: GameRecord[] = [];
@@ -42,7 +42,8 @@
   let updateModalOpen = false;
   let updateReleaseInfo: any = null;
   let isFrozenApp = false;
-  let appCurrentVersion = 'v3.8.0';
+  let appCurrentVersion = 'v4.0.0';
+  let hasUpdateAvailable = false;
 
   // URL Input
   let inputUrl = '';
@@ -450,12 +451,14 @@
       try {
         const res = await (window as any).pywebview.api.check_for_updates();
         if (res && res.has_update && res.release_info) {
+          hasUpdateAvailable = true;
           updateReleaseInfo = res.release_info;
           isFrozenApp = !!res.is_frozen;
           if (res.current_version) appCurrentVersion = res.current_version;
           updateModalOpen = true;
           return res;
         } else {
+          hasUpdateAvailable = false;
           showToast(res?.message || 'You are running the latest version.');
           return res;
         }
@@ -590,10 +593,10 @@
     window.addEventListener('updater:available' as any, (e: CustomEvent) => {
       const d = e.detail;
       if (d && d.release_info) {
+        hasUpdateAvailable = true;
         updateReleaseInfo = d.release_info;
         isFrozenApp = !!d.is_frozen;
         if (d.current_version) appCurrentVersion = d.current_version;
-        updateModalOpen = true;
       }
     });
 
@@ -621,6 +624,15 @@
       window.addEventListener('keydown', handleGlobalKeydown);
 
       refreshCommunity();
+
+      if ((window as any).pywebview?.api?.get_update_status) {
+        (window as any).pywebview.api.get_update_status().then((stat: any) => {
+          if (stat && stat.has_update) {
+            hasUpdateAvailable = true;
+            if (stat.release_info) updateReleaseInfo = stat.release_info;
+          }
+        }).catch(() => {});
+      }
     }
   });
 
@@ -653,7 +665,7 @@
     <button 
       type="button" 
       class="sidebar-logo-btn" 
-      title="Link Extractor v3.8"
+      title="Link Extractor v4.0"
       on:click={() => { currentView = 'community'; historyOpen = false; playClickSound(); }}
     >
       <div class="logo-mark">
@@ -712,6 +724,19 @@
     <!-- Bottom Utility Controls -->
     <div class="sidebar-footer">
       <button 
+        type="button" 
+        class="sidebar-icon-btn update-btn" 
+        class:has-update={hasUpdateAvailable}
+        title={hasUpdateAvailable ? "Update Available! View What's New & Download" : "What's New & Updates (v4.0.0)"}
+        on:click={() => { playClickSound(); updateModalOpen = true; }}
+      >
+        <Icon name="sparkles" size={18} />
+        {#if hasUpdateAvailable}
+          <span class="update-pulse-dot" aria-hidden="true"></span>
+        {/if}
+      </button>
+
+      <button 
         type="button"
         class="sidebar-icon-btn" 
         title={audioMuted ? 'Unmute Audio Haptics' : 'Mute Audio Haptics'}
@@ -721,7 +746,7 @@
       </button>
 
       <button 
-        type="button"
+        type="button" 
         class="sidebar-icon-btn" 
         title="Settings & Themes"
         on:click={() => { settingsOpen = true; playClickSound(); }}
@@ -1087,6 +1112,41 @@
     color: var(--text-primary);
     background: var(--bg-surface-hover);
     border-color: var(--border-hover);
+  }
+
+  .sidebar-icon-btn.update-btn {
+    position: relative;
+  }
+
+  .sidebar-icon-btn.update-btn.has-update {
+    color: var(--accent-primary);
+  }
+
+  .sidebar-icon-btn.update-btn:hover {
+    color: var(--accent-primary);
+  }
+
+  .update-pulse-dot {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #f59e0b;
+    box-shadow: 0 0 10px #f59e0b, 0 0 16px rgba(245, 158, 11, 0.6);
+    animation: pulseDot 1.8s infinite;
+  }
+
+  @keyframes pulseDot {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.35);
+      opacity: 0.6;
+    }
   }
 
   /* Main Viewport */

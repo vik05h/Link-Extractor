@@ -8,7 +8,7 @@
   export let onClose: () => void = () => {};
   export let onThemeChange: (theme: string) => void = () => {};
   export let onCheckUpdates: () => void = () => {};
-  export let currentVersion: string = 'v3.8.0';
+  export let currentVersion: string = 'v4.0.0';
 
   let currentTheme = 'cyber';
   let isCheckingUpdates = false;

@@ -6,11 +6,11 @@
   export let isOpen: boolean = false;
   export let releaseInfo: any = null;
   export let isFrozen: boolean = false;
-  export let currentVersion: string = 'v3.8.0';
+  export let currentVersion: string = 'v4.0.0';
   export let onClose: () => void = () => {};
   export let onShowToast: (msg: string) => void = () => {};
 
-  let step: 'prompt' | 'downloading' | 'ready' | 'error' = 'prompt';
+  let step: 'overview' | 'downloading' | 'ready' | 'error' = 'overview';
   let percent: number = 0;
   let downloadedStr: string = '0 MB';
   let totalStr: string = '68 MB';
@@ -19,8 +19,150 @@
   let autoRestartCountdown: number = 3;
   let countdownTimer: any = null;
 
+  // Version Timeline & Changelogs
+  let changelogs: any[] = [];
+  let selectedVersionIndex: number = 0;
+  let isChecking: boolean = false;
+
+  const FALLBACK_CHANGELOGS = [
+    {
+      version: 'v4.0.0',
+      title: 'Next-Gen Gaming Hub UI/UX Overhaul, Living Canvas & Defrag Mosaic',
+      is_current: true,
+      previous_version: 'v3.5.0',
+      highlights: [
+        'Complete architectural migration from legacy Flet UI to hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.',
+        'Living Canvas dynamic ambient backlighting with mathematical vibrancy boosting extracting dominant colors from game cover art.',
+        'Interactive Defrag Mosaic visualizer for real-time multi-part status tracking replacing static data tables.',
+        'In-app automatic updater with live download speed HUD, percentage tracking, and detached Windows restart script.',
+        'Multi-tier authoritative game artwork cascade extracting high-resolution FitGirl covers with procedural neon SVG fallback.',
+        'Automated Pastebin metadata resolution extracting game names from archive filenames with FitGirl site search.',
+        'Live concurrent gamer presence pulse indicator powered by zero-cost lightweight Firebase REST heartbeats.',
+        'Community link usage tracking recording and displaying download counts across shared repacks.',
+        'Selective Repack Filter saving tens of gigabytes by filtering optional language and bonus packs.',
+        'Background Clipboard Sentinel auto-detecting copied FitGirl links and Web Audio API synthesized gaming sound haptics.'
+      ],
+      bug_fixes: [
+        'Completely eliminated legacy Flet runtime thread blocking, socket buffering, and window focus stealing.',
+        'Fixed ambient mode text darkness with mathematical vibrancy boosting in HLS color space.',
+        'Fixed 0 B repack size aggregation by aligning validator progress callback signature.',
+        'Fixed Steam store 404 artwork failure on recent releases with authoritative FitGirl page parser.',
+        'Fixed duplicate cache freshness logic ensuring cached mirrors older than 24 hours trigger fresh extractions.'
+      ]
+    },
+    {
+      version: 'v3.5.0',
+      title: 'Interactive Live In-App Guided Tour, Spotlight Highlighting & Rebranding (Legacy Flet UI)',
+      is_current: false,
+      previous_version: 'v3.2.0',
+      highlights: [
+        'Interactive Live In-App Guided Tour actively navigating across Extractor, Community Hub, History Archive, and Settings in real-time.',
+        'Dynamic Spotlight Box Highlighting with glowing theme borders and soft shadows illuminating the exact target cards on each step.',
+        'Complete Rebranding to Link Extractor across window titles, PE resource headers, and in-app components.',
+        'Display Framerate Selector toggling between 60 FPS (Balanced) and 120 FPS (Ultra Fluid) in real-time.',
+        'Community Hub View Switcher with responsive Poster Grid View and Compact Feed List.',
+        'Interactive Game Details Modal popup displaying all split repack archive parts with individual copy links.',
+        'Enhanced Card Hover animations with theme-colored glowing borders, elevation pop, and smooth poster zoom.',
+        'Expanded 8 dynamic Material 3 theme presets (Deep Violet, Emerald, Cyber Sapphire, Amber Gold, Neon Rose, Synthwave, Matrix, Crimson).',
+        'Enhanced 1-Click Health Check with clear Part 1 verification badge and detailed tooltip.'
+      ],
+      bug_fixes: [
+        'Fixed Icon missing positional argument in tour controller.',
+        'Fixed typing import for Callable in state controller.',
+        'Fixed shadow smudge glitch on lighter themes using native Material 3 elevation.',
+        'Added automatic SQLite History archive deduplication and smart upsert updates.',
+        'Enforced pure-white high-contrast text and icons on floating status notifications.'
+      ]
+    },
+    {
+      version: 'v3.2.0',
+      title: 'Community Cloud Cache, Pixel Dino Loader & 3D Repack Hub',
+      is_current: false,
+      previous_version: 'v3.1.1',
+      highlights: [
+        'Decentralized Community Cloud Cache powered by Firebase Realtime Database lightweight REST API.',
+        'Retro 8-bit Arcade Pixel Dino running loading animation with live cloud status updates.',
+        'Interactive 3D-styled Game Cards with cover thumbnails, depth glow, and local timezone intelligence.',
+        'Automatic instant pre-fetched link detection on Extractor screen with 1-click skip browser option.',
+        '1-Click Health Check executing rapid 1-byte verification on Part 1 of any community repack.',
+        'Automated background cloud publishing with privacy opt-out toggle in Settings & Tweaks.',
+        'Freshness color badges (Fresh <12h, Aging 12-36h, Expired >36h) with local time display.'
+      ],
+      bug_fixes: [
+        'Enforced strict overwrite logic to ensure newest extraction timestamps update cloud records.',
+        'Added graceful offline fallback with built-in community cache when Firebase is unreachable.',
+        'Added full entity unescaping and cover image extraction for FitGirl game pages.'
+      ]
+    },
+    {
+      version: 'v3.1.1',
+      title: 'Startup Auto-Updater, Real-Time Async UI & In-App Installer',
+      is_current: false,
+      previous_version: 'v3.1.0',
+      highlights: [
+        'Automatic silent update check on application startup with user confirmation prompt.',
+        'In-app background download progress dialog displaying live speed and percentage.',
+        'Automated Windows binary replacement and seamless application restart launcher.',
+        'Interactive What\'s New & Bug Fixes release notes popup dialog on updated version launch.',
+        'Off-screen headed Playwright browser engine preventing OS window focus theft.'
+      ],
+      bug_fixes: [
+        'Fixed real-time UI freezing by transitioning to native async event loop.',
+        'Fixed DataTable child mutation rendering using state model rebuild pattern.',
+        'Fixed SegmentedButton JSON serialization error with set-to-list conversion.',
+        'Improved detached updater batch script cleanup and process PID tracking on Windows.'
+      ]
+    },
+    {
+      version: 'v3.1.0',
+      title: 'Material 3 Engine, 1-Byte Size Validation & SQLite History Archive',
+      is_current: false,
+      previous_version: 'v3.0.0',
+      highlights: [
+        'Full Material 3 UI migration with Flutter hardware acceleration (60-120 FPS).',
+        'Rapid concurrent 1-byte HTTP Range size validation and live total repack calculation.',
+        'Integrated local SQLite download archive with instant search and 1-click re-export.',
+        'JDownloader 2 FlashGot HTTP API push with #filename.rar zero-prompt anchors.',
+        'Dynamic Material 3 theme seeds, branding logo switcher, and transition presets.',
+        'Automatic startup update checker and automated in-app update installer.'
+      ],
+      bug_fixes: [
+        'Fixed PyInstaller icons.json missing resource crash on standalone Windows binary.',
+        'Fixed window and taskbar icon binding to eliminate Flutter runner default icon.',
+        'Fixed cross-platform export directory path resolution on non-standard Windows drives.',
+        'Fixed race conditions during mid-extraction cancellations.'
+      ]
+    },
+    {
+      version: 'v3.0.0',
+      title: 'High-Speed Playwright Multi-Tab Engine & Turnstile Solver',
+      is_current: false,
+      previous_version: null,
+      highlights: [
+        'Parallel multi-tab browser pool resolving parts concurrently (3x-6x speedup).',
+        'Automatic Cloudflare Turnstile captcha solver and response header interceptor.',
+        'Automated retry engine with jitter delays for dropped links.',
+        'Direct FitGirl game page and pastebin auto-detection.'
+      ],
+      bug_fixes: [
+        'Resolved browser memory leak by sharing a single context across worker tabs.',
+        'Fixed link parser edge cases on multi-mirror pastebins.'
+      ]
+    }
+  ];
+
+  $: hasUpdate = Boolean(
+    releaseInfo && (
+      releaseInfo.has_update || 
+      releaseInfo.available || 
+      (releaseInfo.latest_version && releaseInfo.latest_version !== currentVersion)
+    )
+  );
+
+  $: activeEntry = changelogs[selectedVersionIndex] || changelogs[0] || null;
+
   function resetState() {
-    step = 'prompt';
+    step = 'overview';
     percent = 0;
     downloadedStr = '0 MB';
     totalStr = '68 MB';
@@ -36,7 +178,57 @@
     resetState();
   }
 
+  function loadChangelogs() {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.get_changelogs) {
+      (window as any).pywebview.api.get_changelogs()
+        .then((data: any[]) => {
+          if (data && Array.isArray(data) && data.length > 0) {
+            changelogs = data;
+          } else {
+            changelogs = FALLBACK_CHANGELOGS;
+          }
+          syncReleaseToChangelogs();
+        })
+        .catch(() => {
+          changelogs = FALLBACK_CHANGELOGS;
+          syncReleaseToChangelogs();
+        });
+    } else {
+      changelogs = FALLBACK_CHANGELOGS;
+      syncReleaseToChangelogs();
+    }
+  }
+
+  function syncReleaseToChangelogs() {
+    if (hasUpdate && releaseInfo?.latest_version) {
+      const exists = changelogs.some(c => c.version === releaseInfo.latest_version);
+      if (!exists) {
+        const newReleaseEntry = {
+          version: releaseInfo.latest_version,
+          title: releaseInfo.name || `Link Extractor ${releaseInfo.latest_version}`,
+          is_current: false,
+          is_new: true,
+          previous_version: currentVersion,
+          highlights: parseBodyToHighlights(releaseInfo.body),
+          bug_fixes: []
+        };
+        changelogs = [newReleaseEntry, ...changelogs];
+      }
+    }
+  }
+
+  function parseBodyToHighlights(bodyText: string): string[] {
+    if (!bodyText) return ['New updates and improvements released on GitHub.'];
+    const lines = bodyText.split('\n')
+      .map(l => l.trim())
+      .filter(l => l.startsWith('* ') || l.startsWith('- ') || l.startsWith('• '))
+      .map(l => l.replace(/^[\*\-•]\s*/, '').replace(/\*\*(.*?)\*\*/g, '$1'));
+    return lines.length > 0 ? lines : [bodyText.slice(0, 200)];
+  }
+
   onMount(() => {
+    loadChangelogs();
+
     function onProgress(e: CustomEvent) {
       const d = e.detail;
       if (d) {
@@ -49,7 +241,6 @@
     }
 
     function onComplete(e: CustomEvent) {
-      const d = e.detail;
       step = 'ready';
       playSuccessChime();
       onShowToast('Update downloaded successfully!');
@@ -91,11 +282,42 @@
     };
   });
 
+  $: if (isOpen) {
+    loadChangelogs();
+  }
+
+  function handleCheckUpdatesManual() {
+    playClickSound();
+    isChecking = true;
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.check_for_updates) {
+      (window as any).pywebview.api.check_for_updates()
+        .then((res: any) => {
+          isChecking = false;
+          if (res && res.has_update && res.release_info) {
+            releaseInfo = res.release_info;
+            syncReleaseToChangelogs();
+            onShowToast(`New update available: ${res.release_info.latest_version || res.release_info.tag_name}`);
+          } else {
+            onShowToast(res?.message || 'You are running the latest version.');
+          }
+        })
+        .catch((err: any) => {
+          isChecking = false;
+          onShowToast(`Update check error: ${err?.message || err}`);
+        });
+    } else {
+      setTimeout(() => {
+        isChecking = false;
+        onShowToast('Updater bridge ready.');
+      }, 800);
+    }
+  }
+
   function startDownload() {
     playClickSound();
     step = 'downloading';
     percent = 1;
-    speedStr = 'Starting download...';
+    speedStr = 'Connecting to GitHub CDN...';
     if (typeof window !== 'undefined' && (window as any).pywebview?.api?.start_update_download) {
       const url = releaseInfo?.download_url || '';
       (window as any).pywebview.api.start_update_download(url);
@@ -142,15 +364,6 @@
       window.open(url, '_blank');
     }
   }
-
-  function formatBody(bodyText: string): string {
-    if (!bodyText) return 'No release highlights provided.';
-    return bodyText
-      .replace(/^### (.*$)/gim, '<strong>$1</strong>')
-      .replace(/^## (.*$)/gim, '<strong>$1</strong>')
-      .replace(/^\* (.*$)/gim, '• $1')
-      .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
-  }
 </script>
 
 {#if isOpen}
@@ -165,11 +378,11 @@
       <div class="modal-header">
         <div class="header-left">
           <div class="header-icon-halo">
-            <Icon name="bolt" size={18} color="var(--accent-primary)" />
+            <Icon name="sparkles" size={18} color="var(--accent-primary)" />
           </div>
           <div>
-            <div class="modal-title">IN-APP AUTOMATIC UPDATER</div>
-            <div class="modal-subtitle">Direct standalone update via GitHub Releases</div>
+            <div class="modal-title">WHAT'S NEW & UPDATES</div>
+            <div class="modal-subtitle">Version comparison, release highlights & auto-updater</div>
           </div>
         </div>
 
@@ -180,45 +393,133 @@
         {/if}
       </div>
 
+      <!-- Top Status & Actions Banner -->
+      <div class="top-status-strip glass-card">
+        <div class="status-left">
+          <div class="status-indicator-pill" class:has-update={hasUpdate}>
+            <span class="status-dot"></span>
+            <span class="status-text">
+              {#if hasUpdate}
+                Update Ready: {releaseInfo?.latest_version || 'New Release'}
+              {:else}
+                Up to Date ({currentVersion})
+              {/if}
+            </span>
+          </div>
+          <span class="author-tag">by Vikash (@vik05h)</span>
+        </div>
+
+        <div class="status-actions">
+          {#if hasUpdate && step === 'overview'}
+            <button type="button" class="btn-update-cta" on:click={startDownload}>
+              <Icon name="download" size={14} color="#060d17" strokeWidth={2.5} />
+              <span>Download Update</span>
+            </button>
+          {/if}
+
+          <button 
+            type="button" 
+            class="btn-check-updates" 
+            disabled={isChecking || step === 'downloading'} 
+            on:click={handleCheckUpdatesManual}
+            title="Check GitHub Releases"
+          >
+            <span class="icon-wrap" class:spinning={isChecking}>
+              <Icon name="refresh" size={13} />
+            </span>
+            <span>{isChecking ? 'Checking...' : 'Check Updates'}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Modal Body -->
       <div class="modal-body">
-        {#if step === 'prompt'}
-          <!-- Version Comparison Banner -->
-          <div class="version-banner glass-card">
-            <div class="version-badge-group">
-              <span class="badge badge-tag current-tag">Current: {currentVersion}</span>
-              <span class="arrow-indicator">→</span>
-              <span class="badge badge-tag latest-tag">Latest: {releaseInfo?.latest_version || 'v4.0.0'}</span>
+        {#if step === 'overview'}
+          <!-- Interactive Version Timeline Pills -->
+          <div class="timeline-row-container">
+            <div class="timeline-label font-mono">VERSIONS</div>
+            <div class="timeline-pills-scroll">
+              {#each changelogs as item, idx}
+                <button
+                  type="button"
+                  class="timeline-pill"
+                  class:active={selectedVersionIndex === idx}
+                  class:is-current={item.is_current}
+                  class:is-new={item.is_new}
+                  on:click={() => { playClickSound(); selectedVersionIndex = idx; }}
+                >
+                  <span class="pill-version">{item.version}</span>
+                  {#if item.is_current}
+                    <span class="pill-badge badge-curr">ACTIVE</span>
+                  {:else if item.is_new}
+                    <span class="pill-badge badge-new">NEW</span>
+                  {/if}
+                </button>
+              {/each}
             </div>
-            <div class="release-name">{releaseInfo?.name || 'New Release Available'}</div>
           </div>
 
-          <!-- Release Notes / Highlights Container -->
-          <div class="highlights-box">
-            <div class="highlights-header">
-              <Icon name="sparkles" size={14} color="var(--accent-primary)" />
-              <span>RELEASE HIGHLIGHTS & CHANGELOG</span>
-            </div>
-            <div class="highlights-scroll font-mono">
-              {@html formatBody(releaseInfo?.body || '')}
-            </div>
-          </div>
+          <!-- Active Version Details & Diff Card -->
+          {#if activeEntry}
+            <div class="version-details-card glass-panel">
+              <!-- Version Title & Diff Badge -->
+              <div class="card-hero-header">
+                <div class="hero-left">
+                  <div class="hero-version-tag">{activeEntry.version}</div>
+                  <div class="hero-title">{activeEntry.title}</div>
+                </div>
 
-          <!-- Metadata Pill Row -->
-          <div class="meta-row">
-            <div class="meta-pill">
-              <Icon name="package" size={13} color="var(--text-muted)" />
-              <span>Size: <strong>{releaseInfo?.asset_size ? `${(releaseInfo.asset_size / 1048576).toFixed(1)} MB` : '~65 MB'}</strong></span>
+                <div class="hero-diff-badge">
+                  <Icon name="layers" size={12} color="var(--accent-primary)" />
+                  <span>
+                    {#if activeEntry.previous_version}
+                      Changes vs {activeEntry.previous_version}
+                    {:else}
+                      Baseline Architecture
+                    {/if}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Highlights Section -->
+              <div class="section-container">
+                <div class="section-title-row">
+                  <Icon name="sparkles" size={14} color="var(--accent-primary)" />
+                  <span>NEW FEATURES & ARCHITECTURAL HIGHLIGHTS ({activeEntry.highlights?.length || 0})</span>
+                </div>
+                <div class="highlights-grid">
+                  {#each activeEntry.highlights as feat}
+                    <div class="feature-item glass-card">
+                      <div class="feature-bullet">
+                        <Icon name="check" size={12} color="var(--accent-primary)" strokeWidth={3} />
+                      </div>
+                      <div class="feature-text">{feat}</div>
+                    </div>
+                  {/each}
+                </div>
+              </div>
+
+              <!-- Bug Fixes Section -->
+              {#if activeEntry.bug_fixes && activeEntry.bug_fixes.length > 0}
+                <div class="section-container fixes-section">
+                  <div class="section-title-row">
+                    <Icon name="shield-check" size={14} color="var(--accent-secondary, #38bdf8)" />
+                    <span>RESOLVED ISSUES & HARDENING ({activeEntry.bug_fixes.length})</span>
+                  </div>
+                  <div class="fixes-grid">
+                    {#each activeEntry.bug_fixes as fix}
+                      <div class="feature-item fix-item glass-card">
+                        <div class="feature-bullet fix-bullet">
+                          <Icon name="check" size={12} color="var(--accent-secondary, #38bdf8)" strokeWidth={3} />
+                        </div>
+                        <div class="feature-text">{fix}</div>
+                      </div>
+                    {/each}
+                  </div>
+                </div>
+              {/if}
             </div>
-            <div class="meta-pill">
-              <Icon name="hard-drive" size={13} color="var(--text-muted)" />
-              <span>Type: <strong>{isFrozen ? 'Windows Standalone .exe' : 'Development Mode'}</strong></span>
-            </div>
-            <button type="button" class="btn-text-link" on:click={openReleasePage}>
-              <Icon name="external-link" size={12} />
-              <span>View on GitHub</span>
-            </button>
-          </div>
+          {/if}
 
         {:else if step === 'downloading'}
           <!-- Active Download HUD -->
@@ -226,7 +527,7 @@
             <div class="hud-top-row">
               <div class="hud-status-indicator">
                 <span class="spin-radar"></span>
-                <span>DOWNLOADING UPDATE BINARY...</span>
+                <span>STREAMING UPDATE VIA GITHUB RELEASES...</span>
               </div>
               <div class="hud-percent font-mono">{percent.toFixed(0)}%</div>
             </div>
@@ -243,23 +544,32 @@
               <span>{downloadedStr} / {totalStr}</span>
               <span class="hud-speed">{speedStr}</span>
             </div>
+
+            <div class="download-tip font-mono">
+              Binary is securely verified and cached to %APPDATA%\FitGirlLinkExtractor\updates\
+            </div>
           </div>
 
         {:else if step === 'ready'}
           <!-- Ready / Restart State -->
           <div class="ready-banner glass-card">
             <div class="ready-icon-halo">
-              <Icon name="check-circle" size={36} color="var(--status-fresh)" />
+              <Icon name="check-circle" size={32} color="var(--accent-primary)" />
             </div>
-            <h3>Update Downloaded & Verified!</h3>
+
+            <div class="ready-title">Update Ready to Apply!</div>
+
             {#if isFrozen}
-              <p class="ready-subtext">
-                The new version is ready. Restarting application in <strong class="accent-text">{autoRestartCountdown}s</strong> to apply update...
-              </p>
+              <div class="ready-desc">
+                The updated executable will replace the existing binary and automatically restart the application.
+              </div>
+              <div class="countdown-badge font-mono">
+                Restarting automatically in <strong>{autoRestartCountdown}s</strong>...
+              </div>
             {:else}
-              <p class="ready-subtext">
-                The standalone executable has been downloaded to your persistent updates folder. You can launch it directly or continue developing.
-              </p>
+              <div class="ready-desc">
+                Running in Python development mode. Standalone executable downloaded to the updates folder.
+              </div>
             {/if}
           </div>
 
@@ -267,41 +577,47 @@
           <!-- Error State -->
           <div class="error-banner glass-card">
             <div class="error-icon-halo">
-              <Icon name="alert-triangle" size={32} color="var(--status-expired)" />
+              <Icon name="alert-triangle" size={28} color="#ef4444" />
             </div>
-            <h3>Update Failed</h3>
-            <p class="error-subtext">{errorMessage}</p>
+            <div class="error-title">Update Failed</div>
+            <div class="error-desc">{errorMessage}</div>
           </div>
         {/if}
       </div>
 
-      <!-- Modal Footer Controls -->
+      <!-- Modal Footer -->
       <div class="modal-footer">
-        {#if step === 'prompt'}
-          <button type="button" class="btn-secondary" on:click={onClose}>
-            <span>Remind Me Later</span>
-          </button>
-          <button type="button" class="btn-primary btn-glow" on:click={startDownload}>
-            <Icon name="download" size={16} />
-            <span>Update Now (1-Click)</span>
-          </button>
+        {#if step === 'overview'}
+          <div class="footer-meta font-mono">
+            <span>Branch: dev • CC BY-NC-SA 4.0</span>
+          </div>
+
+          <div class="footer-btn-group">
+            <button type="button" class="btn-secondary" on:click={openReleasePage}>
+              <Icon name="external-link" size={13} />
+              <span>GitHub Releases</span>
+            </button>
+            <button type="button" class="btn-primary" on:click={onClose}>
+              <span>Done</span>
+            </button>
+          </div>
 
         {:else if step === 'downloading'}
           <button type="button" class="btn-secondary btn-cancel" on:click={cancelDownload}>
-            <Icon name="close" size={14} color="var(--status-expired)" />
+            <Icon name="close" size={14} />
             <span>Cancel Download</span>
           </button>
 
         {:else if step === 'ready'}
           {#if isFrozen}
-            <button type="button" class="btn-primary btn-glow" on:click={applyRestart}>
-              <Icon name="refresh" size={16} />
-              <span>Restart Now</span>
+            <button type="button" class="btn-primary btn-cta" on:click={applyRestart}>
+              <Icon name="bolt" size={15} />
+              <span>Restart & Update Now</span>
             </button>
           {:else}
             <button type="button" class="btn-secondary" on:click={openUpdatesFolder}>
-              <Icon name="package" size={15} />
-              <span>Open Folder</span>
+              <Icon name="package" size={14} />
+              <span>Open Updates Folder</span>
             </button>
             <button type="button" class="btn-primary" on:click={launchDownloaded}>
               <Icon name="bolt" size={15} />
@@ -315,7 +631,7 @@
         {:else if step === 'error'}
           <button type="button" class="btn-secondary" on:click={openReleasePage}>
             <Icon name="external-link" size={14} />
-            <span>GitHub Releases</span>
+            <span>View Releases</span>
           </button>
           <button type="button" class="btn-primary" on:click={startDownload}>
             <Icon name="refresh" size={15} />
@@ -342,12 +658,13 @@
   }
 
   .modal-card {
-    width: 560px;
+    width: 680px;
     max-width: 95vw;
-    background: var(--bg-surface-elevated);
-    border: 1px solid var(--border-hover);
-    border-radius: var(--radius-lg);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px var(--accent-glow);
+    max-height: 88vh;
+    background: var(--bg-surface-elevated, #0c0f17);
+    border: 1px solid var(--border-hover, rgba(255, 255, 255, 0.14));
+    border-radius: var(--radius-lg, 16px);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px var(--accent-glow, rgba(16, 185, 129, 0.25));
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -358,8 +675,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border-subtle);
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   }
 
   .header-left {
@@ -383,18 +700,18 @@
     font-size: 13px;
     font-weight: 800;
     letter-spacing: 0.8px;
-    color: var(--text-primary);
+    color: var(--text-primary, #f1f5f9);
   }
 
   .modal-subtitle {
     font-size: 11px;
-    color: var(--text-muted);
+    color: var(--text-muted, #94a3b8);
   }
 
   .btn-close {
     background: transparent;
     border: none;
-    color: var(--text-muted);
+    color: var(--text-muted, #94a3b8);
     cursor: pointer;
     padding: 6px;
     border-radius: 6px;
@@ -405,191 +722,380 @@
   }
 
   .btn-close:hover {
-    color: var(--text-primary);
+    color: #ffffff;
     background: rgba(255, 255, 255, 0.08);
   }
 
+  /* Top Status Strip */
+  .top-status-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 22px;
+    margin: 12px 22px 0 22px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .status-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .status-indicator-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .status-indicator-pill.has-update {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-primary, #10b981);
+    box-shadow: 0 0 8px var(--accent-primary, #10b981);
+  }
+
+  .status-indicator-pill.has-update .status-dot {
+    background: #f59e0b;
+    box-shadow: 0 0 8px #f59e0b;
+    animation: pulseGlow 1.6s infinite;
+  }
+
+  .status-text {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-primary, #f1f5f9);
+    letter-spacing: 0.2px;
+  }
+
+  .author-tag {
+    font-size: 11px;
+    color: var(--text-muted, #64748b);
+  }
+
+  .status-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .btn-update-cta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent-primary, #10b981);
+    color: #060d17;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 0 12px var(--accent-glow, rgba(16, 185, 129, 0.35));
+    transition: all 0.15s ease;
+  }
+
+  .btn-update-cta:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  .btn-check-updates {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted, #94a3b8);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-check-updates:hover:not(:disabled) {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .icon-wrap.spinning {
+    animation: spin 1s linear infinite;
+  }
+
+  /* Modal Body */
   .modal-body {
-    padding: 20px;
+    padding: 16px 22px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: calc(88vh - 160px);
+  }
+
+  /* Timeline Pills */
+  .timeline-row-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .timeline-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--text-muted, #64748b);
+  }
+
+  .timeline-pills-scroll {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .timeline-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-muted, #94a3b8);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+  }
+
+  .timeline-pill:hover {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .timeline-pill.active {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: var(--accent-primary, #10b981);
+    color: var(--text-primary, #ffffff);
+    box-shadow: 0 0 10px var(--accent-glow, rgba(16, 185, 129, 0.25));
+  }
+
+  .pill-version {
+    font-family: monospace;
+    font-size: 11px;
+  }
+
+  .pill-badge {
+    font-size: 9px;
+    font-weight: 800;
+    padding: 1px 5px;
+    border-radius: 4px;
+    letter-spacing: 0.4px;
+  }
+
+  .badge-curr {
+    background: rgba(16, 185, 129, 0.25);
+    color: var(--accent-primary, #10b981);
+  }
+
+  .badge-new {
+    background: rgba(245, 158, 11, 0.3);
+    color: #f59e0b;
+  }
+
+  /* Version Details Card */
+  .version-details-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 16px;
   }
 
-  /* Version Banner */
-  .version-banner {
-    padding: 14px 16px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-md);
+  .card-hero-header {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .version-badge-group {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .badge-tag {
-    padding: 3px 10px;
-    font-size: 11px;
-    font-weight: 700;
-    border-radius: 6px;
-  }
-
-  .current-tag {
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--text-secondary);
-    border: 1px solid var(--border-subtle);
-  }
-
-  .latest-tag {
-    background: rgba(16, 185, 129, 0.15);
-    color: var(--accent-primary);
-    border: 1px solid rgba(16, 185, 129, 0.4);
-    box-shadow: 0 0 10px var(--accent-glow);
-  }
-
-  .arrow-indicator {
-    color: var(--text-muted);
-    font-size: 12px;
-  }
-
-  .release-name {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--text-primary);
-  }
-
-  /* Highlights Box */
-  .highlights-box {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .highlights-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.6px;
-    color: var(--accent-primary);
-  }
-
-  .highlights-scroll {
-    max-height: 140px;
-    overflow-y: auto;
-    padding: 12px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
-    font-size: 11.5px;
-    line-height: 1.6;
-    color: var(--text-secondary);
-    white-space: pre-line;
-  }
-
-  /* Metadata Row */
-  .meta-row {
-    display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 10px;
-    flex-wrap: wrap;
-    font-size: 11.5px;
+    gap: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
-  .meta-pill {
-    display: inline-flex;
+  .hero-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .hero-version-tag {
+    font-family: monospace;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--accent-primary, #10b981);
+  }
+
+  .hero-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--text-primary, #f1f5f9);
+  }
+
+  .hero-diff-badge {
+    display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-primary, #10b981);
+    white-space: nowrap;
+    letter-spacing: 0.3px;
   }
 
-  .meta-pill strong {
-    color: var(--text-primary);
+  .section-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
-  .btn-text-link {
-    background: transparent;
-    border: none;
-    color: var(--accent-primary);
-    font-size: 11.5px;
-    cursor: pointer;
-    display: inline-flex;
+  .section-title-row {
+    display: flex;
     align-items: center;
-    gap: 5px;
-    text-decoration: underline;
-    text-underline-offset: 3px;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    color: var(--text-muted, #94a3b8);
   }
 
-  .btn-text-link:hover {
-    color: #ffffff;
+  .highlights-grid, .fixes-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .feature-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .feature-bullet {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .feature-item.fix-item {
+    background: rgba(56, 189, 248, 0.02);
+    border-color: rgba(56, 189, 248, 0.08);
+  }
+
+  .feature-bullet.fix-bullet {
+    background: rgba(56, 189, 248, 0.15);
+    border-color: rgba(56, 189, 248, 0.3);
+  }
+
+  .feature-text {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-primary, #e2e8f0);
   }
 
   /* Download HUD */
   .download-hud {
-    padding: 20px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-hover);
-    border-radius: var(--radius-md);
+    padding: 24px 20px;
+    border-radius: 12px;
+    background: rgba(16, 185, 129, 0.03);
+    border: 1px solid rgba(16, 185, 129, 0.2);
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
   }
 
   .hud-top-row {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
   }
 
   .hud-status-indicator {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 11.5px;
-    font-weight: 700;
+    gap: 10px;
+    font-size: 11px;
+    font-weight: 800;
     letter-spacing: 0.6px;
-    color: var(--accent-primary);
+    color: var(--accent-primary, #10b981);
   }
 
   .spin-radar {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--accent-primary);
-    box-shadow: 0 0 10px var(--accent-primary);
-    animation: radarPulse 1.2s infinite;
+    border: 2px solid var(--accent-primary, #10b981);
+    border-top-color: transparent;
+    animation: spin 0.8s linear infinite;
   }
 
   .hud-percent {
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--accent-primary, #10b981);
   }
 
   .progress-bar-track {
     width: 100%;
-    height: 10px;
+    height: 8px;
+    border-radius: 9999px;
     background: rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
     overflow: hidden;
     position: relative;
   }
 
   .progress-bar-fill {
     height: 100%;
-    background: var(--accent-gradient);
-    border-radius: 6px;
-    position: relative;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--accent-primary, #10b981), #34d399);
+    box-shadow: 0 0 12px var(--accent-glow, rgba(16, 185, 129, 0.5));
     transition: width 0.2s ease-out;
-    box-shadow: 0 0 16px var(--accent-glow);
+    position: relative;
   }
 
   .progress-bar-head {
@@ -599,109 +1105,200 @@
     bottom: 0;
     width: 4px;
     background: #ffffff;
-    box-shadow: 0 0 8px #ffffff;
+    box-shadow: 0 0 6px #ffffff;
   }
 
   .hud-stats-row {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    font-size: 11.5px;
-    color: var(--text-secondary);
+    font-size: 12px;
+    color: var(--text-muted, #94a3b8);
   }
 
   .hud-speed {
-    color: var(--accent-secondary);
-    font-weight: 600;
+    color: var(--accent-primary, #10b981);
+    font-weight: 700;
   }
 
-  /* Ready & Error Banners */
-  .ready-banner, .error-banner {
-    padding: 24px 20px;
-    border-radius: var(--radius-md);
+  .download-tip {
+    font-size: 10px;
+    color: var(--text-muted, #64748b);
+    line-height: 1.4;
+  }
+
+  /* Ready State */
+  .ready-banner {
+    padding: 30px 20px;
+    border-radius: 12px;
+    background: rgba(16, 185, 129, 0.05);
+    border: 1px solid rgba(16, 185, 129, 0.25);
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
-    gap: 10px;
+    gap: 12px;
   }
 
-  .ready-banner {
-    background: rgba(16, 185, 129, 0.05);
-    border: 1px solid rgba(16, 185, 129, 0.3);
-  }
-
-  .error-banner {
-    background: rgba(244, 63, 94, 0.05);
-    border: 1px solid rgba(244, 63, 94, 0.3);
-  }
-
-  .ready-icon-halo, .error-icon-halo {
-    width: 56px;
-    height: 56px;
+  .ready-icon-halo {
+    width: 54px;
+    height: 54px;
     border-radius: 50%;
+    background: rgba(16, 185, 129, 0.15);
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  .ready-icon-halo {
-    background: rgba(16, 185, 129, 0.12);
-    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+  .ready-title {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--text-primary, #f1f5f9);
   }
 
-  .error-icon-halo {
-    background: rgba(244, 63, 94, 0.12);
-    box-shadow: 0 0 20px rgba(244, 63, 94, 0.3);
-  }
-
-  .ready-subtext, .error-subtext {
-    font-size: 12.5px;
-    color: var(--text-secondary);
-    max-width: 420px;
+  .ready-desc {
+    font-size: 12px;
+    color: var(--text-muted, #94a3b8);
+    max-width: 440px;
     line-height: 1.5;
   }
 
-  .accent-text {
-    color: var(--accent-primary);
+  .countdown-badge {
+    padding: 6px 14px;
+    border-radius: 9999px;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid var(--accent-primary, #10b981);
+    color: var(--accent-primary, #10b981);
+    font-size: 12px;
+  }
+
+  /* Error State */
+  .error-banner {
+    padding: 30px 20px;
+    border-radius: 12px;
+    background: rgba(239, 68, 68, 0.05);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+  }
+
+  .error-icon-halo {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .error-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: #ef4444;
+  }
+
+  .error-desc {
+    font-size: 12px;
+    color: var(--text-muted, #94a3b8);
+    max-width: 440px;
+    line-height: 1.5;
   }
 
   /* Modal Footer */
   .modal-footer {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
-    gap: 10px;
-    padding: 16px 20px;
-    border-top: 1px solid var(--border-subtle);
+    justify-content: space-between;
+    padding: 14px 22px;
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     background: rgba(0, 0, 0, 0.2);
   }
 
-  .btn-glow {
-    box-shadow: 0 0 16px var(--accent-glow);
+  .footer-meta {
+    font-size: 10px;
+    color: var(--text-muted, #64748b);
+  }
+
+  .footer-btn-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn-primary {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 18px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent-primary, #10b981);
+    color: #060d17;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 0 12px var(--accent-glow, rgba(16, 185, 129, 0.3));
+    transition: all 0.15s ease;
+  }
+
+  .btn-primary:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted, #94a3b8);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .btn-secondary:hover {
+    color: #ffffff;
+    border-color: rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
   }
 
   .btn-cancel {
-    border-color: rgba(244, 63, 94, 0.3);
-    color: var(--status-expired);
+    margin-left: auto;
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
   }
 
   .btn-cancel:hover {
-    background: rgba(244, 63, 94, 0.12);
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
   }
 
-  @keyframes radarPulse {
-    0% { transform: scale(0.9); opacity: 0.6; }
-    50% { transform: scale(1.3); opacity: 1; }
-    100% { transform: scale(0.9); opacity: 0.6; }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
-  @keyframes scaleIn {
-    from { transform: scale(0.95); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+  @keyframes pulseGlow {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.15); }
   }
 
   @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
+  }
+
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
   }
 </style>

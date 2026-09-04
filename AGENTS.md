@@ -25,7 +25,7 @@ This document defines repository standards, architectural boundaries, runtime co
 
 | Module | Responsibility | Critical Constraints |
 | :--- | :--- | :--- |
-| [`main.py`](file:///c:/Code/link/main.py) | Application entrypoint, Flet initialization, navigation rail, and screen switcher wiring. | Keep modular and minimal (< 150 lines); delegate screen layout and state to `ui/`. |
+| [`main.py`](file:///c:/Code/link/main.py) | Application entrypoint, pywebview WebView2 window initialization, and RPC bridge binding. | Keep modular and minimal (< 100 lines); delegate state and business logic to `bridge.py`. |
 | [`community.py`](file:///c:/Code/link/community.py) | Community Cloud Cache REST client (Firebase RTDB), local timezone intelligence, and 1-byte health checks. | Zero-SDK integration with standard `urllib`/`json`; enforce split metadata/payload schema and overwrite rules. |
 | [`utils.py`](file:///c:/Code/link/utils.py) | Path resolution (`get_app_data_dir`, `get_export_dir`), settings I/O, and Win32 icon binding. | Never hardcode local paths or `%TEMP%` when frozen. |
 | [`bridge.py`](file:///c:/Code/link/bridge.py) | High-speed RPC Bridge connecting Python workers to the hardware-accelerated WebView2 frontend. | Use private attributes (`self._window`) to prevent COM recursion during JS reflection. |

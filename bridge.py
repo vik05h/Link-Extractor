@@ -40,6 +40,8 @@ class AppBridge:
         self._duplicate_wait_event = threading.Event()
         self._duplicate_action = None
         self._instance_id = f"proc_{os.getpid()}_{int(time.time()) % 10000}"
+        self._update_available = False
+        self._latest_release_info = None
 
     def bind_window(self, window):
         """Binds the active pywebview window reference."""
@@ -53,6 +55,8 @@ class AppBridge:
             try:
                 has_up, rel_info, msg = updater.check_for_updates()
                 if has_up and rel_info:
+                    self._update_available = True
+                    self._latest_release_info = rel_info
                     self.dispatch_event("updater:available", {
                         "release_info": rel_info,
                         "is_frozen": updater.is_running_frozen(),
@@ -821,10 +825,25 @@ class AppBridge:
     # Auto-Updater Endpoints
     # ==========================================
 
+    def get_changelogs(self) -> List[Dict[str, Any]]:
+        """Returns structured changelogs for all releases."""
+        return updater.get_all_version_changelogs()
+
+    def get_update_status(self) -> Dict[str, Any]:
+        """Returns currently known update availability and release information."""
+        return {
+            "has_update": getattr(self, "_update_available", False),
+            "release_info": getattr(self, "_latest_release_info", None),
+            "current_version": updater.CURRENT_VERSION,
+            "is_frozen": updater.is_running_frozen()
+        }
+
     def check_for_updates(self, force_available: bool = False) -> Dict[str, Any]:
         """Check GitHub Releases for newer version of the application."""
         try:
             has_update, release_info, message = updater.check_for_updates(force_available=force_available)
+            self._update_available = has_update
+            self._latest_release_info = release_info if has_update else None
             return {
                 "has_update": has_update,
                 "available": has_update,

@@ -11,34 +11,36 @@ from typing import Optional, Dict, Any, Tuple, Callable, List
 
 import utils
 
-CURRENT_VERSION = "v3.8.0"
+CURRENT_VERSION = "v4.0.0"
 GITHUB_REPO = "vik05h/Link-Extractor"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
-    "v3.8.0": {
-        "title": "Automated Pastebin Intelligence, Real-time Community Usage Metrics & Zero-Cost Live Presence",
+    "v4.0.0": {
+        "title": "Next-Gen Gaming Hub UI/UX Overhaul, Living Canvas & Defrag Mosaic",
         "highlights": [
+            "Complete architectural migration from legacy Flet UI to hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.",
+            "Living Canvas dynamic ambient backlighting with mathematical vibrancy boosting extracting dominant colors from game cover art.",
+            "Interactive Defrag Mosaic visualizer for real-time multi-part status tracking replacing static data tables.",
+            "In-app automatic updater with live download speed HUD, percentage tracking, and detached Windows restart script.",
+            "Multi-tier authoritative game artwork cascade extracting high-resolution FitGirl covers with procedural neon SVG fallback.",
             "Automated Pastebin metadata resolution extracting game names from archive filenames with FitGirl site search.",
             "Live concurrent gamer presence pulse indicator powered by zero-cost lightweight Firebase REST heartbeats.",
             "Community link usage tracking recording and displaying download counts across shared repacks.",
-            "Automatic background self-pruning keeping presence footprint under 10 KB indefinitely."
-        ]
-    },
-    "v4.0.0": {
-        "title": "Next-Gen Gaming Hub UI/UX, Living Canvas & Defrag Mosaic",
-        "highlights": [
-            "Hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.",
-            "Living Canvas dynamic ambient backlighting extracting dominant palette from game cover art.",
-            "Interactive Defrag Mosaic visualizer for real-time multi-part status tracking.",
             "Selective Repack Filter saving tens of gigabytes by filtering optional language and bonus packs.",
-            "Background Clipboard Sentinel and Web Audio API synthesized gaming sound haptics.",
-            "Crisp vector SVG iconography across the entire UI with zero emojis."
+            "Background Clipboard Sentinel auto-detecting copied FitGirl links and Web Audio API synthesized gaming sound haptics."
+        ],
+        "bug_fixes": [
+            "Completely eliminated legacy Flet runtime thread blocking, socket buffering, and window focus stealing.",
+            "Fixed ambient mode text darkness by implementing mathematical vibrancy boosting in HLS color space.",
+            "Fixed 0 B repack size aggregation by aligning validator progress callback signature.",
+            "Fixed Steam store 404 artwork failure on recent releases with authoritative FitGirl page parser.",
+            "Fixed duplicate cache freshness logic ensuring cached mirrors older than 24 hours trigger fresh extractions."
         ]
     },
     "v3.5.0": {
-        "title": "Interactive Live In-App Guided Tour, Dynamic Spotlight Highlighting & Rebranding",
+        "title": "Interactive Live In-App Guided Tour, Spotlight Highlighting & Rebranding (Legacy Flet UI)",
         "highlights": [
             "Interactive Live In-App Guided Tour actively navigating across Extractor, Community Hub, History Archive, and Settings in real-time.",
             "Dynamic Spotlight Box Highlighting with glowing theme borders and soft shadows illuminating the exact target cards on each step.",
@@ -68,7 +70,7 @@ VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
             "Automatic instant pre-fetched link detection on Extractor screen with 1-click skip browser option.",
             "1-Click Health Check executing rapid 1-byte verification on Part 1 of any community repack.",
             "Automated background cloud publishing with privacy opt-out toggle in Settings & Tweaks.",
-            "Freshness color badges (⚡ Fresh <12h, ⏳ Aging 12-36h, ⚠️ Expired >36h) with local time display."
+            "Freshness color badges (Fresh <12h, Aging 12-36h, Expired >36h) with local time display."
         ],
         "bug_fixes": [
             "Enforced strict overwrite logic to ensure newest extraction timestamps update cloud records.",
@@ -196,8 +198,8 @@ def check_for_updates(
 
                 if latest_tuple > curr_tuple or force_available:
                     if force_available and latest_tuple <= curr_tuple:
-                        release_info["latest_version"] = "v4.0.0"
-                        release_info["name"] = "Link Extractor v4.0.0"
+                        release_info["latest_version"] = "v4.1.0"
+                        release_info["name"] = "Link Extractor v4.1.0"
                     return True, release_info, f"New version {release_info['latest_version']} is available!"
                 else:
                     return False, release_info, f"You are running the latest version ({current_version})."
@@ -233,6 +235,35 @@ def get_version_changelog(version: str) -> Dict[str, Any]:
             "General bug fixes and security improvements."
         ]
     }
+
+
+def get_all_version_changelogs() -> List[Dict[str, Any]]:
+    """
+    Returns all version changelogs sorted in descending semver order.
+    Each item includes:
+      - version: str (e.g. 'v3.8.0')
+      - title: str
+      - highlights: List[str]
+      - bug_fixes: List[str]
+      - is_current: bool (True if matches CURRENT_VERSION)
+      - previous_version: Optional[str] (e.g. 'v3.5.0')
+    """
+    sorted_versions = sorted(
+        VERSION_CHANGELOGS.keys(),
+        key=lambda v: parse_version(v),
+        reverse=True
+    )
+    results = []
+    for idx, ver in enumerate(sorted_versions):
+        entry = VERSION_CHANGELOGS[ver].copy()
+        entry["version"] = ver
+        entry["is_current"] = (ver == CURRENT_VERSION)
+        entry["highlights"] = entry.get("highlights", [])
+        entry["bug_fixes"] = entry.get("bug_fixes", [])
+        prev_ver = sorted_versions[idx + 1] if idx + 1 < len(sorted_versions) else None
+        entry["previous_version"] = prev_ver
+        results.append(entry)
+    return results
 
 
 def download_update(
