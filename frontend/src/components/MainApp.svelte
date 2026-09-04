@@ -49,6 +49,31 @@
   let isFrozenApp = false;
   let appCurrentVersion = 'v3.8.0';
   let hasUpdateAvailable = false;
+  let isFirstRunPendingTour = false;
+
+  function handleCloseUpdateModal() {
+    updateModalOpen = false;
+    if (isFirstRunPendingTour) {
+      isFirstRunPendingTour = false;
+      try {
+        localStorage.setItem('le_first_run_v3.8.0', 'true');
+      } catch {}
+      setTimeout(() => {
+        tourOpen = true;
+      }, 350);
+    }
+  }
+
+  function handleStartTourFromUpdate() {
+    updateModalOpen = false;
+    isFirstRunPendingTour = false;
+    try {
+      localStorage.setItem('le_first_run_v3.8.0', 'true');
+    } catch {}
+    setTimeout(() => {
+      tourOpen = true;
+    }, 350);
+  }
 
   // URL Input
   let inputUrl = '';
@@ -647,8 +672,16 @@
         }
       });
 
-      // Check first-time visit for Onboarding Tour
-      if (!localStorage.getItem('le_tour_completed')) {
+      // Check first-time launch for v3.8: show What's New first, then the interactive Tutorial!
+      const FIRST_RUN_KEY = 'le_first_run_v3.8.0';
+      const hasSeenFirstRun = localStorage.getItem(FIRST_RUN_KEY);
+
+      if (!hasSeenFirstRun) {
+        isFirstRunPendingTour = true;
+        setTimeout(() => {
+          updateModalOpen = true;
+        }, 600);
+      } else if (!localStorage.getItem('le_tour_completed')) {
         setTimeout(() => {
           tourOpen = true;
         }, 700);
@@ -925,7 +958,9 @@
     releaseInfo={updateReleaseInfo}
     isFrozen={isFrozenApp}
     currentVersion={appCurrentVersion}
-    onClose={() => updateModalOpen = false}
+    isFirstRun={isFirstRunPendingTour}
+    onClose={handleCloseUpdateModal}
+    onStartTour={handleStartTourFromUpdate}
     onShowToast={showToast}
   />
 

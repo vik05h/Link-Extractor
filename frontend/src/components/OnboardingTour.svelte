@@ -143,6 +143,7 @@
     playSuccessChime();
     if (typeof window !== 'undefined') {
       localStorage.setItem('le_tour_completed', 'true');
+      localStorage.setItem('le_first_run_v3.8.0', 'true');
     }
     onClose();
   }
@@ -151,6 +152,7 @@
     playClickSound();
     if (typeof window !== 'undefined') {
       localStorage.setItem('le_tour_completed', 'true');
+      localStorage.setItem('le_first_run_v3.8.0', 'true');
     }
     onClose();
   }

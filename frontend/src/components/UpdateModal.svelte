@@ -7,7 +7,9 @@
   export let releaseInfo: any = null;
   export let isFrozen: boolean = false;
   export let currentVersion: string = 'v3.8.0';
+  export let isFirstRun: boolean = false;
   export let onClose: () => void = () => {};
+  export let onStartTour: (() => void) | undefined = undefined;
   export let onShowToast: (msg: string) => void = () => {};
 
   let step: 'overview' | 'downloading' | 'ready' | 'error' = 'overview';
@@ -178,6 +180,15 @@
 
   $: if (!isOpen) {
     resetState();
+  }
+
+  function handleStartTourClick() {
+    playClickSound();
+    if (onStartTour) {
+      onStartTour();
+    } else {
+      onClose();
+    }
   }
 
   function loadChangelogs() {
@@ -385,8 +396,14 @@
             <Icon name="sparkles" size={18} color="var(--accent-primary)" />
           </div>
           <div>
-            <div class="modal-title">WHAT'S NEW & UPDATES</div>
-            <div class="modal-subtitle">Version comparison, release highlights & auto-updater</div>
+            <div class="modal-title">
+              {isFirstRun ? "WELCOME TO LINK EXTRACTOR v3.8" : "WHAT'S NEW & UPDATES"}
+            </div>
+            <div class="modal-subtitle">
+              {isFirstRun 
+                ? "Explore new features, highlights & quick interactive tutorial" 
+                : "Version comparison, release highlights & auto-updater"}
+            </div>
           </div>
         </div>
 
@@ -405,6 +422,8 @@
             <span class="status-text">
               {#if hasUpdate}
                 Update Ready: {releaseInfo?.latest_version || 'New Release'}
+              {:else if isFirstRun}
+                v3.8.0 Installed & Ready
               {:else}
                 Up to Date ({currentVersion})
               {/if}
@@ -601,8 +620,14 @@
               <Icon name="external-link" size={13} />
               <span>GitHub Releases</span>
             </button>
-            <button type="button" class="btn-primary" on:click={onClose}>
-              <span>Done</span>
+            {#if onStartTour}
+              <button type="button" class="btn-primary" on:click={handleStartTourClick}>
+                <Icon name="sparkles" size={14} color="#060d17" strokeWidth={2.5} />
+                <span>Start Interactive Tour</span>
+              </button>
+            {/if}
+            <button type="button" class="btn-secondary" on:click={onClose}>
+              <span>{isFirstRun ? 'Continue to App' : 'Done'}</span>
             </button>
           </div>
 
