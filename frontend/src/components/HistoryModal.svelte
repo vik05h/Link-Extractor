@@ -170,9 +170,11 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    font-family: var(--font-display);
     font-size: 13px;
     font-weight: 700;
-    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--accent-primary);
   }
 
@@ -239,8 +241,10 @@
   }
 
   .history-title {
-    font-size: 13px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: 0.015em;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -251,7 +255,9 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    font-family: var(--font-mono);
     font-size: 11px;
+    font-variant-numeric: tabular-nums;
     color: var(--text-muted);
     margin-top: 4px;
   }

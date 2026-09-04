@@ -321,9 +321,11 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    font-family: var(--font-display);
     font-size: 13px;
     font-weight: 700;
-    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--accent-primary);
   }
 
@@ -357,10 +359,12 @@
   }
 
   .setting-label {
+    font-family: var(--font-display);
     font-size: 11px;
     font-weight: 700;
+    text-transform: uppercase;
     color: var(--accent-primary);
-    letter-spacing: 0.8px;
+    letter-spacing: 0.08em;
   }
 
   .setting-row {
@@ -375,8 +379,10 @@
   }
 
   .setting-val-badge {
+    font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
     color: var(--accent-secondary);
     background: rgba(6, 182, 212, 0.15);
     padding: 3px 8px;

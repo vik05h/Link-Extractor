@@ -1153,8 +1153,11 @@
   }
 
   .nav-label {
-    font-size: 10px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
 
   .sidebar-footer {
@@ -1294,7 +1297,7 @@
 
   .url-input-box::placeholder {
     color: var(--text-muted);
-    font-family: var(--font-sans);
+    font-family: var(--font-body);
     font-size: 12px;
   }
 
@@ -1308,9 +1311,11 @@
     background: rgba(6, 182, 212, 0.15);
     border: 1px solid rgba(6, 182, 212, 0.35);
     color: var(--accent-secondary);
+    font-family: var(--font-display);
     font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     white-space: nowrap;
     margin-left: 8px;
     flex-shrink: 0;
@@ -1327,6 +1332,10 @@
   .btn-resolve {
     flex-shrink: 0;
     padding: 10px 20px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
 
   /* Active Screen Body */

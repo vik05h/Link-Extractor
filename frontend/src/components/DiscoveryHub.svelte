@@ -482,12 +482,14 @@
     gap: 6px;
     padding: 5px 11px;
     border-radius: 20px;
+    font-family: var(--font-display);
     font-size: 11px;
     font-weight: 700;
+    text-transform: uppercase;
     color: var(--accent-primary);
     background: rgba(0, 240, 160, 0.08);
     border: 1px solid rgba(0, 240, 160, 0.25);
-    letter-spacing: 0.3px;
+    letter-spacing: 0.06em;
     user-select: none;
   }
 
@@ -529,8 +531,11 @@
     gap: 5px;
     padding: 5px 10px;
     border-radius: 20px;
+    font-family: var(--font-display);
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--text-secondary);
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -545,8 +550,10 @@
     gap: 4px;
     padding: 3px 8px;
     border-radius: 12px;
+    font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
     color: #ffffff;
     background: rgba(10, 14, 22, 0.85);
     backdrop-filter: blur(8px);
@@ -554,7 +561,7 @@
     border: 1px solid rgba(0, 240, 160, 0.4);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     z-index: 2;
-    letter-spacing: 0.2px;
+    letter-spacing: 0.02em;
   }
 
   .filter-pill {
@@ -563,8 +570,11 @@
     gap: 6px;
     padding: 6px 14px;
     border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--text-secondary);
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--border-subtle);
@@ -724,8 +734,10 @@
   }
 
   .card-title {
-    font-size: 14px;
+    font-family: var(--font-display);
+    font-size: 13.5px;
     font-weight: 700;
+    letter-spacing: 0.015em;
     color: var(--text-primary);
     line-height: 1.35;
     display: -webkit-box;
@@ -773,6 +785,9 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
   }
 
   .card-size-wrapper {
@@ -781,13 +796,11 @@
     gap: 5px;
   }
 
-  .card-time {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-
   .card-size {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
     color: var(--accent-primary);
   }
 
@@ -799,7 +812,11 @@
 
   .btn-sm {
     padding: 6px 10px;
+    font-family: var(--font-display);
     font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     flex: 1;
     display: inline-flex;
     align-items: center;

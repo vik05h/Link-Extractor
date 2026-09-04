@@ -352,8 +352,10 @@
   }
 
   .hero-title {
-    font-size: 18px;
+    font-family: var(--font-display);
+    font-size: 19px;
     font-weight: 700;
+    letter-spacing: 0.02em;
     color: var(--text-primary);
     white-space: nowrap;
     overflow: hidden;
@@ -375,6 +377,9 @@
     gap: 6px;
     padding: 4px 10px;
     border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--border-subtle);
   }
@@ -388,6 +393,11 @@
   }
 
   .meta-status {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     color: var(--text-muted);
   }
 
@@ -416,8 +426,11 @@
     gap: 6px;
     padding: 6px 14px;
     border-radius: 6px;
-    font-size: 12px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--text-secondary);
     background: transparent;
     border: none;

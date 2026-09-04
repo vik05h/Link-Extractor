@@ -859,9 +859,11 @@
   }
 
   .timeline-label {
+    font-family: var(--font-display);
     font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--text-muted, #64748b);
   }
 
@@ -880,11 +882,14 @@
     gap: 6px;
     padding: 6px 12px;
     border-radius: 9999px;
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: var(--text-muted, #94a3b8);
-    font-size: 11px;
-    font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s ease;
@@ -904,8 +909,10 @@
   }
 
   .pill-version {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
   }
 
   .pill-badge {
@@ -953,16 +960,18 @@
   }
 
   .hero-version-tag {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 14px;
     font-weight: 800;
     color: var(--accent-primary, #10b981);
   }
 
   .hero-title {
-    font-size: 13px;
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 13.5px;
+    font-weight: 700;
     line-height: 1.4;
+    letter-spacing: 0.015em;
     color: var(--text-primary, #f1f5f9);
   }
 
@@ -974,11 +983,13 @@
     border-radius: 6px;
     background: rgba(16, 185, 129, 0.1);
     border: 1px solid rgba(16, 185, 129, 0.25);
+    font-family: var(--font-display);
     font-size: 10px;
     font-weight: 700;
+    text-transform: uppercase;
     color: var(--accent-primary, #10b981);
     white-space: nowrap;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.05em;
   }
 
   .section-container {
@@ -991,9 +1002,11 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    font-family: var(--font-display);
     font-size: 10px;
     font-weight: 800;
-    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--text-muted, #94a3b8);
   }
 

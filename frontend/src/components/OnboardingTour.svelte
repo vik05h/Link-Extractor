@@ -544,9 +544,10 @@
     background: rgba(0, 240, 160, 0.12);
     border: 1px solid rgba(0, 240, 160, 0.3);
     color: var(--accent-primary);
+    font-family: var(--font-display);
     font-size: 0.75rem;
     font-weight: 700;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
@@ -569,10 +570,11 @@
 
   .tour-title {
     margin: 0 0 4px 0;
-    font-size: 1.05rem;
+    font-family: var(--font-display);
+    font-size: 1.08rem;
     font-weight: 700;
     color: #ffffff;
-    letter-spacing: -0.01em;
+    letter-spacing: 0.015em;
   }
 
   .tour-subtitle {

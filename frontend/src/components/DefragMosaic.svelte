@@ -135,19 +135,24 @@
   }
 
   .matrix-label {
+    font-family: var(--font-display);
     font-size: 11px;
     font-weight: 700;
-    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--accent-primary);
   }
 
   .matrix-stats {
-    font-size: 12px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
   }
 
   .resolved-stat {
     color: var(--accent-primary);
+    font-weight: 700;
   }
 
   .active-badge {
@@ -163,7 +168,11 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 11px;
+    font-family: var(--font-display);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     color: var(--text-muted);
   }
 
@@ -219,7 +228,9 @@
   .block-number {
     font-size: 11px;
     font-family: var(--font-mono);
-    font-weight: 600;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
   }
 
   /* Block States */
