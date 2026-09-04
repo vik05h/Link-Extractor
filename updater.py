@@ -127,8 +127,9 @@ VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
 
 
 def parse_version(v_str: str) -> tuple:
-    """Parse version string like 'v3.1.0' or '3.1' into comparable tuple (3, 1, 0)."""
+    """Parse version string like 'v3.1.0', '3.1', or 'v4.0.0-beta1' into comparable tuple (3, 1, 0)."""
     clean = v_str.strip().lstrip("vV")
+    clean = clean.split("-")[0].split("+")[0]
     parts = []
     for p in clean.split("."):
         digits = "".join(c for c in p if c.isdigit())
@@ -138,7 +139,11 @@ def parse_version(v_str: str) -> tuple:
     return tuple(parts)
 
 
-def check_for_updates(current_version: str = CURRENT_VERSION, timeout: float = 5.0) -> Tuple[bool, Optional[Dict[str, Any]], str]:
+def check_for_updates(
+    current_version: str = CURRENT_VERSION,
+    timeout: float = 5.0,
+    force_available: bool = False
+) -> Tuple[bool, Optional[Dict[str, Any]], str]:
     """
     Check GitHub Releases for newer version of the application.
     Returns:
@@ -179,6 +184,7 @@ def check_for_updates(current_version: str = CURRENT_VERSION, timeout: float = 5
                 release_info = {
                     "current_version": current_version,
                     "latest_version": latest_tag,
+                    "tag_name": latest_tag,
                     "name": release_name,
                     "body": release_body,
                     "html_url": html_url,
@@ -188,8 +194,11 @@ def check_for_updates(current_version: str = CURRENT_VERSION, timeout: float = 5
                     "published_at": data.get("published_at", "")
                 }
 
-                if latest_tuple > curr_tuple:
-                    return True, release_info, f"New version {latest_tag} is available!"
+                if latest_tuple > curr_tuple or force_available:
+                    if force_available and latest_tuple <= curr_tuple:
+                        release_info["latest_version"] = "v4.0.0"
+                        release_info["name"] = "Link Extractor v4.0.0"
+                    return True, release_info, f"New version {release_info['latest_version']} is available!"
                 else:
                     return False, release_info, f"You are running the latest version ({current_version})."
 
@@ -228,11 +237,12 @@ def get_version_changelog(version: str) -> Dict[str, Any]:
 
 def download_update(
     download_url: str,
-    progress_callback: Optional[Callable[[int, int, float], None]] = None,
+    progress_callback: Optional[Callable[[int, int, float, float], None]] = None,
     cancel_event: Optional[threading.Event] = None
 ) -> str:
     """
     Download update binary from URL to app data updates directory.
+    Calculates dynamic speed in bytes/sec and passes to progress_callback.
     Returns path to downloaded file.
     """
     updates_dir = os.path.join(utils.get_app_data_dir(), "updates")
@@ -257,6 +267,10 @@ def download_update(
         total_size = int(resp.headers.get("Content-Length", 0))
         downloaded = 0
         chunk_size = 64 * 1024  # 64 KB
+        start_time = time.time()
+        last_calc_time = start_time
+        last_calc_bytes = 0
+        speed = 0.0
 
         with open(target_path, "wb") as out_file:
             while True:
@@ -267,11 +281,44 @@ def download_update(
                     break
                 out_file.write(chunk)
                 downloaded += len(chunk)
+
+                now = time.time()
+                time_diff = now - last_calc_time
+                if time_diff >= 0.25:
+                    speed = (downloaded - last_calc_bytes) / time_diff
+                    last_calc_time = now
+                    last_calc_bytes = downloaded
+
                 if progress_callback:
                     pct = (downloaded / total_size * 100.0) if total_size > 0 else 0.0
-                    progress_callback(downloaded, total_size, pct)
+                    progress_callback(downloaded, total_size, pct, speed)
 
     return target_path
+
+
+def is_running_frozen() -> bool:
+    """Return True if running as a PyInstaller compiled binary."""
+    return getattr(sys, "frozen", False)
+
+
+def launch_downloaded_executable(downloaded_file_path: str) -> bool:
+    """Launch the downloaded standalone executable in a separate process."""
+    if os.path.exists(downloaded_file_path):
+        subprocess.Popen(
+            [downloaded_file_path],
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if hasattr(subprocess, "CREATE_NEW_PROCESS_GROUP") else 0,
+            close_fds=True
+        )
+        return True
+    return False
+
+
+def open_updates_folder() -> str:
+    """Open the updates folder in Windows Explorer."""
+    updates_dir = os.path.join(utils.get_app_data_dir(), "updates")
+    os.makedirs(updates_dir, exist_ok=True)
+    utils.open_folder_cross_platform(updates_dir)
+    return updates_dir
 
 
 def apply_update_and_restart(downloaded_file_path: str) -> bool:
@@ -328,3 +375,4 @@ def open_release_page(url: Optional[str] = None):
     """Open release page or latest download URL in default web browser."""
     target = url or FALLBACK_RELEASES_URL
     webbrowser.open(target)
+

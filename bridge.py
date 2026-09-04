@@ -45,6 +45,23 @@ class AppBridge:
         """Binds the active pywebview window reference."""
         self._window = window
         self._start_clipboard_sentinel()
+        self._start_startup_updater_check()
+
+    def _start_startup_updater_check(self):
+        def _check():
+            time.sleep(3.5)
+            try:
+                has_up, rel_info, msg = updater.check_for_updates()
+                if has_up and rel_info:
+                    self.dispatch_event("updater:available", {
+                        "release_info": rel_info,
+                        "is_frozen": updater.is_running_frozen(),
+                        "current_version": updater.CURRENT_VERSION
+                    })
+            except Exception as e:
+                print(f"[Startup Updater Check] {e}")
+
+        threading.Thread(target=_check, daemon=True).start()
 
     def dispatch_event(self, event_name: str, payload: Any = None):
         """Dispatches a custom event to the web frontend."""
@@ -800,15 +817,128 @@ class AppBridge:
         utils.save_settings(self._settings)
         return {"success": True}
 
-    def check_updates(self) -> Dict[str, Any]:
-        """Checks GitHub Releases for new updates."""
+    # ==========================================
+    # Auto-Updater Endpoints
+    # ==========================================
+
+    def check_for_updates(self, force_available: bool = False) -> Dict[str, Any]:
+        """Check GitHub Releases for newer version of the application."""
         try:
-            is_avail, rel_info, msg = updater.check_for_updates()
+            has_update, release_info, message = updater.check_for_updates(force_available=force_available)
             return {
-                "available": is_avail,
-                "current_version": updater.CURRENT_VERSION,
-                "release_info": rel_info or {},
-                "message": msg
+                "has_update": has_update,
+                "available": has_update,
+                "release_info": release_info or {},
+                "message": message,
+                "is_frozen": updater.is_running_frozen(),
+                "current_version": updater.CURRENT_VERSION
             }
         except Exception as err:
-            return {"available": False, "error": str(err)}
+            return {
+                "has_update": False,
+                "available": False,
+                "release_info": None,
+                "message": f"Check failed: {err}",
+                "is_frozen": updater.is_running_frozen(),
+                "current_version": updater.CURRENT_VERSION
+            }
+
+    def check_updates(self) -> Dict[str, Any]:
+        """Backward-compatible alias for check_for_updates."""
+        return self.check_for_updates()
+
+    def start_update_download(self, download_url: str = "") -> Dict[str, Any]:
+        """Starts background download of update binary with live progress events."""
+        if hasattr(self, "_update_downloading") and self._update_downloading:
+            return {"status": "downloading", "message": "Download already in progress."}
+
+        target_url = download_url
+        if not target_url:
+            _, rel, _ = updater.check_for_updates()
+            if rel and rel.get("download_url"):
+                target_url = rel["download_url"]
+            else:
+                return {"status": "error", "message": "No download URL found in release."}
+
+        self._update_cancel_event = threading.Event()
+        self._update_downloading = True
+
+        def _download_thread():
+            def _prog(dl, tot, pct, speed):
+                spd_str = f"{speed / 1048576:.1f} MB/s" if speed > 0 else "Calculating..."
+                dl_str = f"{dl / 1048576:.1f} MB"
+                tot_str = f"{tot / 1048576:.1f} MB" if tot > 0 else "Unknown"
+                self.dispatch_event("updater:progress", {
+                    "downloaded": dl,
+                    "total": tot,
+                    "percent": round(pct, 1),
+                    "speed_str": spd_str,
+                    "downloaded_str": dl_str,
+                    "total_str": tot_str
+                })
+
+            try:
+                target_file = updater.download_update(
+                    target_url,
+                    progress_callback=_prog,
+                    cancel_event=self._update_cancel_event
+                )
+                self._downloaded_update_path = target_file
+                self._update_downloading = False
+                file_size = os.path.getsize(target_file) if os.path.exists(target_file) else 0
+                self.dispatch_event("updater:download_complete", {
+                    "file_path": target_file,
+                    "is_frozen": updater.is_running_frozen(),
+                    "file_size": file_size,
+                    "file_size_str": f"{file_size / 1048576:.1f} MB"
+                })
+            except Exception as ex:
+                self._update_downloading = False
+                if "cancelled" in str(ex).lower():
+                    self.dispatch_event("updater:download_cancelled", {})
+                else:
+                    self.dispatch_event("updater:error", {"error": str(ex)})
+
+        threading.Thread(target=_download_thread, daemon=True).start()
+        return {"status": "started"}
+
+    def cancel_update_download(self) -> Dict[str, Any]:
+        """Cancels an in-progress update download."""
+        if hasattr(self, "_update_cancel_event") and self._update_cancel_event:
+            self._update_cancel_event.set()
+        self._update_downloading = False
+        return {"status": "cancelled"}
+
+    def apply_update_and_restart(self) -> Dict[str, Any]:
+        """Applies downloaded binary and restarts application in frozen mode."""
+        target_path = getattr(self, "_downloaded_update_path", None)
+        if not target_path or not os.path.exists(target_path):
+            updates_dir = os.path.join(utils.get_app_data_dir(), "updates")
+            target_path = os.path.join(updates_dir, "LinkExtractor_update.exe")
+
+        if not os.path.exists(target_path):
+            return {"status": "error", "message": "No downloaded update file found."}
+
+        applied = updater.apply_update_and_restart(target_path)
+        if applied:
+            threading.Thread(target=lambda: (time.sleep(0.5), os._exit(0)), daemon=True).start()
+            return {"status": "restarting"}
+        else:
+            return {"status": "not_frozen", "message": "Application is running in Python dev mode."}
+
+    def launch_downloaded_binary(self) -> Dict[str, Any]:
+        """Launches the downloaded standalone executable in development mode."""
+        target_path = getattr(self, "_downloaded_update_path", None)
+        if not target_path or not os.path.exists(target_path):
+            updates_dir = os.path.join(utils.get_app_data_dir(), "updates")
+            target_path = os.path.join(updates_dir, "LinkExtractor_update.exe")
+
+        if os.path.exists(target_path):
+            ok = updater.launch_downloaded_executable(target_path)
+            return {"status": "launched" if ok else "error"}
+        return {"status": "not_found", "message": "Downloaded binary not found."}
+
+    def open_updates_folder(self) -> Dict[str, Any]:
+        """Reveals the updates folder in Windows Explorer."""
+        folder = updater.open_updates_folder()
+        return {"status": "opened", "path": folder}

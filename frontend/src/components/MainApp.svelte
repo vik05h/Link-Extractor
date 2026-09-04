@@ -6,6 +6,7 @@
   import SettingsModal from './SettingsModal.svelte';
   import HistoryModal from './HistoryModal.svelte';
   import CacheConflictModal from './CacheConflictModal.svelte';
+  import UpdateModal from './UpdateModal.svelte';
   import ClipboardSentinel from './ClipboardSentinel.svelte';
   import Icon from './icons/Icon.svelte';
   import type { PartItem, GameRecord } from '../types';
@@ -36,6 +37,12 @@
   let pendingTargetUrl = '';
   let audioMuted = false;
   let currentTheme = 'adaptive';
+
+  // Auto-Updater State
+  let updateModalOpen = false;
+  let updateReleaseInfo: any = null;
+  let isFrozenApp = false;
+  let appCurrentVersion = 'v3.8.0';
 
   // URL Input
   let inputUrl = '';
@@ -437,6 +444,31 @@
     }
   }
 
+  // Manual check for updates triggered from Settings
+  async function handleManualCheckUpdates() {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.check_for_updates) {
+      try {
+        const res = await (window as any).pywebview.api.check_for_updates();
+        if (res && res.has_update && res.release_info) {
+          updateReleaseInfo = res.release_info;
+          isFrozenApp = !!res.is_frozen;
+          if (res.current_version) appCurrentVersion = res.current_version;
+          updateModalOpen = true;
+          return res;
+        } else {
+          showToast(res?.message || 'You are running the latest version.');
+          return res;
+        }
+      } catch (err: any) {
+        showToast(`Failed to check updates: ${err?.message || err}`);
+        return { has_update: false, message: String(err) };
+      }
+    } else {
+      showToast('Updater bridge not connected yet.');
+      return { has_update: false, message: 'Bridge not ready' };
+    }
+  }
+
   // Global Keyboard Shortcuts
   function handleGlobalKeydown(e: KeyboardEvent) {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -444,6 +476,7 @@
         settingsOpen = false;
         historyOpen = false;
         conflictModalOpen = false;
+        updateModalOpen = false;
       }
       return;
     }
@@ -452,6 +485,7 @@
       settingsOpen = false;
       historyOpen = false;
       conflictModalOpen = false;
+      updateModalOpen = false;
     } else if ((e.ctrlKey || e.metaKey) && e.key === '1') {
       e.preventDefault();
       currentView = 'community';
@@ -551,6 +585,16 @@
 
     window.addEventListener('community:feed_updated' as any, () => {
       refreshCommunity(true);
+    });
+
+    window.addEventListener('updater:available' as any, (e: CustomEvent) => {
+      const d = e.detail;
+      if (d && d.release_info) {
+        updateReleaseInfo = d.release_info;
+        isFrozenApp = !!d.is_frozen;
+        if (d.current_version) appCurrentVersion = d.current_version;
+        updateModalOpen = true;
+      }
     });
 
     window.addEventListener('pipeline:error' as any, (e: CustomEvent) => {
@@ -786,6 +830,17 @@
     isOpen={settingsOpen}
     onClose={() => settingsOpen = false}
     onThemeChange={(t) => currentTheme = t}
+    onCheckUpdates={handleManualCheckUpdates}
+    currentVersion={appCurrentVersion}
+  />
+
+  <UpdateModal
+    isOpen={updateModalOpen}
+    releaseInfo={updateReleaseInfo}
+    isFrozen={isFrozenApp}
+    currentVersion={appCurrentVersion}
+    onClose={() => updateModalOpen = false}
+    onShowToast={showToast}
   />
 </div>
 

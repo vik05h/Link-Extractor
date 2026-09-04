@@ -65,6 +65,7 @@ logs/
 # Scratch & Temporary Experiment Files
 scratch/
 brain/
+updates/
 
 # ==========================================
 # IDE & System Files

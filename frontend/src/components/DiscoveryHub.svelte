@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playBypassSound } from '../utils/audio';
+  import { generateProceduralBannerSvg } from '../utils/banner';
   import type { GameRecord } from '../types';
 
   export let games: GameRecord[] = [];
@@ -295,7 +296,18 @@
             on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleCardPreview(rec)}
           >
             {#if rec.image_url}
-              <img src={rec.image_url} alt={rec.title} class="card-cover" loading="lazy" />
+              <img
+                src={rec.image_url}
+                alt={rec.title}
+                class="card-cover"
+                loading="lazy"
+                on:error={(e) => {
+                  const target = e.currentTarget;
+                  if (target && !target.src.startsWith('data:')) {
+                    target.src = generateProceduralBannerSvg(rec.title);
+                  }
+                }}
+              />
             {:else}
               <div class="card-cover-placeholder">
                 <Icon name="gamepad" size={36} color="var(--accent-primary)" />

@@ -4,6 +4,7 @@
   import SelectiveFilter from './SelectiveFilter.svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../utils/audio';
+  import { generateProceduralBannerSvg } from '../utils/banner';
 
   export let gameTitle: string = 'FitGirl Game Repack';
   export let coverUrl: string = '';
@@ -65,7 +66,17 @@
   <div class="stage-hero glass-panel">
     <div class="hero-cover-wrapper">
       {#if coverUrl}
-        <img src={coverUrl} alt={gameTitle} class="hero-cover" />
+        <img
+          src={coverUrl}
+          alt={gameTitle}
+          class="hero-cover"
+          on:error={(e) => {
+            const target = e.currentTarget;
+            if (target && !target.src.startsWith('data:')) {
+              target.src = generateProceduralBannerSvg(gameTitle);
+            }
+          }}
+        />
       {:else}
         <div class="hero-cover-placeholder">
           <Icon name="gamepad" size={32} color="var(--accent-primary)" />

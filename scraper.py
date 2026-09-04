@@ -320,12 +320,33 @@ def search_steam_artwork(query: str, timeout: float = 4.0) -> Optional[Dict[str,
             if items:
                 app_id = items[0].get("id")
                 app_name = items[0].get("name", clean_q)
+                tiny_img = items[0].get("tiny_image", "")
+
+                # Verify standard header URL reachability
                 header_url = f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/header.jpg"
-                return {
-                    "name": app_name,
-                    "image_url": header_url,
-                    "app_id": str(app_id)
-                }
+                try:
+                    head_req = urllib.request.Request(
+                        header_url,
+                        headers={"User-Agent": "Mozilla/5.0"},
+                        method="HEAD"
+                    )
+                    with urllib.request.urlopen(head_req, timeout=2.0) as head_resp:
+                        if head_resp.status == 200:
+                            return {
+                                "name": app_name,
+                                "image_url": header_url,
+                                "app_id": str(app_id)
+                            }
+                except Exception:
+                    pass
+
+                # Fallback to verified capsule image returned by Steam API
+                if tiny_img and tiny_img.startswith("http"):
+                    return {
+                        "name": app_name,
+                        "image_url": tiny_img,
+                        "app_id": str(app_id)
+                    }
     except Exception:
         pass
     return None
@@ -365,24 +386,34 @@ def resolve_pastebin_metadata(pastebin_url: str, part_urls: List[str]) -> Dict[s
     slug = ""
     image_url = ""
 
-    # 1. Search FitGirl site for official repack title and canonical slug
+    # Tier 1: Search FitGirl site for official repack title, canonical slug, and exact page cover
     fg_res = search_fitgirl_site(search_query)
     if fg_res:
         official_title = fg_res.get("title", "")
         source_url = fg_res.get("source_url", pastebin_url)
         slug = fg_res.get("slug", "")
 
+        # Extract authoritative cover art directly from the official FitGirl game page
+        if source_url and "fitgirl-repacks.site" in source_url:
+            try:
+                _, _, page_cover = extract_game_page_pastebins(source_url)
+                if page_cover and page_cover.startswith("http") and not page_cover.startswith("data:"):
+                    image_url = page_cover
+            except Exception:
+                pass
+
     # Fallback title if search failed
     final_title = official_title or candidate_title or "FitGirl Repack"
     final_slug = slug or extract_game_slug(source_url, final_title)
 
-    # 2. Search high-res artwork via Steam CDN
-    steam_query = search_query if len(search_query) > 3 else final_title
-    steam_res = search_steam_artwork(steam_query)
-    if steam_res and steam_res.get("image_url"):
-        image_url = steam_res["image_url"]
+    # Tier 2: Search Steam Store API if no FitGirl page cover found
+    if not image_url:
+        steam_query = search_query if len(search_query) > 3 else final_title
+        steam_res = search_steam_artwork(steam_query)
+        if steam_res and steam_res.get("image_url"):
+            image_url = steam_res["image_url"]
 
-    # 3. If still no artwork, generate stylized procedural banner
+    # Tier 3: Procedural SVG banner if still no artwork
     if not image_url:
         image_url = generate_procedural_banner_svg(final_title)
 

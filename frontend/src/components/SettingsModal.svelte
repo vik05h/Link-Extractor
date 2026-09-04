@@ -7,8 +7,11 @@
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
   export let onThemeChange: (theme: string) => void = () => {};
+  export let onCheckUpdates: () => void = () => {};
+  export let currentVersion: string = 'v3.8.0';
 
   let currentTheme = 'cyber';
+  let isCheckingUpdates = false;
   let concurrency = 3;
   let autoValidate = true;
   let jdPort = 9666;
@@ -43,6 +46,17 @@
       document.documentElement.setAttribute('data-theme', t);
     }
     onThemeChange(t);
+  }
+
+  function handleCheckUpdates() {
+    playClickSound();
+    isCheckingUpdates = true;
+    if (onCheckUpdates) {
+      onCheckUpdates();
+    }
+    setTimeout(() => {
+      isCheckingUpdates = false;
+    }, 1500);
   }
 
   function handleSoundToggle() {
@@ -190,6 +204,32 @@
               class="glass-input port-input" 
               style="width: 90px;" 
             />
+          </div>
+        </div>
+
+        <!-- Version & Updates Card -->
+        <div class="setting-group">
+          <span class="setting-label">VERSION & UPDATES</span>
+          <div class="version-card glass-panel">
+            <div class="version-meta">
+              <div class="version-name-row">
+                <span class="app-title">Link Extractor</span>
+                <span class="badge-ver">{currentVersion}</span>
+              </div>
+              <div class="version-author">Author: Vikash (@vik05h) • PolyForm Noncommercial 1.0.0</div>
+            </div>
+
+            <button 
+              type="button" 
+              class="btn-secondary btn-check-updates"
+              disabled={isCheckingUpdates}
+              on:click={handleCheckUpdates}
+            >
+              <span class:spin={isCheckingUpdates}>
+                <Icon name="refresh" size={14} color="var(--accent-primary)" />
+              </span>
+              <span>{isCheckingUpdates ? 'Checking GitHub...' : 'Check for Updates'}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -392,5 +432,70 @@
     justify-content: flex-end;
     padding: 16px 20px;
     border-top: 1px solid var(--border-subtle);
+  }
+
+  /* Version & Updates Card */
+  .version-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    gap: 12px;
+  }
+
+  .version-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .version-name-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .app-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .badge-ver {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--accent-primary);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  .version-author {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .btn-check-updates {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    padding: 7px 12px;
+    white-space: nowrap;
+    border-radius: 6px;
+  }
+
+  .spin {
+    display: inline-flex;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 </style>
