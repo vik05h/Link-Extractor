@@ -188,17 +188,50 @@
 
 {#if isOpen}
   <div class="tour-backdrop" role="dialog" aria-modal="true" aria-label="Onboarding Tour" tabindex="-1">
-    <!-- Deep 18px Gaussian-Blurred Backdrop with Polygon Cutout Hole -->
-    <div 
-      class="tour-backdrop-dim"
-      class:has-spotlight={spotlightRect.visible}
-      style="
-        --hole-left: {spotlightRect.left}px;
-        --hole-top: {spotlightRect.top}px;
-        --hole-right: {spotlightRect.left + spotlightRect.width}px;
-        --hole-bottom: {spotlightRect.top + spotlightRect.height}px;
-      "
-    ></div>
+    <!-- 4-Quadrant Deep 18px Gaussian Blurred Backdrop (Physical Cutout - Zero Blur Over Target) -->
+    {#if spotlightRect.visible}
+      <!-- Top Curtain -->
+      <button 
+        type="button"
+        class="tour-quad-dim" 
+        style="top: 0; left: 0; width: 100%; height: {Math.max(0, spotlightRect.top)}px;"
+        on:click={handleSkip}
+        aria-label="Skip tour"
+      ></button>
+      <!-- Bottom Curtain -->
+      <button 
+        type="button"
+        class="tour-quad-dim" 
+        style="top: {spotlightRect.top + spotlightRect.height}px; left: 0; width: 100%; bottom: 0;"
+        on:click={handleSkip}
+        aria-label="Skip tour"
+      ></button>
+      <!-- Left Curtain -->
+      <button 
+        type="button"
+        class="tour-quad-dim" 
+        style="top: {spotlightRect.top}px; left: 0; width: {Math.max(0, spotlightRect.left)}px; height: {spotlightRect.height}px;"
+        on:click={handleSkip}
+        aria-label="Skip tour"
+      ></button>
+      <!-- Right Curtain -->
+      <button 
+        type="button"
+        class="tour-quad-dim" 
+        style="top: {spotlightRect.top}px; left: {spotlightRect.left + spotlightRect.width}px; right: 0; height: {spotlightRect.height}px;"
+        on:click={handleSkip}
+        aria-label="Skip tour"
+      ></button>
+    {:else}
+      <!-- Full Screen Dim when no target element is present -->
+      <button 
+        type="button"
+        class="tour-quad-dim" 
+        style="top: 0; left: 0; width: 100%; height: 100%;"
+        on:click={handleSkip}
+        aria-label="Skip tour"
+      ></button>
+    {/if}
 
     {#if spotlightRect.visible}
       <div 
@@ -398,32 +431,25 @@
     inset: 0;
     z-index: 9000;
     overflow: hidden;
+    pointer-events: none;
     animation: tourFadeIn 0.25s ease-out;
   }
 
-  .tour-backdrop-dim {
+  .tour-quad-dim {
     position: absolute;
-    inset: 0;
+    border: none;
+    padding: 0;
+    margin: 0;
     background: rgba(3, 6, 12, 0.84);
     backdrop-filter: blur(18px) saturate(180%);
     -webkit-backdrop-filter: blur(18px) saturate(180%);
     pointer-events: auto;
-    transition: clip-path 0.35s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
-  }
-
-  .tour-backdrop-dim.has-spotlight {
-    clip-path: polygon(
-      0% 0%, 
-      0% 100%, 
-      var(--hole-left) 100%, 
-      var(--hole-left) var(--hole-bottom), 
-      var(--hole-right) var(--hole-bottom), 
-      var(--hole-right) var(--hole-top), 
-      var(--hole-left) var(--hole-top), 
-      var(--hole-left) 100%, 
-      100% 100%, 
-      100% 0%
-    );
+    cursor: default;
+    transition: 
+      top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+      left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+      width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+      height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   @keyframes tourFadeIn {

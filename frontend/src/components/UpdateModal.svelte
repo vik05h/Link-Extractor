@@ -612,7 +612,7 @@
       <div class="modal-footer">
         {#if step === 'overview'}
           <div class="footer-meta font-mono">
-            <span>Branch: dev • CC BY-NC-SA 4.0</span>
+            <span>Link Extractor v3.8.0 • PolyForm & CC BY-NC-SA 4.0</span>
           </div>
 
           <div class="footer-btn-group">

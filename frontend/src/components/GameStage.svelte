@@ -298,8 +298,17 @@
   .game-stage-container {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
     width: 100%;
+    min-height: 100%;
+    flex: 1;
+  }
+
+  .stage-view-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 440px;
   }
 
   /* Hero Banner */
@@ -536,7 +545,9 @@
 
   /* Table View */
   .urls-table-container {
-    max-height: 320px;
+    flex: 1;
+    min-height: 420px;
+    max-height: 580px;
     overflow-y: auto;
     background: var(--bg-surface);
   }
@@ -567,11 +578,13 @@
 
   .filename-cell {
     color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 380px;
+    max-width: none;
   }
 
   .excluded-row {
@@ -639,7 +652,8 @@
   }
 
   .terminal-scroll {
-    max-height: 270px;
+    min-height: 380px;
+    max-height: 560px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;

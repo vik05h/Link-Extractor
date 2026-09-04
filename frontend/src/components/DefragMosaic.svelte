@@ -112,6 +112,10 @@
   .mosaic-container {
     position: relative;
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 420px;
     padding: 16px;
     background: var(--bg-surface);
     backdrop-filter: blur(20px);
@@ -197,11 +201,16 @@
   .mosaic-grid {
     position: relative;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
-    gap: 6px;
-    max-height: 280px;
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 8px;
+    flex: 1;
+    min-height: 280px;
+    max-height: 520px;
     overflow-y: auto;
-    padding-right: 4px;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
   }
 
   .mosaic-grid.is-decrypting::after {
@@ -237,8 +246,11 @@
 
   .mosaic-block {
     position: relative;
-    height: 36px;
-    border-radius: 6px;
+    height: 44px;
+    border-radius: 8px;
+    padding: 0;
+    margin: 0;
+    line-height: 1;
     border: 1px solid var(--border-subtle);
     background: rgba(255, 255, 255, 0.04);
     color: var(--text-secondary);
@@ -246,7 +258,7 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    overflow: hidden;
+    overflow: visible;
     transition: transform 0.12s ease, border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
   }
 
@@ -254,15 +266,20 @@
     transform: scale(1.12);
     z-index: 10;
     border-color: #ffffff;
-    box-shadow: 0 0 12px rgba(255, 255, 255, 0.3);
+    box-shadow: 0 0 14px rgba(255, 255, 255, 0.35);
   }
 
   .block-number {
-    font-size: 11px;
+    font-size: 13px;
     font-family: var(--font-mono);
     font-weight: 700;
     font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
   }
 
   /* Block States */
@@ -384,11 +401,15 @@
 
   .hud-filename {
     color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
     font-weight: 500;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 460px;
+    flex: 1;
+    min-width: 0;
+    max-width: none;
   }
 
   .hud-right {
