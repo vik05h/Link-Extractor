@@ -114,8 +114,6 @@
     width: 100%;
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 420px;
     padding: 16px;
     background: var(--bg-surface);
     backdrop-filter: blur(20px);
@@ -202,10 +200,10 @@
     position: relative;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-    gap: 8px;
-    flex: 1;
-    min-height: 280px;
-    max-height: 520px;
+    grid-auto-rows: 44px;
+    align-content: start;
+    gap: 6px;
+    max-height: 480px;
     overflow-y: auto;
     padding: 10px;
     background: rgba(0, 0, 0, 0.22);
