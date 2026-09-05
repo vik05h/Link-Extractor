@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Icon from '../icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../../utils/audio';
   import type { IssueReport } from '../../types';
@@ -10,12 +11,61 @@
   export let onShowToast: (msg: string) => void = () => {};
   export let onPreviewImage: (url: string) => void = () => {};
 
+  interface CategoryOption {
+    value: string;
+    label: string;
+    icon: string;
+    color: string;
+    description: string;
+  }
+
+  const CATEGORIES: CategoryOption[] = [
+    { value: 'Bug Report', label: 'Bug Report', icon: 'bug', color: '#f43f5e', description: 'Application errors, UI glitches or crashes' },
+    { value: 'Turnstile Bypass Failure', label: 'Turnstile Bypass Failure', icon: 'shield-check', color: '#f59e0b', description: 'Cloudflare captcha solve timeouts' },
+    { value: 'Broken Direct Link', label: 'Broken Direct Link', icon: 'link', color: '#ef4444', description: 'Expired mirrors or 404 hoster errors' },
+    { value: 'JDownloader 2 Push Error', label: 'JDownloader 2 Push Error', icon: 'bolt', color: '#38bdf8', description: 'Port 9666 LinkGrabber integration' },
+    { value: 'Feature Suggestion', label: 'Feature Suggestion', icon: 'sparkles', color: '#00f0a0', description: 'New features, exporters or UI ideas' },
+    { value: 'Other', label: 'Other', icon: 'help-circle', color: '#94a3b8', description: 'General questions or feedback' }
+  ];
+
   let category: string = 'Bug Report';
+  let isCategoryOpen: boolean = false;
   let subject: string = '';
   let description: string = '';
   let screenshotData: string = '';
   let liveMatches: IssueReport[] = [];
   let fileInputEl: HTMLInputElement;
+
+  $: currentCategoryMeta = CATEGORIES.find(c => c.value === category) || CATEGORIES[0];
+
+  function toggleCategoryDropdown(e: MouseEvent) {
+    e.stopPropagation();
+    playClickSound();
+    isCategoryOpen = !isCategoryOpen;
+  }
+
+  function selectCategory(val: string) {
+    category = val;
+    playClickSound();
+    isCategoryOpen = false;
+  }
+
+  onMount(() => {
+    const handleGlobalClick = () => {
+      if (isCategoryOpen) isCategoryOpen = false;
+    };
+    const handleKeydownWindow = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isCategoryOpen) {
+        isCategoryOpen = false;
+      }
+    };
+    window.addEventListener('click', handleGlobalClick);
+    window.addEventListener('keydown', handleKeydownWindow);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+      window.removeEventListener('keydown', handleKeydownWindow);
+    };
+  });
 
   // Live duplicate subject matching
   $: {
@@ -125,16 +175,61 @@
   <div class="submit-form-container">
     <!-- Category & Subject -->
     <div class="form-row-grid">
-      <div class="form-group" style="flex: 0 0 200px;">
+      <div class="form-group" style="flex: 0 0 220px; position: relative;">
         <label for="report-category" class="form-label">CATEGORY</label>
-        <select id="report-category" class="glass-input" bind:value={category}>
-          <option value="Bug Report">Bug Report</option>
-          <option value="Turnstile Bypass Failure">Turnstile Bypass Failure</option>
-          <option value="Broken Direct Link">Broken Direct Link</option>
-          <option value="JDownloader 2 Push Error">JDownloader 2 Push Error</option>
-          <option value="Feature Suggestion">Feature Suggestion</option>
-          <option value="Other">Other</option>
-        </select>
+        <div class="custom-dropdown-wrap">
+          <button 
+            type="button" 
+            id="report-category"
+            class="custom-dropdown-btn glass-input"
+            class:is-active={isCategoryOpen}
+            on:click={toggleCategoryDropdown}
+            aria-haspopup="listbox"
+            aria-expanded={isCategoryOpen}
+          >
+            <div class="dropdown-selected-wrap">
+              <span class="category-icon-tag" style="color: {currentCategoryMeta.color};">
+                <Icon name={currentCategoryMeta.icon} size={14} color={currentCategoryMeta.color} />
+              </span>
+              <span class="selected-label">{currentCategoryMeta.label}</span>
+            </div>
+            <span class="dropdown-chevron" class:rotate={isCategoryOpen}>
+              <Icon name="chevron-down" size={13} color="var(--text-muted)" />
+            </span>
+          </button>
+
+          {#if isCategoryOpen}
+            <div 
+              class="custom-dropdown-menu glass-panel" 
+              role="listbox"
+              on:click|stopPropagation={() => {}}
+            >
+              {#each CATEGORIES as opt}
+                <button 
+                  type="button" 
+                  class="custom-dropdown-item"
+                  class:selected={category === opt.value}
+                  role="option"
+                  aria-selected={category === opt.value}
+                  on:click|stopPropagation={() => selectCategory(opt.value)}
+                >
+                  <div class="item-icon-col" style="color: {opt.color};">
+                    <Icon name={opt.icon} size={14} color={opt.color} />
+                  </div>
+                  <div class="item-text-col">
+                    <div class="item-title">{opt.label}</div>
+                    <div class="item-desc">{opt.description}</div>
+                  </div>
+                  {#if category === opt.value}
+                    <div class="item-check">
+                      <Icon name="check" size={13} color="var(--accent-primary)" strokeWidth={2.5} />
+                    </div>
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
       </div>
 
       <div class="form-group" style="flex: 1; position: relative;">
@@ -294,6 +389,158 @@
     line-height: 1.5;
   }
 
+  /* Custom Dropdown Styling */
+  .custom-dropdown-wrap {
+    position: relative;
+    width: 100%;
+  }
+
+  .custom-dropdown-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .custom-dropdown-btn.is-active {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 12px rgba(0, 240, 160, 0.25);
+  }
+
+  .dropdown-selected-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .category-icon-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .selected-label {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dropdown-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .dropdown-chevron.rotate {
+    transform: rotate(180deg);
+  }
+
+  .custom-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 290px;
+    z-index: 100;
+    padding: 6px;
+    border-radius: 12px;
+    background: rgba(13, 17, 26, 0.98);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 
+      0 20px 48px rgba(0, 0, 0, 0.85),
+      0 0 24px rgba(0, 240, 160, 0.15);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    transform-origin: top left;
+    animation: dropdownSlideDown 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .custom-dropdown-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease, transform 0.1s ease;
+    width: 100%;
+  }
+
+  .custom-dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    transform: translateX(2px);
+  }
+
+  .custom-dropdown-item.selected {
+    background: rgba(0, 240, 160, 0.12);
+  }
+
+  .item-icon-col {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 2px;
+    flex-shrink: 0;
+  }
+
+  .item-text-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .item-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #ffffff;
+    line-height: 1.25;
+  }
+
+  .item-desc {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+  }
+
+  .item-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    padding-top: 2px;
+    flex-shrink: 0;
+  }
+
+  @keyframes dropdownSlideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
   /* Live duplicate suggestions dropdown */
   .live-matches-dropdown {
     position: absolute;
@@ -310,6 +557,8 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    transform-origin: top center;
+    animation: dropdownSlideDown 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   .matches-header {
     display: flex;

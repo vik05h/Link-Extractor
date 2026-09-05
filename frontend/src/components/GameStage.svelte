@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import DefragMosaic from './DefragMosaic.svelte';
   import type { PartItem } from '../types';
   import SelectiveFilter from './SelectiveFilter.svelte';
@@ -22,6 +23,15 @@
 
   let activeView: 'mosaic' | 'table' | 'log' = 'mosaic';
   let exportMenuOpen = false;
+  let terminalScrollEl: HTMLElement | null = null;
+
+  $: if (logs && logs.length && terminalScrollEl) {
+    tick().then(() => {
+      if (terminalScrollEl) {
+        terminalScrollEl.scrollTop = terminalScrollEl.scrollHeight;
+      }
+    });
+  }
 
   function handleCoverError(e: Event) {
     const target = e.currentTarget as HTMLImageElement;
@@ -284,7 +294,7 @@
           </div>
           <span>{logs.length} EVENTS</span>
         </div>
-        <div class="terminal-scroll">
+        <div class="terminal-scroll" bind:this={terminalScrollEl}>
           {#each logs as logLine}
             <div class="log-entry font-mono">{logLine}</div>
           {/each}
@@ -488,7 +498,25 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 240, 160, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: var(--radius-sm);
+    background: rgba(13, 17, 26, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    transform-origin: top right;
+    animation: dropdownSlideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @keyframes dropdownSlideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-8px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
   }
 
   .export-item {
@@ -629,9 +657,17 @@
 
   /* Telemetry Log */
   .terminal-log-container {
-    max-height: 320px;
-    padding: 12px;
-    background: rgba(8, 10, 15, 0.9);
+    flex: 1;
+    min-height: 420px;
+    max-height: 580px;
+    padding: 14px 16px;
+    background: rgba(8, 10, 15, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.5);
   }
 
   .terminal-header {
@@ -641,8 +677,11 @@
     font-size: 11px;
     font-weight: 700;
     color: var(--accent-secondary);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     letter-spacing: 0.8px;
+    flex-shrink: 0;
   }
 
   .terminal-title {
@@ -652,17 +691,19 @@
   }
 
   .terminal-scroll {
-    min-height: 380px;
-    max-height: 560px;
+    flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 5px;
+    padding-right: 6px;
   }
 
   .log-entry {
     font-size: 11px;
     color: #94a3b8;
-    line-height: 1.4;
+    line-height: 1.45;
+    word-break: break-all;
   }
 </style>
