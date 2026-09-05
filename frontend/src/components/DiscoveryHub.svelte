@@ -213,9 +213,9 @@
   }
 </script>
 
-<div class="discovery-hub-container" id="tour-discovery-hub">
+<div class="discovery-hub-container">
   <!-- Hub Search & Filters Bar -->
-  <div class="hub-header-bar glass-panel">
+  <div class="hub-header-bar glass-panel" id="tour-discovery-hub">
     <div class="search-box-wrapper">
       <span class="search-icon">
         <Icon name="search" size={16} color="var(--text-muted)" />

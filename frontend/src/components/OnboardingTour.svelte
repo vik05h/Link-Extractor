@@ -61,31 +61,34 @@
   let currentStepIndex: number = 0;
   let spotlightRect = { top: 0, left: 0, width: 0, height: 0, visible: false };
   let tooltipStyle = '';
+  let windowWidth = 1180;
+  let windowHeight = 840;
 
   $: currentStep = STEPS[currentStepIndex];
 
   async function updateSpotlight() {
-    if (!isOpen || !currentStep) return;
+    if (!isOpen) return;
+    const step = STEPS[currentStepIndex];
+    if (!step) return;
     await tick();
 
     const tooltipWidth = (currentStepIndex === 2 || currentStepIndex === 3) ? 440 : 380;
     const tooltipHeight = (currentStepIndex === 2 || currentStepIndex === 3) ? 410 : 240;
 
-    const targetEl = document.getElementById(currentStep.targetId);
+    const targetEl = document.getElementById(step.targetId);
     if (!targetEl) {
       spotlightRect = {
-        top: window.innerHeight / 2 - 100,
-        left: window.innerWidth / 2 - (tooltipWidth / 2),
+        top: Math.floor(windowHeight / 2 - 100),
+        left: Math.floor(windowWidth / 2 - (tooltipWidth / 2)),
         width: tooltipWidth,
         height: 200,
         visible: false
       };
-      tooltipStyle = `top: ${Math.max(20, Math.floor(window.innerHeight / 2 - (tooltipHeight / 2)))}px; left: ${Math.max(20, Math.floor(window.innerWidth / 2 - (tooltipWidth / 2)))}px;`;
+      tooltipStyle = `top: ${Math.max(20, Math.floor(windowHeight / 2 - (tooltipHeight / 2)))}px; left: ${Math.max(20, Math.floor(windowWidth / 2 - (tooltipWidth / 2)))}px;`;
       return;
     }
 
     targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-    await new Promise(r => setTimeout(r, 120));
 
     const rect = targetEl.getBoundingClientRect();
     const pad = 10;
@@ -101,13 +104,13 @@
     let top = 0;
     let left = 0;
 
-    if (currentStep.position === 'bottom') {
+    if (step.position === 'bottom') {
       top = spotlightRect.top + spotlightRect.height + 16;
       left = spotlightRect.left + (spotlightRect.width / 2) - (tooltipWidth / 2);
-    } else if (currentStep.position === 'top') {
+    } else if (step.position === 'top') {
       top = spotlightRect.top - tooltipHeight - 16;
       left = spotlightRect.left + (spotlightRect.width / 2) - (tooltipWidth / 2);
-    } else if (currentStep.position === 'right') {
+    } else if (step.position === 'right') {
       top = spotlightRect.top + (spotlightRect.height / 2) - (tooltipHeight / 2);
       left = spotlightRect.left + spotlightRect.width + 18;
     } else {
@@ -115,13 +118,25 @@
       left = spotlightRect.left - tooltipWidth - 18;
     }
 
-    left = Math.max(16, Math.min(window.innerWidth - tooltipWidth - 20, left));
-    top = Math.max(16, Math.min(window.innerHeight - tooltipHeight - 20, top));
+    left = Math.max(16, Math.min(windowWidth - tooltipWidth - 20, left));
+    top = Math.max(16, Math.min(windowHeight - tooltipHeight - 20, top));
 
     tooltipStyle = `top: ${top}px; left: ${left}px;`;
   }
 
-  function handleNext() {
+  function goToStep(idx: number) {
+    if (idx >= 0 && idx < STEPS.length) {
+      playClickSound();
+      currentStepIndex = idx;
+      updateSpotlight();
+    }
+  }
+
+  function handleNext(e?: MouseEvent | KeyboardEvent) {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     playClickSound();
     if (currentStepIndex < STEPS.length - 1) {
       currentStepIndex += 1;
@@ -131,7 +146,11 @@
     }
   }
 
-  function handlePrev() {
+  function handlePrev(e?: MouseEvent | KeyboardEvent) {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     playClickSound();
     if (currentStepIndex > 0) {
       currentStepIndex -= 1;
@@ -139,7 +158,11 @@
     }
   }
 
-  function handleFinish() {
+  function handleFinish(e?: MouseEvent) {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     playSuccessChime();
     if (typeof window !== 'undefined') {
       localStorage.setItem('le_tour_completed', 'true');
@@ -148,7 +171,11 @@
     onClose();
   }
 
-  function handleSkip() {
+  function handleSkip(e?: MouseEvent | KeyboardEvent) {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     playClickSound();
     if (typeof window !== 'undefined') {
       localStorage.setItem('le_tour_completed', 'true');
@@ -161,19 +188,23 @@
     if (!isOpen) return;
     if (e.key === 'ArrowRight' || e.key === 'Enter') {
       e.preventDefault();
-      handleNext();
+      handleNext(e);
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      handlePrev();
+      handlePrev(e);
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      handleSkip();
+      handleSkip(e);
     }
   }
 
-  $: if (isOpen) {
+  let prevIsOpen = false;
+  $: if (isOpen && !prevIsOpen) {
+    prevIsOpen = true;
     currentStepIndex = 0;
     updateSpotlight();
+  } else if (!isOpen && prevIsOpen) {
+    prevIsOpen = false;
   }
 
   onMount(() => {
@@ -184,87 +215,90 @@
   });
 </script>
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown} bind:innerWidth={windowWidth} bind:innerHeight={windowHeight} />
 
 {#if isOpen}
-  <div class="tour-backdrop" role="dialog" aria-modal="true" aria-label="Onboarding Tour" tabindex="-1">
-    <!-- 4-Quadrant Deep 18px Gaussian Blurred Backdrop (Physical Cutout - Zero Blur Over Target) -->
-    {#if spotlightRect.visible}
-      <!-- Top Curtain -->
-      <button 
-        type="button"
-        class="tour-quad-dim" 
-        style="top: 0; left: 0; width: 100%; height: {Math.max(0, spotlightRect.top)}px;"
-        on:click={handleSkip}
-        aria-label="Skip tour"
-      ></button>
-      <!-- Bottom Curtain -->
-      <button 
-        type="button"
-        class="tour-quad-dim" 
-        style="top: {spotlightRect.top + spotlightRect.height}px; left: 0; width: 100%; bottom: 0;"
-        on:click={handleSkip}
-        aria-label="Skip tour"
-      ></button>
-      <!-- Left Curtain -->
-      <button 
-        type="button"
-        class="tour-quad-dim" 
-        style="top: {spotlightRect.top}px; left: 0; width: {Math.max(0, spotlightRect.left)}px; height: {spotlightRect.height}px;"
-        on:click={handleSkip}
-        aria-label="Skip tour"
-      ></button>
-      <!-- Right Curtain -->
-      <button 
-        type="button"
-        class="tour-quad-dim" 
-        style="top: {spotlightRect.top}px; left: {spotlightRect.left + spotlightRect.width}px; right: 0; height: {spotlightRect.height}px;"
-        on:click={handleSkip}
-        aria-label="Skip tour"
-      ></button>
-    {:else}
-      <!-- Full Screen Dim when no target element is present -->
-      <button 
-        type="button"
-        class="tour-quad-dim" 
-        style="top: 0; left: 0; width: 100%; height: 100%;"
-        on:click={handleSkip}
-        aria-label="Skip tour"
-      ></button>
-    {/if}
+  <!-- Full-Screen Transparent Input Shield (absorbs any clicks outside the card so they never hit background app UI) -->
+  <div 
+    class="tour-shield" 
+    on:click|stopPropagation={() => {}} 
+    aria-hidden="true"
+  ></div>
 
-    {#if spotlightRect.visible}
-      <div 
-        class="spotlight-box"
-        style="
-          top: {spotlightRect.top}px; 
-          left: {spotlightRect.left}px; 
-          width: {spotlightRect.width}px; 
-          height: {spotlightRect.height}px;
-        "
-      >
-        <div class="spotlight-beacon-corner top-left"></div>
-        <div class="spotlight-beacon-corner top-right"></div>
-        <div class="spotlight-beacon-corner bottom-left"></div>
-        <div class="spotlight-beacon-corner bottom-right"></div>
-      </div>
-    {/if}
-
+  <!-- 4-Quadrant Deep 18px Gaussian Blurred Backdrop (Physical Cutout - Zero Blur Over Target) -->
+  {#if spotlightRect.visible}
+    <!-- Top Curtain -->
     <div 
-      class="tour-card glass-panel" 
-      class:wide-card={currentStepIndex === 2 || currentStepIndex === 3}
-      style={tooltipStyle} 
-      role="document"
+      class="tour-quad-dim" 
+      style="top: 0; left: 0; width: 100%; height: {Math.max(0, spotlightRect.top)}px;"
+      on:click|stopPropagation={() => {}}
+    ></div>
+    <!-- Bottom Curtain -->
+    <div 
+      class="tour-quad-dim" 
+      style="top: {spotlightRect.top + spotlightRect.height}px; left: 0; width: 100%; height: {Math.max(0, windowHeight - (spotlightRect.top + spotlightRect.height))}px;"
+      on:click|stopPropagation={() => {}}
+    ></div>
+    <!-- Left Curtain -->
+    <div 
+      class="tour-quad-dim" 
+      style="top: {spotlightRect.top}px; left: 0; width: {Math.max(0, spotlightRect.left)}px; height: {spotlightRect.height}px;"
+      on:click|stopPropagation={() => {}}
+    ></div>
+    <!-- Right Curtain -->
+    <div 
+      class="tour-quad-dim" 
+      style="top: {spotlightRect.top}px; left: {spotlightRect.left + spotlightRect.width}px; width: {Math.max(0, windowWidth - (spotlightRect.left + spotlightRect.width))}px; height: {spotlightRect.height}px;"
+      on:click|stopPropagation={() => {}}
+    ></div>
+  {:else}
+    <!-- Full Screen Dim when no target element is present -->
+    <div 
+      class="tour-quad-dim" 
+      style="top: 0; left: 0; width: 100%; height: 100%;"
+      on:click|stopPropagation={() => {}}
+    ></div>
+  {/if}
+
+  {#if spotlightRect.visible}
+    <div 
+      class="spotlight-box"
+      style="
+        top: {spotlightRect.top}px; 
+        left: {spotlightRect.left}px; 
+        width: {spotlightRect.width}px; 
+        height: {spotlightRect.height}px;
+      "
+      on:click|stopPropagation={() => {}}
     >
-      <div class="tour-card-header">
-        <div class="tour-step-badge">
-          <Icon name="sparkles" size={13} color="var(--accent-primary)" />
-          <span>{currentStep.badge}</span>
-        </div>
-        <button type="button" class="btn-skip-icon" on:click={handleSkip} title="Skip Tour (Esc)" aria-label="Skip tour">
-          <Icon name="close" size={14} />
-        </button>
+      <div class="spotlight-beacon-corner top-left"></div>
+      <div class="spotlight-beacon-corner top-right"></div>
+      <div class="spotlight-beacon-corner bottom-left"></div>
+      <div class="spotlight-beacon-corner bottom-right"></div>
+    </div>
+  {/if}
+
+  <!-- Interactive Tour Card Tooltip (Fixed Top-Level Element with Independent DirectComposition Hit-Testing) -->
+  <div 
+    class="tour-card glass-panel" 
+    class:wide-card={currentStepIndex === 2 || currentStepIndex === 3}
+    style={tooltipStyle} 
+    role="dialog"
+    aria-modal="true"
+    aria-label="Onboarding Tour"
+    tabindex="-1"
+    on:click|stopPropagation={() => {}}
+    on:keydown|stopPropagation={() => {}}
+  >
+    <div class="tour-card-header">
+      <div class="tour-step-badge">
+        <Icon name="sparkles" size={13} color="var(--accent-primary)" />
+        <span>{currentStep.badge}</span>
       </div>
+      <button type="button" class="btn-skip-icon" on:click|stopPropagation={handleSkip} title="Skip Tour (Esc)" aria-label="Skip tour">
+        <Icon name="close" size={14} />
+      </button>
+    </div>
 
       <div class="tour-card-body">
         <h3 class="tour-title">{currentStep.title}</h3>
@@ -381,20 +415,25 @@
       <div class="tour-card-footer">
         <div class="tour-dots-indicator">
           {#each STEPS as _, idx}
-            <span 
+            <button 
+              type="button" 
               class="dot" 
               class:active={idx === currentStepIndex}
               class:completed={idx < currentStepIndex}
-            ></span>
+              on:click|stopPropagation={() => goToStep(idx)}
+              title="Step {idx + 1}"
+              aria-label="Step {idx + 1}"
+            ></button>
           {/each}
         </div>
 
         <div class="tour-buttons-row">
           <button 
             type="button" 
-            class="btn-secondary btn-sm"
+            class="btn-secondary btn-sm btn-tour-prev"
             disabled={currentStepIndex === 0}
-            on:click={handlePrev}
+            on:click|stopPropagation={handlePrev}
+            aria-label="Previous step"
           >
             <Icon name="arrow-left" size={12} />
             <span>Back</span>
@@ -403,8 +442,9 @@
           {#if currentStepIndex < STEPS.length - 1}
             <button 
               type="button" 
-              class="btn-primary btn-sm"
-              on:click={handleNext}
+              class="btn-primary btn-sm btn-tour-next"
+              on:click|stopPropagation={handleNext}
+              aria-label="Next step"
             >
               <span>Next</span>
               <Icon name="arrow-right" size={12} color="#ffffff" />
@@ -413,7 +453,8 @@
             <button 
               type="button" 
               class="btn-primary btn-sm btn-finish"
-              on:click={handleFinish}
+              on:click|stopPropagation={handleFinish}
+              aria-label="Complete tour and get started"
             >
               <Icon name="check" size={13} color="#ffffff" strokeWidth={2.5} />
               <span>Get Started</span>
@@ -422,21 +463,21 @@
         </div>
       </div>
     </div>
-  </div>
 {/if}
 
 <style>
-  .tour-backdrop {
+  /* Full-Screen Input Shield to absorb clicks outside the card so they never hit the app underneath */
+  .tour-shield {
     position: fixed;
     inset: 0;
-    z-index: 9000;
-    overflow: hidden;
-    pointer-events: none;
-    animation: tourFadeIn 0.25s ease-out;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.001);
+    pointer-events: auto;
+    cursor: default;
   }
 
   .tour-quad-dim {
-    position: absolute;
+    position: fixed;
     border: none;
     padding: 0;
     margin: 0;
@@ -445,6 +486,7 @@
     -webkit-backdrop-filter: blur(18px) saturate(180%);
     pointer-events: auto;
     cursor: default;
+    z-index: 10001;
     transition: 
       top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
@@ -459,8 +501,9 @@
 
   /* Glowing ambient focus aura around spotlight box */
   .spotlight-box {
-    position: absolute;
-    pointer-events: none;
+    position: fixed;
+    pointer-events: auto;
+    cursor: default;
     border-radius: 12px;
     border: 2px solid var(--accent-primary);
     box-shadow: 
@@ -473,7 +516,7 @@
       left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 9001;
+    z-index: 10002;
     animation: spotlightPulse 2s infinite ease-in-out;
   }
 
@@ -524,19 +567,22 @@
 
   /* Frosted acrylic blur box */
   .tour-card {
-    position: absolute;
+    position: fixed !important;
+    pointer-events: auto !important;
     width: 390px;
     padding: 20px;
     border-radius: 18px;
-    background: rgba(13, 17, 26, 0.86);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(13, 17, 26, 0.96) !important;
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border: 1px solid rgba(255, 255, 255, 0.16);
     box-shadow: 
-      0 28px 56px rgba(0, 0, 0, 0.8), 
-      0 0 32px rgba(0, 240, 160, 0.18),
+      0 28px 56px rgba(0, 0, 0, 0.9), 
+      0 0 32px rgba(0, 240, 160, 0.22),
       inset 0 1px 0 rgba(255, 255, 255, 0.12);
-    z-index: 9002;
+    z-index: 10010 !important;
+    cursor: default;
+    isolation: isolate;
     transition: 
       top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
@@ -586,7 +632,8 @@
     background: transparent;
     border: none;
     color: var(--text-muted);
-    cursor: pointer;
+    cursor: pointer !important;
+    pointer-events: auto !important;
     padding: 4px;
     border-radius: 6px;
     display: flex;
@@ -883,20 +930,34 @@
   }
 
   .dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.2);
-    transition: all 0.25s ease;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
+
+  .dot:hover {
+    background: rgba(255, 255, 255, 0.5);
+    transform: scale(1.2);
+  }
+
   .dot.active {
-    width: 18px;
+    width: 22px;
     border-radius: 4px;
     background: var(--accent-primary);
     box-shadow: 0 0 8px var(--accent-primary);
+    cursor: default !important;
+    transform: none;
   }
+
   .dot.completed {
-    background: rgba(0, 240, 160, 0.5);
+    background: rgba(0, 240, 160, 0.6);
   }
 
   .tour-buttons-row {
@@ -905,9 +966,43 @@
     gap: 8px;
   }
 
+  .tour-buttons-row button {
+    position: relative;
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    user-select: none;
+    transition: all 0.15s ease;
+  }
+
+  .tour-buttons-row button * {
+    pointer-events: none;
+  }
+
+  .btn-skip-icon * {
+    pointer-events: none;
+  }
+
+  .tour-buttons-row button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+    transform: none !important;
+    filter: none !important;
+    box-shadow: none !important;
+  }
+
+  .btn-tour-next {
+    min-width: 84px;
+  }
+
+  .btn-tour-prev {
+    min-width: 76px;
+  }
+
   .btn-finish {
     background: linear-gradient(135deg, #00f0a0, #00b875);
     border: none;
     box-shadow: 0 0 14px rgba(0, 240, 160, 0.4);
+    min-width: 110px;
   }
 </style>

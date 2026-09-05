@@ -5,8 +5,29 @@ Next-Gen Gaming Hub UI powered by Astro, Svelte, and pywebview (WebView2).
 
 import os
 import sys
+import time
+import shutil
 import threading
 import webview
+
+# Prevent WebView2 from caching stale web bundles across runs
+try:
+    import webview.platforms.edgechromium as ec
+    _OrigProps = ec.CoreWebView2CreationProperties
+    class _PatchedProps(_OrigProps):
+        @property
+        def AdditionalBrowserArguments(self):
+            return super().AdditionalBrowserArguments
+        @AdditionalBrowserArguments.setter
+        def AdditionalBrowserArguments(self, val):
+            if val and '--disable-http-cache' not in val:
+                val = val + ' --disable-http-cache'
+            elif not val:
+                val = '--disable-http-cache'
+            super(_PatchedProps, self.__class__).AdditionalBrowserArguments.__set__(self, val)
+    ec.CoreWebView2CreationProperties = _PatchedProps
+except Exception:
+    pass
 
 # Ensure Playwright browser cache location
 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(
@@ -54,6 +75,19 @@ if hasattr(threading, "excepthook"):
 
 def main():
     utils.apply_windows_native_icon("app_icon.ico")
+
+    # Clean stale WebView2 HTTP disk cache if present
+    try:
+        appdata = os.environ.get("APPDATA", "")
+        if appdata:
+            cache_path = os.path.join(appdata, "pywebview", "EBWebView", "Default", "Cache")
+            code_cache = os.path.join(appdata, "pywebview", "EBWebView", "Default", "Code Cache")
+            if os.path.exists(cache_path):
+                shutil.rmtree(cache_path, ignore_errors=True)
+            if os.path.exists(code_cache):
+                shutil.rmtree(code_cache, ignore_errors=True)
+    except Exception:
+        pass
     
     bridge = AppBridge()
 
@@ -65,6 +99,7 @@ def main():
         target_url = os.path.join(base_dir, "dist_web", "index.html")
         if not os.path.exists(target_url):
             target_url = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist_web", "index.html")
+        target_url = f"{target_url}?v={updater.CURRENT_VERSION}&t={int(time.time())}"
 
     window = webview.create_window(
         title=f"Link Extractor {updater.CURRENT_VERSION}",

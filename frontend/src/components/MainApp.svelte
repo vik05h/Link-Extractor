@@ -966,7 +966,7 @@
 
   <OnboardingTour
     isOpen={tourOpen}
-    onClose={() => tourOpen = false}
+    onClose={() => { tourOpen = false; }}
   />
 
   <ReportIssueModal
