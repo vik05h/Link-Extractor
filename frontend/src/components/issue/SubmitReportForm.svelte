@@ -51,8 +51,11 @@
   }
 
   onMount(() => {
-    const handleGlobalClick = () => {
-      if (isCategoryOpen) isCategoryOpen = false;
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (isCategoryOpen && !target?.closest('.custom-dropdown-wrap')) {
+        isCategoryOpen = false;
+      }
     };
     const handleKeydownWindow = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isCategoryOpen) {
@@ -202,7 +205,8 @@
             <div 
               class="custom-dropdown-menu glass-panel" 
               role="listbox"
-              on:click|stopPropagation={() => {}}
+              tabindex="-1"
+              aria-label="Category options"
             >
               {#each CATEGORIES as opt}
                 <button 
@@ -211,7 +215,7 @@
                   class:selected={category === opt.value}
                   role="option"
                   aria-selected={category === opt.value}
-                  on:click|stopPropagation={() => selectCategory(opt.value)}
+                  on:click={() => selectCategory(opt.value)}
                 >
                   <div class="item-icon-col" style="color: {opt.color};">
                     <Icon name={opt.icon} size={14} color={opt.color} />

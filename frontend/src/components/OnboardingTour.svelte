@@ -231,32 +231,32 @@
     <div 
       class="tour-quad-dim" 
       style="top: 0; left: 0; width: 100%; height: {Math.max(0, spotlightRect.top)}px;"
-      on:click|stopPropagation={() => {}}
+      aria-hidden="true"
     ></div>
     <!-- Bottom Curtain -->
     <div 
       class="tour-quad-dim" 
       style="top: {spotlightRect.top + spotlightRect.height}px; left: 0; width: 100%; height: {Math.max(0, windowHeight - (spotlightRect.top + spotlightRect.height))}px;"
-      on:click|stopPropagation={() => {}}
+      aria-hidden="true"
     ></div>
     <!-- Left Curtain -->
     <div 
       class="tour-quad-dim" 
       style="top: {spotlightRect.top}px; left: 0; width: {Math.max(0, spotlightRect.left)}px; height: {spotlightRect.height}px;"
-      on:click|stopPropagation={() => {}}
+      aria-hidden="true"
     ></div>
     <!-- Right Curtain -->
     <div 
       class="tour-quad-dim" 
       style="top: {spotlightRect.top}px; left: {spotlightRect.left + spotlightRect.width}px; width: {Math.max(0, windowWidth - (spotlightRect.left + spotlightRect.width))}px; height: {spotlightRect.height}px;"
-      on:click|stopPropagation={() => {}}
+      aria-hidden="true"
     ></div>
   {:else}
     <!-- Full Screen Dim when no target element is present -->
     <div 
       class="tour-quad-dim" 
       style="top: 0; left: 0; width: 100%; height: 100%;"
-      on:click|stopPropagation={() => {}}
+      aria-hidden="true"
     ></div>
   {/if}
 
@@ -269,7 +269,7 @@
         width: {spotlightRect.width}px; 
         height: {spotlightRect.height}px;
       "
-      on:click|stopPropagation={() => {}}
+      aria-hidden="true"
     >
       <div class="spotlight-beacon-corner top-left"></div>
       <div class="spotlight-beacon-corner top-right"></div>
@@ -975,10 +975,6 @@
   }
 
   .tour-buttons-row button * {
-    pointer-events: none;
-  }
-
-  .btn-skip-icon * {
     pointer-events: none;
   }
 
