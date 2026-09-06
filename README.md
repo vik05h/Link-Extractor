@@ -46,20 +46,19 @@ graph LR
     E --> H[SQLite History Archive]
 ```
 
-- **Interactive Onboarding Guided Tour (v3.8.0)**: Dynamic 5-step spotlight overlay guiding new users through the URL command deck, Community Hub, Defrag Matrix, and quick launcher buttons with audio haptics and instant replay in Settings.
-- **Community Issue Center & Smart Duplicate Intercept (v3.8.0)**: Full-featured issue tracking board with live similarity search to halt duplicate tickets, automated +1 upvoting, screenshot clipboard paste (`Ctrl+V`), and secure Admin status resolution (PIN `0505`).
-- **Automated Crash Telemetry (v3.8.0)**: Python unhandled exceptions (`sys.excepthook`) and frontend errors (`window.onerror`) are transparently captured and deduplicated in Firebase RTDB with user opt-out control.
-- **Next-Gen Gaming Hub UI (Astro + Svelte + WebView2)**: Hardware-accelerated desktop web architecture, Living Canvas dynamic ambient lighting, Defrag Mosaic real-time visualizer, and Apple Liquid Glass design (migrated completely from legacy Flet in v3.8.0).
-- **60 FPS & 120 FPS High-Refresh Rate Mode**: Custom frame pacing and micro-transition presets in Settings for high-refresh gaming monitors (120Hz/144Hz/240Hz).
-- **Clarified 1-Byte Health Check**: Instant 1-byte HTTP Range verification on Part 1 with explicit status badging and total repack size separation.
-- **Community Cloud Cache & Shared Link Hub (Phase 3)**: Instant decentralized link sharing powered by Firebase Realtime Database lightweight REST API. Skip browser automation entirely when games are already resolved.
-- **Pixel Dino Arcade Loading Animation**: Retro 8-bit arcade Pixel Dino running loader with live cloud status updates.
-- **3D-Styled Game Cards with Local Timezone Intelligence**: Game cover thumbnails, depth lighting, localized timestamps (e.g. `21 Aug 2026, 05:25 PM IST`), freshness badges, and 4 quick actions (`Use Instant`, `Push JD2`, `Copy URLs`, `Health Check`).
-- **Concurrent Tab Pool (3x-6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
-- **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using lightweight 1-byte HTTP range requests.
+- **Interactive Onboarding Guided Tour & What's New (v3.8.0)**: Sequential first-run onboarding displaying release highlights followed by a physical 4-curtain spotlight tour. The tour uses 4 independent backdrop planes surrounding the active element, ensuring zero blur and 100% interactive clickability on target elements without mouse event clipping.
+- **Cyberpunk Animated Glassmorphic Dropdowns (v3.8.0)**: Replaced default operating system dropdowns with custom SVG-driven glassmorphic select menus in the Issue Center and export dialogs, featuring category-specific color accents, rotating chevron indicators, and cubic-bezier transition animations.
+- **Bandwidth Saver & Selective Download Filter (v3.8.0)**: Automatic categorization of game parts allowing users to toggle English-only audio dubs, skip optional 4K textures, soundtracks, and bonus packs before resolution to save time and bandwidth.
+- **Repack Defrag Matrix (v3.8.0)**: Interactive 2D memory visualizer streaming live resolution status across all parts (Queued, Decrypting, Verified, Excluded). Hovering any block displays the filename, size, and status in the HUD with click-to-copy functionality.
+- **Real-Time Engine Telemetry (v3.8.0)**: Live terminal feed with responsive auto-scrolling to monitor worker threads, Cloudflare Turnstile token resolution, and HTTP Range checks in real time.
+- **Community Issue Center & Smart Duplicate Intercept (v3.8.0)**: Built-in community ticketing board with real-time similarity search to prevent duplicate reports, +1 community upvoting, direct screenshot clipboard pasting (`Ctrl+V`), and secure Admin resolution pin (`0505`).
+- **Automated Anonymous Crash Telemetry (v3.8.0)**: Captures unhandled Python exceptions (`sys.excepthook`) and frontend errors (`window.onerror`) with sanitized stack traces sent to Firebase RTDB for rapid bug fixes (opt-out toggle available in Settings).
+- **Extraction Vault Archive**: Searchable local SQLite database (`history.db`) for 1-click re-loading into the resolver, re-pushing to JDownloader 2, and clean record deletion with Lucide `trash-2` icons.
+- **Community Cloud Cache (Phase 3)**: Instant decentralized link sharing backed by Firebase Realtime Database. If any gamer has already resolved a repack, everyone else downloads instantly in 0 seconds without browser automation.
+- **Off-Screen Headed Browser & Background Automation**: Runs browser workers off-screen (`--window-position=-3000,-3000`) to solve 100% of Turnstile tokens without stealing window focus or interrupting your workflow.
 - **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
-- **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.
-- **GitHub Releases Auto-Updater & In-App Installer**: Automatically checks for updates on startup, downloads and applies updates in-app upon user confirmation, and displays a What's New & Bug Fixes changelog on updated launches.
+- **1-Byte HTTP Range Size Validation**: Rapidly probes Part 1 and aggregates total repack download sizes without downloading files.
+- **GitHub Releases Auto-Updater & In-App Installer**: Startup update checks with automated background download, in-app installation, and release notes showcase.
 
 ---
 
@@ -147,27 +146,42 @@ Access the **History** tab to search past extractions saved permanently in your 
 
 ## Installation & Quick Start
 
-### Option A: Run from Source
+### Option A: Prebuilt Windows Executable (Recommended)
+Download the latest standalone executable (`LinkExtractor.exe`) from [GitHub Releases](https://github.com/vik05h/Link-Extractor/releases). No Python or Node.js environment is required.
+
+### Option B: Run from Source
 ```bash
 # 1. Clone the repository
 git clone https://github.com/vik05h/Link-Extractor.git
 cd Link-Extractor
 
-# 2. Install dependencies
-pip install pywebview playwright pyperclip requests beautifulsoup4
+# 2. Install Python dependencies
+pip install pywebview playwright pyperclip requests beautifulsoup4 pillow
 
-# 3. Install browser binaries (one-time setup)
+# 3. Build frontend web bundle (requires Node.js 18+)
+cd frontend
+npm install
+npm run build
+cd ..
+
+# 4. Install browser binaries (one-time setup)
 playwright install chromium
 
-# 4. Run application
+# 5. Run application
 python main.py
 ```
 
-### Option B: Build Standalone .exe
+### Option C: Build Standalone Executable
 ```powershell
+# 1. Compile web bundle
+cd frontend
+npm run build
+cd ..
+
+# 2. Package single-file binary with PyInstaller
 pyinstaller LinkExtractor_Single.spec --noconfirm
 ```
-The compiled single-file binary will be generated in `dist/LinkExtractor.exe`.
+The compiled binary is generated at `dist/LinkExtractor.exe`.
 
 ---
 
