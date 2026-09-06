@@ -122,7 +122,7 @@
                     title="Delete record from SQLite"
                     on:click={(e) => handleDelete(r.id, e)}
                   >
-                    <Icon name="trash" size={13} />
+                    <Icon name="trash" size={14} />
                   </button>
                 </div>
               </div>
@@ -292,9 +292,38 @@
     gap: 6px;
   }
 
+  .btn-secondary.btn-sm {
+    height: 30px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .btn-delete {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   .btn-delete:hover {
-    border-color: var(--status-expired);
-    color: var(--status-expired);
+    background: rgba(244, 63, 94, 0.14);
+    border-color: rgba(244, 63, 94, 0.45);
+    color: #f43f5e;
+    box-shadow: 0 0 12px rgba(244, 63, 94, 0.25);
+    transform: scale(1.05);
+  }
+
+  .btn-delete:active {
+    transform: scale(0.95);
   }
 
   .loading-state, .empty-state {
