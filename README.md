@@ -73,74 +73,23 @@ graph LR
 
 ---
 
-## Step-by-Step Visual Tutorial
-
-Follow this quick guide to resolve and download any FitGirl repack in seconds:
-
-### Step 1: Paste Your Link & Community Detection
-Paste any FitGirl game page URL, Pastebin link, or direct FuckingFast URL. The app checks the Community Cloud Cache and alerts you if pre-fetched direct links exist with 1-click instant loading.
+## Application Interface
 
 <p align="center">
-  <img src="screenshots/step1.png" alt="Step 1: Paste Game URL and Auto-Detection" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <img src="screenshots/step1.png" alt="Link Extractor Modern Gaming Hub Interface" width="90%" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);" />
   <br>
-  <em>Figure 1: URL input with real-time detection badge.</em>
+  <em>Figure 1: Link Extractor next-generation cyberpunk gaming hub interface.</em>
 </p>
 
 ---
 
-### Step 2: Multi-Tab Parallel Resolution
-Click **Extract & Resolve**. If resolving fresh, the Playwright multi-tab pool resolves multiple parts concurrently (~1.8s per part) and streams live progress into the dashboard.
+## Workflow & Quick Guide
 
-<p align="center">
-  <img src="screenshots/step2.png" alt="Step 2: Multi-Tab Concurrency and Live Resolution" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 2: Real-time progress bar, worker stats, and direct links streaming.</em>
-</p>
-
----
-
-### Step 3: Verified Direct URLs & Repack Sizing
-Inspect all extracted `dl.fuckingfast.co` URLs in the interactive DataTable, complete with part numbers, live sizes (e.g. `18/18 Parts (34.19 GB)`), and validation status.
-
-<p align="center">
-  <img src="screenshots/step3.png" alt="Step 3: Direct URLs DataTable and Size Validation" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 3: Interactive DataTable showing direct URLs with verified file hashes.</em>
-</p>
-
----
-
-### Step 4: 1-Click JDownloader 2 Push or File Export
-- Click **Push to JD2** to send the entire package directly into JDownloader 2 LinkGrabber with zero captcha prompts.
-- Click **Export** to save `.txt`, `.json`, or `.crawljob` files directly to your **Downloads** folder.
-
-<p align="center">
-  <img src="screenshots/step4.png" alt="Step 4: Push to JDownloader 2 and Export Menu" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 4: Integration with JDownloader 2 and multi-format exports.</em>
-</p>
-
----
-
-### Step 5: Community Cloud Cache & Instant Download
-Browse the **Community** screen to discover pre-fetched games shared anonymously by other users. Filter by freshness (Fresh, Aging, Expired), run rapid 1-byte health checks, or click **Use Instant** to load links immediately without browser decryption.
-
-<p align="center">
-  <img src="screenshots/step5_community.png" alt="Step 5: Community Cloud Cache and Shared Repacks Hub" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 5: Community Cloud Cache with instant downloads, freshness badges, and health checks.</em>
-</p>
-
----
-
-### Step 6: Searchable SQLite History Archive
-Access the **History** tab to search past extractions saved permanently in your local database (`history.db`). Re-copy direct links or re-push to JDownloader 2 anytime with a single click.
-
-<p align="center">
-  <img src="screenshots/step5.png" alt="Step 6: Searchable SQLite History Archive" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 6: SQLite history archive preserved permanently across app restarts.</em>
-</p>
+1. **Paste Link & Instant Cloud Detection**: Paste any FitGirl game page URL, Pastebin link, or direct FuckingFast URL. The Community Cloud Cache instantly checks if pre-verified direct mirrors exist for 0-second loading.
+2. **Bandwidth Saver & Selective Filter**: Automatically categorize game parts to exclude non-English language dubs, 4K videos, soundtracks, or bonus packs before resolution to save bandwidth.
+3. **Multi-Tab Parallel Resolution**: Playwright headless workers solve Turnstile tokens concurrently while streaming live block updates to the interactive Defrag Matrix.
+4. **1-Click JDownloader 2 Push or File Export**: Send direct download links straight into JDownloader 2 LinkGrabber (with `#filename.rar` anchors to bypass Deep Link Analysis) or export to `.txt`, `.json`, or `.crawljob`.
+5. **Extraction Vault & Community Discovery**: Browse community pre-fetched games in the Discovery Hub or access your SQLite history archive anytime with 1-click reloading.
 
 ---
 
