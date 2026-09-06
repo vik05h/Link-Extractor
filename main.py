@@ -115,7 +115,7 @@ def main():
 
     def _check_updates_bg():
         try:
-            avail, rel_info = updater.check_for_updates()
+            avail, rel_info, _ = updater.check_for_updates()
             if avail and rel_info:
                 bridge.dispatch_event("app:update_available", {
                     "version": rel_info.get("tag_name"),
