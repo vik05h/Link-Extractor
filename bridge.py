@@ -298,10 +298,17 @@ class AppBridge:
     # ==========================================
 
     def get_community_feed(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
-        """Fetches trending pre-resolved games from Community Firebase Cache."""
+        """Fetches trending pre-resolved games from Community Firebase Cache without blocking UI."""
         try:
             fb_url = self._settings.get("community_firebase_url")
             games = community.get_community_games(fb_url, force_refresh=force_refresh)
+            
+            # Background callback to dispatch event when sync completes
+            if force_refresh or (time.time() - getattr(community, "_COMMUNITY_GAMES_CACHE_TIME", 0) > 30.0):
+                def _on_synced(updated_games):
+                    self.dispatch_event("community:feed_updated", {"count": len(updated_games)})
+                community.sync_community_games_in_background(fb_url, on_complete=_on_synced)
+
             return games or []
         except Exception as err:
             print(f"[Bridge Error] get_community_feed: {err}")
@@ -331,11 +338,21 @@ class AppBridge:
             return {"is_alive": False, "status_code": 0, "message": str(err)}
 
     def ping_presence(self, session_id: str = "") -> Dict[str, Any]:
-        """Pings user presence heartbeat and returns online gamers count."""
-        fb_url = self._settings.get("community_firebase_url")
-        sid = (session_id or "").strip() or self._instance_id
-        active = community.ping_presence(sid, updater.CURRENT_VERSION, fb_url)
-        return {"live_gamers": active}
+        """Pings user presence heartbeat and returns online gamers count without blocking bridge."""
+        cached_count = getattr(self, "_cached_live_gamers", 1)
+
+        def _ping_bg():
+            try:
+                fb_url = self._settings.get("community_firebase_url")
+                sid = (session_id or "").strip() or self._instance_id
+                active = community.ping_presence(sid, updater.CURRENT_VERSION, fb_url)
+                self._cached_live_gamers = active
+                self.dispatch_event("community:stats_updated", {"live_gamers": active})
+            except Exception:
+                pass
+
+        threading.Thread(target=_ping_bg, daemon=True).start()
+        return {"live_gamers": cached_count}
 
     def track_game_usage(self, slug: str) -> Dict[str, Any]:
         """Increments usage/download counter for a community game."""
@@ -344,9 +361,27 @@ class AppBridge:
         return {"slug": slug, "used_count": new_count}
 
     def get_community_stats(self) -> Dict[str, Any]:
-        """Fetches live user count and global grabs."""
-        fb_url = self._settings.get("community_firebase_url")
-        return community.get_community_stats(fb_url)
+        """Fetches live user count and global grabs without blocking bridge."""
+        cached_stats = getattr(self, "_cached_community_stats", {
+            "live_gamers": getattr(self, "_cached_live_gamers", 1),
+            "total_grabs": getattr(self, "_cached_total_grabs", 0)
+        })
+
+        def _fetch_stats_bg():
+            try:
+                fb_url = self._settings.get("community_firebase_url")
+                fresh_stats = community.get_community_stats(fb_url)
+                self._cached_community_stats = fresh_stats
+                if "live_gamers" in fresh_stats:
+                    self._cached_live_gamers = fresh_stats["live_gamers"]
+                if "total_grabs" in fresh_stats:
+                    self._cached_total_grabs = fresh_stats["total_grabs"]
+                self.dispatch_event("community:stats_updated", fresh_stats)
+            except Exception:
+                pass
+
+        threading.Thread(target=_fetch_stats_bg, daemon=True).start()
+        return cached_stats
 
     def extract_game_palette(self, image_url: str) -> Dict[str, Any]:
         """

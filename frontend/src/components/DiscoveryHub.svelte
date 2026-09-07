@@ -98,7 +98,19 @@
     }
   }
 
+  let onStatsUpdatedHandler: any = null;
+
   onMount(() => {
+    onStatsUpdatedHandler = (e: CustomEvent) => {
+      if (e.detail) {
+        if (typeof e.detail.live_gamers === 'number') liveGamers = e.detail.live_gamers;
+        if (typeof e.detail.total_grabs === 'number') totalGrabs = e.detail.total_grabs;
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('community:stats_updated' as any, onStatsUpdatedHandler);
+    }
+
     waitForBridge('ping_presence').then((ready) => {
       if (ready) {
         fetchStats();
@@ -109,6 +121,9 @@
 
   onDestroy(() => {
     if (heartbeatInterval) clearInterval(heartbeatInterval);
+    if (typeof window !== 'undefined' && onStatsUpdatedHandler) {
+      window.removeEventListener('community:stats_updated' as any, onStatsUpdatedHandler);
+    }
   });
 
   function handleHealthCheck(rec: GameRecord, e: MouseEvent) {

@@ -259,6 +259,14 @@
     return lines.length > 0 ? lines : [bodyText.slice(0, 200)];
   }
 
+  function handleTimelineWheel(e: WheelEvent) {
+    if (e.deltaY !== 0) {
+      e.preventDefault();
+      const el = e.currentTarget as HTMLElement;
+      el.scrollLeft += e.deltaY;
+    }
+  }
+
   onMount(() => {
     loadChangelogs();
 
@@ -481,7 +489,7 @@
           <!-- Interactive Version Timeline Pills -->
           <div class="timeline-row-container">
             <div class="timeline-label font-mono">VERSIONS</div>
-            <div class="timeline-pills-scroll">
+            <div class="timeline-pills-scroll" on:wheel={handleTimelineWheel}>
               {#each changelogs as item, idx}
                 <button
                   type="button"
@@ -918,7 +926,12 @@
     gap: 8px;
     overflow-x: auto;
     padding-bottom: 2px;
-    scrollbar-width: thin;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .timeline-pills-scroll::-webkit-scrollbar {
+    display: none;
   }
 
   .timeline-pill {

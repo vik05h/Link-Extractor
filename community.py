@@ -194,6 +194,49 @@ def _http_request(url: str, method: str = "GET", data: Optional[Dict[str, Any]] 
 _COMMUNITY_GAMES_CACHE: Optional[List[Dict[str, Any]]] = None
 _COMMUNITY_GAMES_CACHE_TIME: float = 0.0
 _COMMUNITY_CACHE_LOCK = threading.Lock()
+_COMMUNITY_SYNC_RUNNING = False
+
+
+def _get_local_games_cache_file() -> str:
+    """Get persistent path for local community games cache."""
+    data_dir = utils.get_app_data_dir()
+    return os.path.join(data_dir, "community_games_cache.json")
+
+
+def _load_local_games_cache() -> List[Dict[str, Any]]:
+    """Load locally persisted community games list or fallback to demo data."""
+    fpath = _get_local_games_cache_file()
+    if os.path.exists(fpath):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and data:
+                    return data
+        except Exception:
+            pass
+
+    # Built-in fallback
+    results = []
+    for slug, item in DEMO_COMMUNITY_DATA.items():
+        rec = dict(item)
+        rec["used_count"] = int(item.get("used_count", 12))
+        iso_ts = rec.get("timestamp_utc", get_current_utc_iso())
+        loc_time, age_str, fresh = format_localized_timestamp(iso_ts)
+        rec["local_time"] = loc_time
+        rec["age_str"] = age_str
+        rec["freshness"] = fresh
+        results.append(rec)
+    return results
+
+
+def _save_local_games_cache(games_list: List[Dict[str, Any]]):
+    """Save community games list to persistent local storage."""
+    fpath = _get_local_games_cache_file()
+    try:
+        with open(fpath, "w", encoding="utf-8") as f:
+            json.dump(games_list, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def invalidate_community_cache():
@@ -204,17 +247,9 @@ def invalidate_community_cache():
         _COMMUNITY_GAMES_CACHE_TIME = 0.0
 
 
-def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
-    """
-    Fetch all game metadata records from Community Cloud Firebase Realtime Database.
-    Cached in-memory for 25 seconds for instant multi-client response times.
-    Falls back gracefully to local demo data if server is unreachable.
-    """
+def _fetch_and_cache_community_games(firebase_url: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Internal synchronous fetch from Firebase with deduplication and persistence."""
     global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
-
-    now = time.time()
-    if not force_refresh and _COMMUNITY_GAMES_CACHE is not None and (now - _COMMUNITY_GAMES_CACHE_TIME < 25.0):
-        return _COMMUNITY_GAMES_CACHE
 
     base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
     endpoint = f"{base_url}/games_meta.json"
@@ -235,16 +270,7 @@ def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool 
                 rec["freshness"] = fresh
                 results.append(rec)
     else:
-        # Fallback to local demo repository
-        for slug, item in DEMO_COMMUNITY_DATA.items():
-            rec = dict(item)
-            rec["used_count"] = int(item.get("used_count", 12))
-            iso_ts = rec.get("timestamp_utc", get_current_utc_iso())
-            loc_time, age_str, fresh = format_localized_timestamp(iso_ts)
-            rec["local_time"] = loc_time
-            rec["age_str"] = age_str
-            rec["freshness"] = fresh
-            results.append(rec)
+        results = _load_local_games_cache()
 
     # Sort descending by timestamp initially
     results.sort(key=lambda r: r.get("timestamp_utc", ""), reverse=True)
@@ -267,7 +293,6 @@ def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool 
 
         canonical_key = None
 
-        # 1. Clean core title (collapses duplicates with different image hosts)
         norm_title = re.sub(r'[^a-z0-9]', '', title.lower())
         norm_core = re.sub(r'(deluxeedition|completeedition|ultimateedition|jackdawedition|bonusost|bonuscontent|repack|repak|v\d+.*)', '', norm_title)
 
@@ -291,16 +316,13 @@ def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool 
             )
 
             if existing_is_generic and not is_generic_title:
-                # Prefer record with actual game title
                 stale_prune_slugs.append(existing_rec.get("slug"))
                 r["used_count"] = max(r.get("used_count", 0), existing_rec.get("used_count", 0))
                 deduped[existing_idx] = r
             elif not existing_is_generic and is_generic_title:
-                # Keep existing real record
                 stale_prune_slugs.append(slug)
                 existing_rec["used_count"] = max(existing_rec.get("used_count", 0), r.get("used_count", 0))
             else:
-                # Both generic or both real -> keep newer record
                 ts_cur = r.get("timestamp_utc", "")
                 ts_ext = existing_rec.get("timestamp_utc", "")
                 if ts_cur > ts_ext:
@@ -314,7 +336,6 @@ def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool 
             seen_identities[canonical_key] = len(deduped)
             deduped.append(r)
 
-    # Asynchronously prune stale ghost duplicates from Firebase
     if stale_prune_slugs:
         def _prune_worker(slugs):
             for s in slugs:
@@ -327,12 +348,59 @@ def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool 
         threading.Thread(target=_prune_worker, args=(stale_prune_slugs,), daemon=True).start()
 
     results = deduped
+    _save_local_games_cache(results)
 
     with _COMMUNITY_CACHE_LOCK:
         _COMMUNITY_GAMES_CACHE = results
         _COMMUNITY_GAMES_CACHE_TIME = time.time()
 
     return results
+
+
+def sync_community_games_in_background(firebase_url: Optional[str] = None, on_complete: Optional[Callable[[List[Dict[str, Any]]], None]] = None):
+    """Asynchronously fetches fresh games from Firebase and updates cache without blocking caller."""
+    global _COMMUNITY_SYNC_RUNNING
+    with _COMMUNITY_CACHE_LOCK:
+        if _COMMUNITY_SYNC_RUNNING:
+            return
+        _COMMUNITY_SYNC_RUNNING = True
+
+    def _worker():
+        global _COMMUNITY_SYNC_RUNNING
+        try:
+            res = _fetch_and_cache_community_games(firebase_url)
+            if on_complete and callable(on_complete):
+                on_complete(res)
+        except Exception:
+            pass
+        finally:
+            with _COMMUNITY_CACHE_LOCK:
+                _COMMUNITY_SYNC_RUNNING = False
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """
+    Fetch game metadata records from local persistent cache or Firebase RTDB.
+    Returns immediately with cached data (< 1ms) so the UI never hangs.
+    Spawns background sync if cache is cold or force_refresh is requested.
+    """
+    global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
+
+    with _COMMUNITY_CACHE_LOCK:
+        if _COMMUNITY_GAMES_CACHE is None:
+            _COMMUNITY_GAMES_CACHE = _load_local_games_cache()
+            _COMMUNITY_GAMES_CACHE_TIME = 0.0
+
+    now = time.time()
+    is_cache_fresh = (now - _COMMUNITY_GAMES_CACHE_TIME < 30.0)
+
+    # If force refresh is requested, return cached immediately and sync in background
+    if force_refresh or not is_cache_fresh:
+        sync_community_games_in_background(firebase_url)
+
+    return _COMMUNITY_GAMES_CACHE or []
 
 
 def get_game_by_slug(slug: str, firebase_url: Optional[str] = None) -> Optional[Dict[str, Any]]:

@@ -6,7 +6,6 @@ Next-Gen Gaming Hub UI powered by Astro, Svelte, and pywebview (WebView2).
 import os
 import sys
 import time
-import shutil
 import threading
 import webview
 
@@ -76,18 +75,7 @@ if hasattr(threading, "excepthook"):
 def main():
     utils.apply_windows_native_icon("app_icon.ico")
 
-    # Clean stale WebView2 HTTP disk cache if present
-    try:
-        appdata = os.environ.get("APPDATA", "")
-        if appdata:
-            cache_path = os.path.join(appdata, "pywebview", "EBWebView", "Default", "Cache")
-            code_cache = os.path.join(appdata, "pywebview", "EBWebView", "Default", "Code Cache")
-            if os.path.exists(cache_path):
-                shutil.rmtree(cache_path, ignore_errors=True)
-            if os.path.exists(code_cache):
-                shutil.rmtree(code_cache, ignore_errors=True)
-    except Exception:
-        pass
+
     
     bridge = AppBridge()
 
@@ -113,18 +101,7 @@ def main():
 
     bridge.bind_window(window)
 
-    def _check_updates_bg():
-        try:
-            avail, rel_info, _ = updater.check_for_updates()
-            if avail and rel_info:
-                bridge.dispatch_event("app:update_available", {
-                    "version": rel_info.get("tag_name"),
-                    "notes": rel_info.get("body", "")
-                })
-        except Exception:
-            pass
 
-    threading.Thread(target=_check_updates_bg, daemon=True).start()
 
     webview.start(
         debug="--debug" in sys.argv,
