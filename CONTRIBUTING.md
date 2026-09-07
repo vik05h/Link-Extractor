@@ -44,7 +44,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 # 3. Install core dependencies
-pip install flet playwright pyperclip requests beautifulsoup4 lxml pyinstaller pillow
+pip install pywebview playwright pyperclip requests beautifulsoup4 lxml pyinstaller pillow
 
 # 4. Install Playwright browser engine
 playwright install chromium
@@ -61,54 +61,53 @@ python main.py
 
 ## 3. Architecture & Codebase Layout
 
-The project follows a modular architecture separating the Material 3 UI, the asynchronous Playwright engine, HTTP validators, local persistence, and external tool integrations:
+The project follows a modular architecture separating the hardware-accelerated Astro/Svelte web UI, high-speed Python RPC bridge, asynchronous Playwright engine, HTTP validators, local persistence, and external tool integrations:
 
 ```
 Link-Extractor/
-|-- main.py                    # Entrypoint: window initialization, navigation rail, animated switcher (< 150 lines)
+|-- main.py                    # Entrypoint: WebView2 window initialization and RPC bridge binding (< 100 lines)
+|-- bridge.py                  # High-speed RPC Bridge connecting Python workers to frontend
 |-- utils.py                   # Persistent path resolution, settings I/O, Win32 native icon binding
 |-- engine.py                  # Playwright multi-tab pool, Cloudflare Turnstile bypass, retry engine
-|-- scraper.py                 # FitGirl game page & pastebin parsing, URL categorization
+|-- scraper.py                 # FitGirl game page, pastebin parsing, and artwork cascade
 |-- validator.py               # Concurrent 1-byte HTTP Range GET link verification & size aggregation
 |-- history.py                 # SQLite local storage (history.db) with parameterized queries
+|-- community.py               # Decentralized Community Cloud Cache client (Firebase REST)
 |-- integrations.py            # JDownloader 2 FlashGot HTTP API (port 9666) & multi-format file exporters
-|-- updater.py                 # GitHub Releases API auto-update checker with semantic versioning
-|-- make_icon.py               # Multi-resolution icon and asset generator
+|-- updater.py                 # GitHub Releases API auto-update checker and installer
+|-- dist_web/                  # Compiled production web bundle loaded by pywebview
+|-- frontend/                  # Next-gen Astro 5 + Svelte 5 + Web Audio frontend
+|   |-- src/components/        # LivingCanvas, DefragMosaic, DiscoveryHub, GameStage, UpdateModal
+|   |-- src/styles/global.css  # Dark cyberpunk & adaptive theming system
 |-- LinkExtractor_Single.spec  # PyInstaller single-file build specification
 |-- file_version_info.txt      # Windows executable metadata and version definition
 |-- assets/                    # Application icons, logos, and branding graphics
-|-- ui/                        # Modular Material 3 UI package
-    |-- constants.py           # Theme palettes, logo presets, and animation configurations
-    |-- state.py               # AppState and UIContext runtime state containers
-    |-- screens/
-        |-- extractor.py       # Input field, URL detection badge, live progress, and stats cards
-        |-- pipeline.py        # Real-time streaming logs and multi-tab status terminal
-        |-- history.py         # Searchable SQLite history archive with batch operations
-        |-- settings.py        # Concurrency slider, port configuration, and theme selectors
 ```
 
 ### Module Responsibilities
 
 | Module | Responsibility | Key Constraints |
 | :--- | :--- | :--- |
-| `main.py` | Window bootstrapping, NavigationRail layout, and screen switcher wiring. | Keep modular and minimal (< 150 lines); delegate screen layout to `ui/`. |
+| `main.py` | Window bootstrapping, pywebview initialization, and bridge binding. | Keep modular and minimal (< 100 lines); delegate state to `bridge.py`. |
+| `bridge.py` | RPC API endpoints and thread-safe JavaScript event dispatching. | Use private attributes (`self._window`) to prevent COM recursion during JS reflection. |
+| `frontend/` | Svelte components and modern CSS design system. | Zero emojis, responsive layout, and build to `dist_web/`. |
 | `utils.py` | Path resolution (`get_app_data_dir`, `get_export_dir`), settings I/O, Win32 icon binding. | Always handle frozen vs non-frozen environments safely. |
-| `ui/` | Modular UI package containing presets, state models, and screens. | Never mutate state directly without `AppState` and `UIContext`. |
 | `engine.py` | Playwright multi-tab worker pool and Cloudflare Turnstile solver. | Share a single browser context across tabs; respect cancellation events immediately. |
 | `scraper.py` | URL pattern classification, game title extraction, and pastebin parsing. | Defensive HTML parsing with fallback mechanisms for missing mirrors. |
 | `validator.py` | 1-byte HTTP Range validation and total repack size computation. | Sanitize filenames extracted from `Content-Disposition` headers. |
 | `history.py` | Persistent SQLite archive (`history.db`). | Use 100% parameterized SQL queries (`?`); never record aborted jobs. |
+| `community.py` | Community Cloud Cache REST client and presence telemetry. | Zero-SDK integration with standard `urllib`/`json`. |
 | `integrations.py` | JDownloader 2 FlashGot API and `.txt`, `.json`, `.crawljob` exports. | Always append `#filename.rar` fragments to prevent JD2 Deep Link Analysis. |
-| `updater.py` | GitHub Releases API update checker. | Use normalized 3-part version tuples for accurate semver comparisons. |
+| `updater.py` | GitHub Releases API update checker and installer. | Use normalized 3-part version tuples for accurate semver comparisons. |
 
 ---
 
 ## 4. Coding Standards & Technical Guidelines
 
-### UI and Flet Controls
-- **Adaptive Scrolling**: Always set `scroll=ft.ScrollMode.ADAPTIVE` on outer scrollable columns to ensure proper layout scaling on smaller screens.
-- **Control Update Lifecycle**: Never invoke `.update()` directly on unmounted or detached child controls from background threads. Call `page.update()` or verify mounting state.
-- **AnimatedSwitcher Hot-Swapping**: Flutter locks `AnimatedSwitcher` duration at `initState()`. To dynamically update transitions, wrap in a container and rebuild the switcher control.
+### Frontend and WebView2 Bridge
+- **Asynchronous IPC**: All UI interactions trigger asynchronous methods on `window.pywebview.api`. Never block the UI thread.
+- **Dynamic Asset Rebuilding**: Always execute `npm run build` inside `frontend/` after modifying Svelte components to synchronize `dist_web/`.
+- **Zero Emojis**: Maintain professional typography across all UI labels and notifications. Use SVG `<Icon />` components.
 
 ### Integration with JDownloader 2
 - When generating direct URLs for JDownloader 2 (via FlashGot API or `.crawljob`), always append `#filename.rar` anchors (e.g., `https://dl.fuckingfast.co/...#setup.rar`). This prevents JDownloader 2 from prompting the user with "Deep Link Analysis".
@@ -145,7 +144,7 @@ Test that the standalone executable builds and runs properly:
 
 ```powershell
 # Kill any running instances
-Get-Process -Name LinkExtractor, flet, main -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name LinkExtractor, main -ErrorAction SilentlyContinue | Stop-Process -Force
 
 # Build standalone single-file binary
 pyinstaller LinkExtractor_Single.spec --noconfirm

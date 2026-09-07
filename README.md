@@ -12,8 +12,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-7C3AED.svg" alt="License" /></a>
   <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-0284C7.svg" alt="CC BY-NC-SA 4.0" /></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-10B981.svg" alt="Python" /></a>
-  <a href="https://flet.dev"><img src="https://img.shields.io/badge/UI-Flet_Material_3-F59E0B.svg" alt="UI" /></a>
-  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.5.0-blue.svg" alt="Release" /></a>
+  <a href="https://astro.build"><img src="https://img.shields.io/badge/UI-Astro_Svelte_WebView2-F59E0B.svg" alt="UI" /></a>
+  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.8.0-blue.svg" alt="Release" /></a>
 </p>
 
 ---
@@ -46,18 +46,19 @@ graph LR
     E --> H[SQLite History Archive]
 ```
 
-- **Interactive Live In-App Guided Tour & Dynamic Spotlight (v3.5.0)**: Real-time screen-switching onboarding guide, animated glowing border spotlighting on target cards, and responsive poster grid view with hover elevation and zoom.
-- **60 FPS & 120 FPS High-Refresh Rate Mode**: Custom frame pacing and micro-transition presets in Settings for high-refresh gaming monitors (120Hz/144Hz/240Hz).
-- **Clarified 1-Byte Health Check**: Instant 1-byte HTTP Range verification on Part 1 with explicit status badging and total repack size separation.
-- **Community Cloud Cache & Shared Link Hub (Phase 3)**: Instant decentralized link sharing powered by Firebase Realtime Database lightweight REST API. Skip browser automation entirely when games are already resolved.
-- **Pixel Dino Arcade Loading Animation**: Retro 8-bit arcade Pixel Dino running loader with live cloud status updates.
-- **3D-Styled Game Cards with Local Timezone Intelligence**: Game cover thumbnails, depth lighting, localized timestamps (e.g. `21 Aug 2026, 05:25 PM IST`), freshness badges, and 4 quick actions (`Use Instant`, `Push JD2`, `Copy URLs`, `Health Check`).
-- **Concurrent Tab Pool (3x-6x Speedup)**: Resolves multiple game parts simultaneously inside a shared browser context.
-- **Material 3 UI (Flutter Engine)**: Smooth 60-120 FPS animations, Navigation Rail, live interactive DataTable, and 8 dynamic color palettes.
-- **Instant 1-Byte Size Validation**: Computes exact total repack download sizes and verifies live filenames using lightweight 1-byte HTTP range requests.
+- **Interactive Onboarding Guided Tour & What's New (v3.8.0)**: Sequential first-run onboarding displaying release highlights followed by a physical 4-curtain spotlight tour. The tour uses 4 independent backdrop planes surrounding the active element, ensuring zero blur and 100% interactive clickability on target elements without mouse event clipping.
+- **Cyberpunk Animated Glassmorphic Dropdowns (v3.8.0)**: Replaced default operating system dropdowns with custom SVG-driven glassmorphic select menus in the Issue Center and export dialogs, featuring category-specific color accents, rotating chevron indicators, and cubic-bezier transition animations.
+- **Bandwidth Saver & Selective Download Filter (v3.8.0)**: Automatic categorization of game parts allowing users to toggle English-only audio dubs, skip optional 4K textures, soundtracks, and bonus packs before resolution to save time and bandwidth.
+- **Repack Defrag Matrix (v3.8.0)**: Interactive 2D memory visualizer streaming live resolution status across all parts (Queued, Decrypting, Verified, Excluded). Hovering any block displays the filename, size, and status in the HUD with click-to-copy functionality.
+- **Real-Time Engine Telemetry (v3.8.0)**: Live terminal feed with responsive auto-scrolling to monitor worker threads, Cloudflare Turnstile token resolution, and HTTP Range checks in real time.
+- **Community Issue Center & Smart Duplicate Intercept (v3.8.0)**: Built-in community ticketing board with real-time similarity search to prevent duplicate reports, +1 community upvoting, direct screenshot clipboard pasting (`Ctrl+V`), and secure Admin resolution pin (`0505`).
+- **Automated Anonymous Crash Telemetry (v3.8.0)**: Captures unhandled Python exceptions (`sys.excepthook`) and frontend errors (`window.onerror`) with sanitized stack traces sent to Firebase RTDB for rapid bug fixes (opt-out toggle available in Settings).
+- **Extraction Vault Archive**: Searchable local SQLite database (`history.db`) for 1-click re-loading into the resolver, re-pushing to JDownloader 2, and clean record deletion with Lucide `trash-2` icons.
+- **Community Cloud Cache (Phase 3)**: Instant decentralized link sharing backed by Firebase Realtime Database. If any gamer has already resolved a repack, everyone else downloads instantly in 0 seconds without browser automation.
+- **Off-Screen Headed Browser & Background Automation**: Runs browser workers off-screen (`--window-position=-3000,-3000`) to solve 100% of Turnstile tokens without stealing window focus or interrupting your workflow.
 - **Zero-Prompt JDownloader 2 Push**: Dual-channel integration (FlashGot HTTP API on port 9666 + `.crawljob` auto-import) with `#filename.rar` anchors so JDownloader recognizes files instantly.
-- **Embedded History & Archive**: Searchable local SQLite database (`history.db`) for 1-click re-copying and re-pushing past extractions.
-- **GitHub Releases Auto-Updater & In-App Installer**: Automatically checks for updates on startup, downloads and applies updates in-app upon user confirmation, and displays a What's New & Bug Fixes changelog on updated launches.
+- **1-Byte HTTP Range Size Validation**: Rapidly probes Part 1 and aggregates total repack download sizes without downloading files.
+- **GitHub Releases Auto-Updater & In-App Installer**: Startup update checks with automated background download, in-app installation, and release notes showcase.
 
 ---
 
@@ -72,100 +73,64 @@ graph LR
 
 ---
 
-## Step-by-Step Visual Tutorial
-
-Follow this quick guide to resolve and download any FitGirl repack in seconds:
-
-### Step 1: Paste Your Link & Community Detection
-Paste any FitGirl game page URL, Pastebin link, or direct FuckingFast URL. The app checks the Community Cloud Cache and alerts you if pre-fetched direct links exist with 1-click instant loading.
+## Application Interface
 
 <p align="center">
-  <img src="screenshots/step1.png" alt="Step 1: Paste Game URL and Auto-Detection" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
+  <img src="screenshots/landing.png" alt="Link Extractor v3.8.0 Gaming Hub Interface" width="95%" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);" />
   <br>
-  <em>Figure 1: URL input with real-time detection badge.</em>
+  <em>Figure 1: Link Extractor v3.8.0 next-generation cyberpunk gaming hub interface.</em>
 </p>
 
 ---
 
-### Step 2: Multi-Tab Parallel Resolution
-Click **Extract & Resolve**. If resolving fresh, the Playwright multi-tab pool resolves multiple parts concurrently (~1.8s per part) and streams live progress into the dashboard.
+## Workflow & Quick Guide
 
-<p align="center">
-  <img src="screenshots/step2.png" alt="Step 2: Multi-Tab Concurrency and Live Resolution" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 2: Real-time progress bar, worker stats, and direct links streaming.</em>
-</p>
-
----
-
-### Step 3: Verified Direct URLs & Repack Sizing
-Inspect all extracted `dl.fuckingfast.co` URLs in the interactive DataTable, complete with part numbers, live sizes (e.g. `18/18 Parts (34.19 GB)`), and validation status.
-
-<p align="center">
-  <img src="screenshots/step3.png" alt="Step 3: Direct URLs DataTable and Size Validation" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 3: Interactive DataTable showing direct URLs with verified file hashes.</em>
-</p>
-
----
-
-### Step 4: 1-Click JDownloader 2 Push or File Export
-- Click **Push to JD2** to send the entire package directly into JDownloader 2 LinkGrabber with zero captcha prompts.
-- Click **Export** to save `.txt`, `.json`, or `.crawljob` files directly to your **Downloads** folder.
-
-<p align="center">
-  <img src="screenshots/step4.png" alt="Step 4: Push to JDownloader 2 and Export Menu" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 4: Integration with JDownloader 2 and multi-format exports.</em>
-</p>
-
----
-
-### Step 5: Community Cloud Cache & Instant Download
-Browse the **Community** screen to discover pre-fetched games shared anonymously by other users. Filter by freshness (Fresh, Aging, Expired), run rapid 1-byte health checks, or click **Use Instant** to load links immediately without browser decryption.
-
-<p align="center">
-  <img src="screenshots/step5_community.png" alt="Step 5: Community Cloud Cache and Shared Repacks Hub" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 5: Community Cloud Cache with instant downloads, freshness badges, and health checks.</em>
-</p>
-
----
-
-### Step 6: Searchable SQLite History Archive
-Access the **History** tab to search past extractions saved permanently in your local database (`history.db`). Re-copy direct links or re-push to JDownloader 2 anytime with a single click.
-
-<p align="center">
-  <img src="screenshots/step5.png" alt="Step 6: Searchable SQLite History Archive" width="85%" style="border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);" />
-  <br>
-  <em>Figure 6: SQLite history archive preserved permanently across app restarts.</em>
-</p>
+1. **Paste Link & Instant Cloud Detection**: Paste any FitGirl game page URL, Pastebin link, or direct FuckingFast URL. The Community Cloud Cache instantly checks if pre-verified direct mirrors exist for 0-second loading.
+2. **Bandwidth Saver & Selective Filter**: Automatically categorize game parts to exclude non-English language dubs, 4K videos, soundtracks, or bonus packs before resolution to save bandwidth.
+3. **Multi-Tab Parallel Resolution**: Playwright headless workers solve Turnstile tokens concurrently while streaming live block updates to the interactive Defrag Matrix.
+4. **1-Click JDownloader 2 Push or File Export**: Send direct download links straight into JDownloader 2 LinkGrabber (with `#filename.rar` anchors to bypass Deep Link Analysis) or export to `.txt`, `.json`, or `.crawljob`.
+5. **Extraction Vault & Community Discovery**: Browse community pre-fetched games in the Discovery Hub or access your SQLite history archive anytime with 1-click reloading.
 
 ---
 
 ## Installation & Quick Start
 
-### Option A: Run from Source
+### Option A: Prebuilt Windows Executable (Recommended)
+Download the latest standalone executable (`LinkExtractor.exe`) from [GitHub Releases](https://github.com/vik05h/Link-Extractor/releases). No Python or Node.js environment is required.
+
+### Option B: Run from Source
 ```bash
 # 1. Clone the repository
 git clone https://github.com/vik05h/Link-Extractor.git
 cd Link-Extractor
 
-# 2. Install dependencies
-pip install flet playwright pyperclip
+# 2. Install Python dependencies
+pip install pywebview playwright pyperclip requests beautifulsoup4 pillow
 
-# 3. Install browser binaries (one-time setup)
+# 3. Build frontend web bundle (requires Node.js 18+)
+cd frontend
+npm install
+npm run build
+cd ..
+
+# 4. Install browser binaries (one-time setup)
 playwright install chromium
 
-# 4. Run application
+# 5. Run application
 python main.py
 ```
 
-### Option B: Build Standalone .exe
+### Option C: Build Standalone Executable
 ```powershell
+# 1. Compile web bundle
+cd frontend
+npm run build
+cd ..
+
+# 2. Package single-file binary with PyInstaller
 pyinstaller LinkExtractor_Single.spec --noconfirm
 ```
-The compiled single-file binary will be generated in `dist/LinkExtractor.exe`.
+The compiled binary is generated at `dist/LinkExtractor.exe`.
 
 ---
 

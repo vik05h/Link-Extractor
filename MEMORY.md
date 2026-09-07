@@ -19,7 +19,7 @@
 
 | Component | Technology | Purpose |
 | :--- | :--- | :--- |
-| **GUI Framework** | `flet` (0.86+) / Flutter | Desktop Material 3 application with reactive themes & transitions |
+| **GUI Framework** | Astro 5 + Svelte 5 + WebView2 (`pywebview`) | Hardware-accelerated desktop web UI with Living Canvas, Defrag Mosaic, and Apple Liquid Glass design (migrated from legacy Flet in v3.8.0) |
 | **Automation Engine** | `playwright` (async) | Headless/Headed Chromium & Edge worker pool for JS decryption |
 | **HTML Parsing** | `beautifulsoup4`, `lxml` | Fast extraction of pastebin links and game titles |
 | **Local Storage** | `sqlite3` | Persistent local extraction history and fast search |
@@ -119,6 +119,30 @@ graph TD
 * **The Pattern**: First-time users are automatically presented with a 4-step onboarding carousel (`show_tutorial_dialog()`) detailing Turbo Extractor, Community Cloud Cache, 1-Click Health Check, and JDownloader 2 Push.
 * **The Solution**: Persist `has_seen_tutorial` in `settings.json`. Provide easy access points via the Navigation Rail Help button and Settings screen to replay the tutorial at any time.
 
+### 19. pywebview Private Mode vs Persistent Storage
+* **The Problem**: By default, `pywebview.start()` enables `private_mode=True`, which wipes `localStorage` and cookies on application exit. Theme choices and audio settings were reset on restart.
+* **The Solution**: Always invoke `webview.start(http_server=True, private_mode=False)` to persist client-side settings, themes, and sound toggles.
+
+### 20. Local Static Asset Serving in WebView2
+* **The Problem**: Opening local HTML bundles via `file://` protocol in WebView2 restricts Web Audio API context and breaks root-relative asset URLs (e.g. `/_astro/styles.css`).
+* **The Solution**: Enable `http_server=True` in `webview.start()`. `pywebview` spins up a lightweight embedded local HTTP server (using `bottle`) that maps root-relative paths directly to `dist_web/` with full Web Audio API support.
+
+### 21. PyInstaller Packaging for pywebview and pythonnet
+* **The Problem**: PyInstaller single-file packaging fails to bundle `pythonnet` C-extensions and WebView2 bindings without explicit hooks.
+* **The Solution**: Use `from PyInstaller.utils.hooks import collect_all` and include `collect_all('webview')`, `collect_all('pythonnet')`, and `collect_all('clr_loader')`, alongside `('dist_web', 'dist_web')` in `datas`.
+
+### 22. pywebview js_api Public Attribute Introspection Recursion
+* **The Problem**: Storing the window reference as a public attribute (`self.window = window`) on `AppBridge` caused `[pywebview] Error while processing window.native.AccessibilityObject.Bounds.Empty... maximum recursion depth exceeded`. `pywebview` reflects all public properties to the JS context and gets trapped in circular WinForms/WPF COM object hierarchies.
+* **The Solution**: Always store internal references as private attributes with leading underscores (`self._window = window`). `pywebview` ignores private members during JS proxy generation.
+
+### 23. ValidationSummary total_bytes Attribute Name
+* **The Problem**: In `bridge.py`, accessing `val_summary.total_size_bytes` threw `AttributeError: 'ValidationSummary' object has no attribute 'total_size_bytes'`, halting the pipeline before SQLite history insertion and community cloud auto-upload could fire.
+* **The Solution**: The correct dataclass field in `validator.py` is `val_summary.total_bytes`. Use `getattr(val_summary, 'total_bytes', 0)` defensively.
+
+### 24. HistoryManager API Signatures
+* **The Problem**: Calling `history_mgr.get_all_records()` or passing `game_title=...` to `history_mgr.add_record()` caused silent failures or `AttributeError`.
+* **The Solution**: The correct method is `history_mgr.get_records(search_query="", limit=100)`. `add_record` takes `title`, `source_url`, `total_parts`, `resolved_count`, `total_size_bytes`, `total_size_str`, `urls`.
+
 ---
 
 ## 5. Security & Penetration Baseline
@@ -139,7 +163,8 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 - [x] **Phase 1: High-Speed Direct Resolver** (Multi-tab Playwright concurrency, exponential backoff).
 - [x] **Phase 2: Modern Material 3 UI & Suite** (Flet M3, SQLite archive, JD2 push, EXE packaging).
 - [x] **Phase 3: Community Cloud Cache & Shared Link Hub** (Firebase Realtime DB REST API, Pixel Dino loading animation, 3D game cards, local timezone intelligence, instant pre-fetched resolver).
-- [ ] **Phase 4: Multi-Hoster & Universal Automation** (DataNodes, FileKeeper, selective downloads, CLI mode).
+- [x] **Phase 4: Next-Gen Gaming Hub UI/UX Overhaul** (Astro + Svelte, pywebview, Living Canvas, Defrag Mosaic, Selective Bandwidth Saver, Clipboard Sentinel, Audio Haptics).
+- [ ] **Phase 4.5: Multi-Hoster & Universal Automation** (DataNodes, FileKeeper, CLI mode).
 
 ---
 
@@ -149,5 +174,5 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 2. **Never Hardcode System Paths**: Always use `get_app_data_dir()`, `get_resource_path()`, or `get_export_dir()`.
 3. **Verify Build Correctness**: When modifying GUI or dependencies, re-verify with `pyinstaller LinkExtractor_Single.spec --noconfirm`.
 4. **Preserve Cancellation Integrity**: Aborted extractions must never be persisted to `history.db`.
-5. **No Emojis in Documentation or UI**: Maintain professional, clean typography across all documentation files and UI labels/buttons. Use Material Icons (`ft.Icons.*`) instead of Unicode emoji in Flet controls.
+5. **No Emojis in Documentation or UI**: Maintain professional, clean typography across all documentation files and UI labels/buttons. Use SVG components (`<Icon />`) instead of Unicode emojis in frontend components.
 6. **Verify Validator API Signatures**: Before calling any `validator.*` function, check `validator.py` for the exact function name and positional argument order. Silent `AttributeError` or `TypeError` from wrong names/ordering is a recurring trap.

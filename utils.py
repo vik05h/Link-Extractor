@@ -130,19 +130,18 @@ def apply_windows_native_icon(ico_path="app_icon.ico"):
             return
 
         def _apply_loop():
-            for _ in range(12):
-                time.sleep(0.3)
+            for _ in range(35):
+                time.sleep(0.5)
                 found = []
 
                 @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
                 def enum_cb(hwnd, lparam):
-                    if user32.IsWindowVisible(hwnd):
-                        length = user32.GetWindowTextLengthW(hwnd)
-                        if length > 0:
-                            buf = ctypes.create_unicode_buffer(length + 1)
-                            user32.GetWindowTextW(hwnd, buf, length + 1)
-                            if "link extractor" in buf.value.lower():
-                                found.append(hwnd)
+                    length = user32.GetWindowTextLengthW(hwnd)
+                    if length > 0:
+                        buf = ctypes.create_unicode_buffer(length + 1)
+                        user32.GetWindowTextW(hwnd, buf, length + 1)
+                        if "link extractor" in buf.value.lower():
+                            found.append(hwnd)
                     return True
 
                 user32.EnumWindows(enum_cb, 0)
@@ -159,6 +158,10 @@ def apply_windows_native_icon(ico_path="app_icon.ico"):
                     except Exception:
                         pass
                 if found:
+                    time.sleep(1.0)
+                    for hwnd in found:
+                        user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, h_icon)
+                        user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_icon)
                     break
 
         threading.Thread(target=_apply_loop, daemon=True).start()

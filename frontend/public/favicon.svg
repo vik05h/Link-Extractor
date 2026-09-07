@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Liquid Glass Translucent Base -->
+    <linearGradient id="glass-face" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.12" />
+      <stop offset="50%" stop-color="#ffffff" stop-opacity="0.03" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.35" />
+    </linearGradient>
+
+    <!-- Crisp White Specular Rim -->
+    <linearGradient id="rim-specular" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.65" />
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.5" />
+    </linearGradient>
+
+    <!-- Natural Dynamic Blaze Energy -->
+    <linearGradient id="blaze-core" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff4500" />
+      <stop offset="45%" stop-color="#ff9900" />
+      <stop offset="100%" stop-color="#fff5cc" />
+    </linearGradient>
+
+    <!-- Deep Machined Dark Obsidian Chassis -->
+    <linearGradient id="dark-chassis" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a2e39" />
+      <stop offset="50%" stop-color="#181a22" />
+      <stop offset="100%" stop-color="#0c0e14" />
+    </linearGradient>
+
+    <!-- Inner Ambient Glow Filter -->
+    <filter id="blaze-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="9" result="blur1" />
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur1" />
+        <feMergeNode in="blur2" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <!-- White Starburst Sparkle Filter -->
+    <filter id="star-flare" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="glow" />
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <style>
+      .ejected-shackle {
+        animation: axial-levitate 3s ease-in-out infinite alternate;
+      }
+      .laser-rail {
+        stroke-dasharray: 6 5;
+        animation: stream-flow 0.8s linear infinite;
+      }
+      .radar-disc {
+        transform-origin: 256px 256px;
+        animation: radar-rotate 26s linear infinite;
+      }
+      .core-spark {
+        transform-origin: 256px 255px;
+        animation: spark-breathe 1.6s ease-in-out infinite alternate;
+      }
+      .packet-node-left {
+        animation: node-glide 2s ease-in-out infinite alternate;
+      }
+      .packet-node-right {
+        animation: node-glide 2s ease-in-out infinite alternate 0.4s;
+      }
+
+      @keyframes axial-levitate {
+        0% { transform: translateY(-36px); }
+        100% { transform: translateY(-56px); }
+      }
+      @keyframes stream-flow {
+        from { stroke-dashoffset: 22; }
+        to { stroke-dashoffset: 0; }
+      }
+      @keyframes radar-rotate {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @keyframes spark-breathe {
+        0% { transform: scale(0.8); opacity: 0.85; }
+        100% { transform: scale(1.3); opacity: 1; }
+      }
+      @keyframes node-glide {
+        0% { transform: translateY(0); }
+        100% { transform: translateY(-24px); }
+      }
+    </style>
+  </defs>
+
+  <!-- Translucent Glass Tile Container (Natural Transparency) -->
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#glass-face)" stroke="url(#rim-specular)" stroke-width="2.5" />
+
+  <!-- Subtle Specular Glass Sheen -->
+  <path d="M 44 96 C 44 54 64 44 112 44 L 400 44 C 448 44 468 54 468 96" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-opacity="0.3" />
+
+  <!-- Reticle Alignment Crosshairs -->
+  <circle class="radar-disc" cx="256" cy="256" r="142" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="1.5" stroke-dasharray="6 8" />
+  <g stroke="#ffffff" stroke-opacity="0.12" stroke-width="1.5">
+    <line x1="84" y1="256" x2="104" y2="256" />
+    <line x1="408" y1="256" x2="428" y2="256" />
+    <line x1="256" y1="84" x2="256" y2="104" />
+    <line x1="256" y1="408" x2="256" y2="428" />
+  </g>
+
+  <!-- Modern Monospace Tech Subtext -->
+  <g fill="#ffffff" fill-opacity="0.3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', monospace" font-size="11" font-weight="700" letter-spacing="3">
+    <text x="76" y="118">EXTRACTION</text>
+    <text x="368" y="402">01_CORE</text>
+  </g>
+
+  <!-- ==================== UNIFIED -45° MECHANISM ==================== -->
+  <g transform="rotate(-45 256 256)">
+
+    <!-- 1. LOWER MACHINED OBSIDIAN BASE -->
+    <g>
+      <!-- Base Loop: Dark Machined Alloy with crisp specular edge -->
+      <path d="M 206 280 L 206 312 C 206 340 228 362 256 362 C 284 362 306 340 306 312 L 306 280" 
+            fill="none" stroke="url(#dark-chassis)" stroke-width="32" stroke-linecap="round" />
+      
+      <!-- Outer White Specular Hairline Highlight -->
+      <path d="M 190 280 L 190 312 C 190 348 220 378 256 378 C 292 378 322 348 322 312 L 322 280" 
+            fill="none" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.35" stroke-linecap="round" />
+
+      <!-- Terminal Cut Faces with Brilliant Ambient Accents -->
+      <ellipse cx="206" cy="280" rx="16" ry="6" fill="#ff7700" />
+      <ellipse cx="306" cy="280" rx="16" ry="6" fill="#ff7700" />
+      <ellipse cx="206" cy="280" rx="8" ry="3" fill="#ffffff" />
+      <ellipse cx="306" cy="280" rx="8" ry="3" fill="#ffffff" />
+    </g>
+
+    <!-- 2. LASER TRACKS, DATA NODES & CENTER SPARK -->
+    <g filter="url(#blaze-glow)">
+      <!-- Left Track -->
+      <line class="laser-rail" x1="206" y1="280" x2="206" y2="170" stroke="#ff8800" stroke-width="3.5" />
+      <!-- Right Track -->
+      <line class="laser-rail" x1="306" y1="280" x2="306" y2="170" stroke="#ff8800" stroke-width="3.5" />
+
+      <!-- Left Data Node: White Hot Core + Blaze Rim -->
+      <g class="packet-node-left">
+        <circle cx="206" cy="254" r="7.5" fill="#ffffff" stroke="#ff4500" stroke-width="3" />
+      </g>
+
+      <!-- Right Data Node: White Hot Core + Blaze Rim -->
+      <g class="packet-node-right">
+        <circle cx="306" cy="254" r="7.5" fill="#ffffff" stroke="#ff4500" stroke-width="3" />
+      </g>
+
+      <!-- Center Extraction Spark: Brilliant White Starburst -->
+      <polygon class="core-spark" points="256,244 266,255 256,266 246,255" fill="#ffffff" filter="url(#star-flare)" />
+      <circle cx="256" cy="255" r="3" fill="#ffe600" />
+    </g>
+
+    <!-- 3. UPPER LEVITATING SHACKLE -->
+    <g class="ejected-shackle">
+      <g filter="url(#blaze-glow)">
+        <!-- Outer Glowing Corona -->
+        <path d="M 206 230 L 206 198 C 206 170 228 148 256 148 C 284 148 306 170 306 198 L 306 230" 
+              fill="none" stroke="url(#blaze-core)" stroke-width="32" stroke-linecap="round" />
+
+        <!-- Pure Intense White Core Filament -->
+        <path d="M 206 226 L 206 198 C 206 170 228 148 256 148 C 284 148 306 170 306 198 L 306 226" 
+              fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" />
+
+        <!-- Active Cut Faces -->
+        <ellipse cx="206" cy="230" rx="16" ry="6" fill="#ffffff" />
+        <ellipse cx="306" cy="230" rx="16" ry="6" fill="#ffffff" />
+      </g>
+    </g>
+
+  </g>
+</svg>

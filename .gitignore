@@ -1,9 +1,28 @@
-# Python bytecode & cache
+# ==========================================
+# Frontend & Node Dependencies
+# ==========================================
+node_modules/
+**/node_modules/
+.astro/
+**/.astro/
+.svelte2tsx-language-server-files/
+**/.svelte2tsx-language-server-files/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==========================================
+# Python Bytecode & Environments
+# ==========================================
 __pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Virtual Environments
 .env
@@ -14,12 +33,21 @@ ENV/
 env.bak/
 venv.bak/
 
-# PyInstaller & Build Artifacts
+# ==========================================
+# PyInstaller & Compiled Binaries
+# ==========================================
 build/
 dist/
 *.manifest
+*.spec.bak
 
-# User Data, Databases & Local Runtime Files
+# Playwright Browser Binaries
+ms-playwright/
+**/ms-playwright/
+
+# ==========================================
+# User Runtime Data & Databases
+# ==========================================
 history.db
 history.db-journal
 history.db-wal
@@ -28,19 +56,29 @@ history.db-shm
 *.sqlite
 *.sqlite3
 settings.json
+community_reports.json
+crash_logs.json
+admin_key.secret
+*.secret
 resolved_direct_urls.txt
 *_direct_urls.txt
 *.crawljob
 *.log
+logs/
 
-# IDE & Editor files
+# Scratch & Temporary Experiment Files
+scratch/
+brain/
+updates/
+
+# ==========================================
+# IDE & System Files
+# ==========================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS generated files
 .DS_Store
 Thumbs.db
 Desktop.ini

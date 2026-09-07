@@ -1,18 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-flet_datas, flet_binaries, flet_hiddenimports = collect_all('flet')
+wv_datas, wv_binaries, wv_hiddenimports = collect_all('webview')
+pn_datas, pn_binaries, pn_hiddenimports = collect_all('pythonnet')
+clr_datas, clr_binaries, clr_hiddenimports = collect_all('clr_loader')
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=flet_binaries,
+    binaries=wv_binaries + pn_binaries + clr_binaries,
     datas=[
+        ('dist_web', 'dist_web'),
         ('assets', 'assets'),
         ('app_icon.png', '.'),
         ('app_icon.ico', '.')
-    ] + flet_datas,
+    ] + wv_datas + pn_datas + clr_datas,
     hiddenimports=[
+        'bridge',
         'scraper',
         'engine',
         'validator',
@@ -21,23 +25,14 @@ a = Analysis(
         'updater',
         'utils',
         'community',
-        'ui',
-        'ui.constants',
-        'ui.state',
-        'ui.screens',
-        'ui.screens.extractor',
-        'ui.screens.community',
-        'ui.screens.pipeline',
-        'ui.screens.history',
-        'ui.screens.settings',
         'pyperclip',
         'sqlite3',
         'playwright'
-    ] + flet_hiddenimports,
+    ] + wv_hiddenimports + pn_hiddenimports + clr_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['flet', 'flet_desktop'],
     noarchive=False,
     optimize=0,
 )

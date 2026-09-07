@@ -25,10 +25,11 @@ This document defines repository standards, architectural boundaries, runtime co
 
 | Module | Responsibility | Critical Constraints |
 | :--- | :--- | :--- |
-| [`main.py`](file:///c:/Code/link/main.py) | Application entrypoint, Flet initialization, navigation rail, and screen switcher wiring. | Keep modular and minimal (< 150 lines); delegate screen layout and state to `ui/`. |
+| [`main.py`](file:///c:/Code/link/main.py) | Application entrypoint, pywebview WebView2 window initialization, and RPC bridge binding. | Keep modular and minimal (< 100 lines); delegate state and business logic to `bridge.py`. |
 | [`community.py`](file:///c:/Code/link/community.py) | Community Cloud Cache REST client (Firebase RTDB), local timezone intelligence, and 1-byte health checks. | Zero-SDK integration with standard `urllib`/`json`; enforce split metadata/payload schema and overwrite rules. |
 | [`utils.py`](file:///c:/Code/link/utils.py) | Path resolution (`get_app_data_dir`, `get_export_dir`), settings I/O, and Win32 icon binding. | Never hardcode local paths or `%TEMP%` when frozen. |
-| [`ui/`](file:///c:/Code/link/ui/) | Modular UI package containing presets (`constants.py`), state models (`state.py`), and screen components (`screens/`). | Screens export clean builder functions; never mutate global state directly without `AppState` / `UIContext`. |
+| [`bridge.py`](file:///c:/Code/link/bridge.py) | High-speed RPC Bridge connecting Python workers to the hardware-accelerated WebView2 frontend. | Use private attributes (`self._window`) to prevent COM recursion during JS reflection. |
+| [`frontend/`](file:///c:/Code/link/frontend/) | Next-gen Astro + Svelte + Web Audio frontend (Living Canvas, Defrag Mosaic, Discovery Hub, Apple Liquid Glass). | Keep zero emojis, use `<Icon />` SVG components, and build to `dist_web/`. |
 | [`engine.py`](file:///c:/Code/link/engine.py) | Playwright asynchronous multi-tab worker pool & Cloudflare Turnstile bypass. | Share a single browser context across concurrent tabs to minimize memory footprint. Use detected browser channel (Chrome/Edge). |
 | [`scraper.py`](file:///c:/Code/link/scraper.py) | HTML parsing for FitGirl game pages, pastebins, cover art, and direct links. | Use `urllib.parse` and BeautifulSoup/lxml with defensive fallbacks for missing mirrors. |
 | [`validator.py`](file:///c:/Code/link/validator.py) | Rapid 1-byte HTTP Range GET requests to verify links and aggregate total repack sizes. | Always sanitize filenames extracted from `Content-Disposition`. |
@@ -47,13 +48,13 @@ python main.py
 
 ### Validate Syntax Across Modules
 ```powershell
-python -c "import main, engine, scraper, validator, history, integrations, updater, utils, community; from ui import constants, state; from ui.screens import extractor, community as comm_screen, pipeline, history as hist_screen, settings; print('All Phase 3 modules OK')"
+python -c "import main, bridge, engine, scraper, validator, history, integrations, updater, utils, community; print('All Phase 4 modules OK')"
 ```
 
 ### Build Standalone Executable
 ```powershell
 # Kill running instances first
-Get-Process -Name LinkExtractor, flet, main -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name LinkExtractor, main -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 1
 pyinstaller LinkExtractor_Single.spec --noconfirm
 ```
@@ -68,13 +69,10 @@ python scratch/security_pen_test.py
 
 ## 4. Solved Technical Gotchas
 
-* **Win32 Taskbar Icon Binding**: Flet's runner (`flet.exe`) displays a default Flutter icon. `apply_windows_native_icon()` uses `ctypes` (`SendMessageW(WM_SETICON)` + `SetClassLongPtrW(GCLP_HICON)`) on startup to bind `app_icon.ico` directly to the window class.
-* **Flet AnimatedSwitcher Hot-Swap**: `AnimatedSwitcher` locks duration at `initState()`. To change animation style at runtime, wrap in `screen_holder = ft.Container(...)` and rebuild `screen_holder.content = create_screen_switcher(cfg, cur_screen)`.
-* **PyInstaller Icon JSON Dependency**: Flet 0.86+ requires `collect_all('flet')` in `LinkExtractor_Single.spec` to bundle internal icon mappings.
-* **Adaptive Scrolling**: All screen containers must include `scroll=ft.ScrollMode.ADAPTIVE` on the outer `ft.Column` to prevent UI truncation on smaller monitors.
-* **Flet Native Async Event Loop**: Synchronous `def main(page: ft.Page)` causes background `page.update()` calls to stall in the socket outgoing buffer until an incoming UI event wakes the thread. Entrypoint must use `async def main(page: ft.Page)` with `page.run_task(...)` for immediate real-time frame dispatch.
-* **Off-Screen Headed Browser**: Launching visible browser instances (`headless=False`) causes Windows to steal foreground focus and throttle VSync frame delivery to the background Flet app. Chromium/Edge must be launched with `--window-position=-3000,-3000` to maintain 100% Cloudflare Turnstile token resolution without stealing window focus.
-* **DataTable Rebuild State Model**: Flet does not detect deep mutations on child controls inside existing `DataCell`s. Maintain a state model (`_row_states`) and use `rebuild_table()` to re-populate rows upon state changes.
+* **WebView2 RPC Bridge Reflection Recursion**: pywebview iterates over public attributes of the exposed API object when generating JavaScript bindings. Assigning the window instance directly as `self.window` triggered recursive COM interface inspection and crashed with `RecursionError` or thread deadlocks. Always store window references in private attributes (`self._window`).
+* **Off-Screen Headed Browser**: Launching visible browser instances (`headless=False`) causes Windows to steal foreground focus and throttle VSync frame delivery to the background application. Chromium/Edge must be launched with `--window-position=-3000,-3000` to maintain 100% Cloudflare Turnstile token resolution without stealing window focus.
+* **PyInstaller Single-File Web Assets**: PyInstaller single-file binaries unpack to `%TEMP%/_MEIxxxxxx`. The WebView2 frontend must be bundled via `('dist_web', 'dist_web')` in `LinkExtractor_Single.spec` and resolved at runtime via `utils.get_resource_path('dist_web')`.
+* **Legacy Flet UI Context (v3.5.0 and earlier)**: Prior to v3.8.0, Link Extractor used Python `flet` (Flutter runner). The legacy codebase suffered from thread buffer stalls, COM taskbar icon binding issues, and heavyweight memory usage. In v3.8.0, the entire `ui/` directory was deleted and replaced by Astro 5 + Svelte 5 + Windows WebView2, completely eliminating Flutter runner dependencies.
 
 ---
 
