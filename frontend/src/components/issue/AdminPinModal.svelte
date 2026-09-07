@@ -41,15 +41,8 @@
         isVerifying = false;
       }
     } else {
-      // Fallback for browser preview mode
-      if (candidate === '0505') {
-        playSuccessChime();
-        pinError = '';
-        pinInput = '';
-        onSuccess(candidate);
-      } else {
-        pinError = 'Invalid admin passkey.';
-      }
+      // Standalone browser preview mode without pywebview bridge
+      pinError = 'Admin authorization requires running inside the Link Extractor application.';
       isVerifying = false;
     }
   }

@@ -1029,7 +1029,7 @@ class AppBridge:
         }
 
     def verify_admin_pin(self, candidate_pin: str) -> Dict[str, Any]:
-        """Verify admin PIN securely against SHA-256 hash or environment variable."""
+        """Verify admin PIN securely against AppData secret file or environment variable."""
         valid = community.verify_admin_pin(str(candidate_pin))
         return {
             "success": valid,

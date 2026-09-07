@@ -4,6 +4,6 @@
     "skipLibCheck": true,
     "types": []
   },
-  "include": [".astro/types.d.ts", "**/*"],
+  "include": [".astro/**/*.d.ts", "**/*"],
   "exclude": ["dist/"]
 }

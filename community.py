@@ -657,82 +657,76 @@ def enrich_generic_record(slug: str, base_url: str):
 _reported_crash_hashes = set()
 _crash_lock = threading.Lock()
 
-# Default SHA-256 hash for admin passkey ("0505")
-_DEFAULT_ADMIN_PIN_HASH = "131e27b7715c43825f14696b907812d34fb86a529dd8c98fedbf87016f5d9149"
+def get_admin_key_path() -> str:
+    """
+    Get the persistent path for admin_key.secret in AppData.
+    Never creates or writes to the local project repository.
+    """
+    app_data = os.environ.get("APPDATA")
+    if app_data:
+        target_dir = os.path.join(app_data, "FitGirlLinkExtractor")
+    else:
+        target_dir = os.path.join(os.path.expanduser("~"), ".config", "FitGirlLinkExtractor")
+    return os.path.join(target_dir, "admin_key.secret")
 
 
 def ensure_admin_key_file() -> str:
     """
     Ensure admin_key.secret exists in %APPDATA%/FitGirlLinkExtractor so the maintainer
     can view, edit, and configure their admin PIN directly in Explorer.
+    Generates a secure random passkey if none exists.
     """
-    target_dirs = []
-    app_data = os.environ.get("APPDATA")
-    if app_data:
-        target_dirs.append(os.path.join(app_data, "FitGirlLinkExtractor"))
-    app_dir = utils.get_app_data_dir()
-    if app_dir not in target_dirs:
-        target_dirs.append(app_dir)
-
-    primary_path = ""
-    for d in target_dirs:
-        try:
-            os.makedirs(d, exist_ok=True)
-            k_path = os.path.join(d, "admin_key.secret")
-            if not primary_path:
-                primary_path = k_path
-            if not os.path.exists(k_path):
-                with open(k_path, "w", encoding="utf-8") as f:
-                    f.write("# Link Extractor Administrator Passkey\n")
-                    f.write("# Edit this value to change your Admin Mode PIN anytime.\n")
-                    f.write("0505\n")
-        except Exception:
-            pass
-
-    return primary_path or os.path.join(utils.get_app_data_dir(), "admin_key.secret")
+    k_path = get_admin_key_path()
+    target_dir = os.path.dirname(k_path)
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+        if not os.path.exists(k_path):
+            import secrets
+            generated_pin = secrets.token_hex(4)
+            with open(k_path, "w", encoding="utf-8") as f:
+                f.write("# Link Extractor Administrator Passkey\n")
+                f.write("# Edit this value to change your Admin Mode PIN anytime.\n")
+                f.write("# Keep this secret and never commit or share this file.\n")
+                f.write(f"{generated_pin}\n")
+    except Exception:
+        pass
+    return k_path
 
 
 def verify_admin_pin(candidate_pin: str) -> bool:
     """
-    Cryptographically verify admin PIN against SHA-256 hash, environment variable,
-    or maintainer's local secret file in AppData without exposing plaintext PIN.
+    Cryptographically verify admin PIN against environment variable or
+    the maintainer's local secret file in AppData using constant-time comparison.
+    No hardcoded default PIN or hash is allowed.
     """
     if not candidate_pin:
         return False
 
     clean_pin = str(candidate_pin).strip()
+    if not clean_pin:
+        return False
+
+    import hmac
 
     # 1. Check environment variable override
     env_pin = os.environ.get("LINK_EXTRACTOR_ADMIN_PIN", "").strip()
-    if env_pin and clean_pin == env_pin:
+    if env_pin and hmac.compare_digest(clean_pin, env_pin):
         return True
 
-    # 2. Check local maintainer secret files in AppData & App directory
-    candidate_paths = [
-        ensure_admin_key_file(),
-        os.path.join(utils.get_app_data_dir(), "admin_key.secret")
-    ]
-    app_data = os.environ.get("APPDATA")
-    if app_data:
-        candidate_paths.append(os.path.join(app_data, "FitGirlLinkExtractor", "admin_key.secret"))
+    # 2. Check local maintainer secret file in AppData
+    k_path = get_admin_key_path()
+    if os.path.exists(k_path):
+        try:
+            with open(k_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        if hmac.compare_digest(clean_pin, line):
+                            return True
+        except Exception:
+            pass
 
-    for k_path in candidate_paths:
-        if os.path.exists(k_path):
-            try:
-                with open(k_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#"):
-                            if clean_pin == line:
-                                return True
-            except Exception:
-                pass
-
-    # 3. Constant-time digest comparison against SHA-256 hash
-    import hashlib
-    import hmac
-    candidate_hash = hashlib.sha256(clean_pin.encode("utf-8")).hexdigest()
-    return hmac.compare_digest(candidate_hash, _DEFAULT_ADMIN_PIN_HASH)
+    return False
 
 
 def _get_local_reports_file() -> str:
