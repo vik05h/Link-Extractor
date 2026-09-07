@@ -53,6 +53,11 @@
 
   function handleCloseUpdateModal() {
     updateModalOpen = false;
+    if (typeof window !== 'undefined' && updateReleaseInfo?.latest_version) {
+      try {
+        sessionStorage.setItem('le_dismissed_update_' + updateReleaseInfo.latest_version, 'true');
+      } catch {}
+    }
     if (isFirstRunPendingTour) {
       isFirstRunPendingTour = false;
       try {
@@ -633,6 +638,14 @@
         updateReleaseInfo = d.release_info;
         isFrozenApp = !!d.is_frozen;
         if (d.current_version) appCurrentVersion = d.current_version;
+
+        // Auto-popup if not dismissed in this session
+        const version = d.release_info.latest_version || '';
+        const dismissed = typeof window !== 'undefined' && sessionStorage.getItem('le_dismissed_update_' + version);
+        if (!dismissed) {
+          updateModalOpen = true;
+          showToast(`A new update (${version || 'v' + d.release_info.version}) is available!`);
+        }
       }
     });
 
@@ -973,6 +986,7 @@
     isOpen={reportModalOpen}
     onClose={() => reportModalOpen = false}
     onShowToast={showToast}
+    engineLogs={logs}
   />
 </div>
 

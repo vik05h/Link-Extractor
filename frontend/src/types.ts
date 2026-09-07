@@ -52,6 +52,16 @@ export interface DetectedClip {
   slug: string;
 }
 
+export interface IssueComment {
+  id: string;
+  author_name?: string;
+  author_type: 'admin' | 'reporter' | 'gamer';
+  text: string;
+  screenshot_data?: string;
+  created_at: string;
+  app_version?: string;
+}
+
 export interface IssueReport {
   id: string;
   subject: string;
@@ -65,4 +75,7 @@ export interface IssueReport {
   app_version?: string;
   os_info?: string;
   user_voted?: boolean;
+  comments?: Record<string, IssueComment> | IssueComment[];
+  comments_count?: number;
 }
+

@@ -1,23 +1,35 @@
 <script lang="ts">
   import Icon from '../icons/Icon.svelte';
   import { playClickSound } from '../../utils/audio';
-  import type { IssueReport } from '../../types';
+  import type { IssueReport, IssueComment } from '../../types';
+  import CommentThread from './CommentThread.svelte';
 
   export let report: IssueReport;
   export let isAdminMode: boolean = false;
+  export let isReporter: boolean = false;
+  export let sessionAdminPin: string = '';
   export let isUpvoted: boolean = false;
+  export let engineLogs: string[] = [];
   export let onUpvote: (id: string) => void = () => {};
   export let onPreviewImage: (url: string) => void = () => {};
   export let onAdminSave: (id: string, status: string, remark: string) => Promise<void> | void = () => {};
   export let onAdminDelete: (id: string) => Promise<void> | void = () => {};
+  export let onAddComment: (payload: any) => Promise<void> | void = () => {};
+  export let onDeleteComment: (reportId: string, commentId: string) => Promise<void> | void = () => {};
+  export let onShowToast: (msg: string) => void = () => {};
 
   let editingStatus: string = report.status || 'open';
   let editingRemark: string = report.admin_remark || '';
   let isSaving: boolean = false;
   let isDeleting: boolean = false;
+  let threadOpen: boolean = false;
 
   $: editingStatus = report.status || 'open';
   $: editingRemark = report.admin_remark || '';
+  $: commentsList = Array.isArray(report.comments) 
+    ? report.comments 
+    : (report.comments && typeof report.comments === 'object' ? Object.values(report.comments) as IssueComment[] : []);
+  $: commentsCount = commentsList.length || report.comments_count || 0;
 
   function formatDate(isoStr?: string): string {
     if (!isoStr) return 'Recently';
@@ -124,6 +136,17 @@
   <div class="card-actions-bar">
     <button 
       type="button" 
+      class="btn-thread-toggle"
+      class:active={threadOpen}
+      on:click={() => { playClickSound(); threadOpen = !threadOpen; }}
+      aria-label="Toggle Discussion Thread"
+    >
+      <Icon name="message-square" size={13} color={threadOpen ? 'var(--accent-secondary)' : 'currentColor'} />
+      <span>{threadOpen ? 'Hide Discussion' : `Discussion (${commentsCount})`}</span>
+    </button>
+
+    <button 
+      type="button" 
       class="btn-vote"
       class:voted={isUpvoted}
       disabled={isUpvoted}
@@ -192,6 +215,22 @@
         </button>
       </div>
     </div>
+  {/if}
+
+  <!-- Discussion Thread Drawer -->
+  {#if threadOpen}
+    <CommentThread 
+      reportId={report.id}
+      comments={commentsList}
+      {isAdminMode}
+      {isReporter}
+      {sessionAdminPin}
+      {engineLogs}
+      {onPreviewImage}
+      {onAddComment}
+      {onDeleteComment}
+      {onShowToast}
+    />
   {/if}
 </div>
 
@@ -367,7 +406,33 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
+    gap: 8px;
     padding-top: 6px;
+  }
+
+  .btn-thread-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+  }
+  .btn-thread-toggle:hover {
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.3);
+    color: #ffffff;
+  }
+  .btn-thread-toggle.active {
+    background: rgba(56, 189, 248, 0.16);
+    border-color: rgba(56, 189, 248, 0.4);
+    color: var(--accent-secondary);
   }
 
   .btn-vote {

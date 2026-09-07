@@ -13,6 +13,7 @@
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
   export let onShowToast: (msg: string) => void = () => {};
+  export let engineLogs: string[] = [];
 
   // View state: 'tracker' (Known Issues) or 'submit' (Submit Report)
   let activeTab: 'tracker' | 'submit' = 'tracker';
@@ -39,6 +40,9 @@
   // Upvoted IDs (persisted locally so user doesn't spam)
   let upvotedIds: Set<string> = new Set();
 
+  // Created Report IDs by this device (grants Original Reporter badge)
+  let myReportIds: Set<string> = new Set();
+
   // Reference to submit form for pasting
   let submitFormRef: SubmitReportForm;
   let isSubmittingReport: boolean = false;
@@ -49,6 +53,12 @@
       if (storedVotes) {
         try {
           upvotedIds = new Set(JSON.parse(storedVotes));
+        } catch {}
+      }
+      const storedMyReports = localStorage.getItem('le_my_created_reports');
+      if (storedMyReports) {
+        try {
+          myReportIds = new Set(JSON.parse(storedMyReports));
         } catch {}
       }
     }
@@ -118,6 +128,13 @@
           localStorage.setItem('le_upvoted_reports', JSON.stringify(Array.from(upvotedIds)));
           loadReports();
         } else if (res.success) {
+          if (res.report_id) {
+            myReportIds.add(res.report_id);
+            myReportIds = new Set(myReportIds);
+            try {
+              localStorage.setItem('le_my_created_reports', JSON.stringify(Array.from(myReportIds)));
+            } catch {}
+          }
           duplicateModalOpen = false;
           pendingReportPayload = null;
           playSuccessChime();
@@ -237,6 +254,81 @@
         }
       } catch (err) {
         onShowToast('Network error deleting report.');
+      }
+    }
+  }
+
+  // Discussion Comments: Add comment
+  async function handleAddComment(payload: {
+    report_id: string;
+    text: string;
+    author_type: string;
+    author_name: string;
+    screenshot_data?: string;
+    admin_pin?: string;
+  }) {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.add_report_comment) {
+      try {
+        const res = await (window as any).pywebview.api.add_report_comment(payload);
+        if (res && res.success && res.comment) {
+          playSuccessChime();
+          onShowToast('Comment posted to discussion thread.');
+          reports = reports.map(r => {
+            if (r.id === payload.report_id) {
+              const curComments = Array.isArray(r.comments)
+                ? r.comments
+                : (r.comments && typeof r.comments === 'object' ? Object.values(r.comments) : []);
+              const updatedComments = [...curComments, res.comment];
+              return {
+                ...r,
+                comments: updatedComments,
+                comments_count: updatedComments.length
+              };
+            }
+            return r;
+          });
+        } else {
+          onShowToast(res?.message || 'Failed to post comment.');
+        }
+      } catch (err) {
+        onShowToast('Network error posting comment.');
+      }
+    } else {
+      onShowToast('Reporting bridge unavailable in preview mode.');
+    }
+  }
+
+  // Discussion Comments: Admin delete comment
+  async function handleDeleteComment(reportId: string, commentId: string) {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.delete_report_comment) {
+      try {
+        const res = await (window as any).pywebview.api.delete_report_comment({
+          report_id: reportId,
+          comment_id: commentId,
+          admin_pin: sessionAdminPin
+        });
+        if (res && res.success) {
+          playSuccessChime();
+          onShowToast('Comment removed.');
+          reports = reports.map(r => {
+            if (r.id === reportId) {
+              const curComments = Array.isArray(r.comments)
+                ? r.comments
+                : (r.comments && typeof r.comments === 'object' ? Object.values(r.comments) : []);
+              const updatedComments = curComments.filter((c: any) => c.id !== commentId);
+              return {
+                ...r,
+                comments: updatedComments,
+                comments_count: updatedComments.length
+              };
+            }
+            return r;
+          });
+        } else {
+          onShowToast(res?.message || 'Failed to remove comment.');
+        }
+      } catch (err) {
+        onShowToast('Network error removing comment.');
       }
     }
   }
@@ -409,11 +501,17 @@
                 <IssueCard 
                   report={r}
                   isAdminMode={isAdminMode}
+                  isReporter={myReportIds.has(r.id)}
+                  sessionAdminPin={sessionAdminPin}
                   isUpvoted={upvotedIds.has(r.id)}
+                  engineLogs={engineLogs}
                   onUpvote={handleUpvote}
                   onPreviewImage={(url) => previewImageUrl = url}
                   onAdminSave={handleAdminSave}
                   onAdminDelete={handleAdminDelete}
+                  onAddComment={handleAddComment}
+                  onDeleteComment={handleDeleteComment}
+                  onShowToast={onShowToast}
                 />
               {/each}
             {/if}

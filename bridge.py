@@ -1074,6 +1074,48 @@ class AppBridge:
             "message": msg
         }
 
+    def add_report_comment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Add a reply/comment to an existing issue report."""
+        report_id = data.get("report_id", "")
+        text = data.get("text", "")
+        author_type = data.get("author_type", "gamer")
+        author_name = data.get("author_name", "")
+        screenshot_data = data.get("screenshot_data", "")
+        admin_pin = data.get("admin_pin", "")
+
+        success, res_str, comment_record = community.add_report_comment(
+            report_id=report_id,
+            text=text,
+            author_type=author_type,
+            author_name=author_name,
+            screenshot_data=screenshot_data,
+            admin_pin=admin_pin
+        )
+
+        return {
+            "success": success,
+            "comment_id": res_str if success else "",
+            "comment": comment_record,
+            "message": "Comment posted successfully!" if success else res_str
+        }
+
+    def delete_report_comment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Delete a comment from an issue report with admin authorization."""
+        report_id = data.get("report_id", "")
+        comment_id = data.get("comment_id", "")
+        admin_pin = data.get("admin_pin", "")
+
+        success, msg = community.delete_report_comment(
+            report_id=report_id,
+            comment_id=comment_id,
+            admin_pin=admin_pin
+        )
+
+        return {
+            "success": success,
+            "message": msg
+        }
+
     def report_client_crash(self, message_or_data: Any, stack_trace: str = "") -> Dict[str, Any]:
         """Log unhandled frontend or client crash to Firebase RTDB. Supports dict or (msg, stack) positional."""
         settings = self.get_settings()

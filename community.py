@@ -796,6 +796,20 @@ def fetch_all_reports(firebase_url: Optional[str] = None) -> Tuple[bool, List[Di
                 merged[rid]["id"] = rid
 
     reports_list = list(merged.values())
+    for r in reports_list:
+        raw_comments = r.get("comments")
+        if isinstance(raw_comments, dict):
+            c_list = list(raw_comments.values())
+            c_list.sort(key=lambda c: c.get("created_at", ""))
+            r["comments"] = c_list
+            r["comments_count"] = len(c_list)
+        elif isinstance(raw_comments, list):
+            r["comments"] = raw_comments
+            r["comments_count"] = len(raw_comments)
+        else:
+            r["comments"] = []
+            r["comments_count"] = 0
+
     reports_list.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return True, reports_list, f"Loaded {len(reports_list)} reports"
 
@@ -1011,6 +1025,105 @@ def delete_report(
     _http_request(url, method="DELETE", timeout=5.0)
 
     return True, f"Report {clean_id} deleted successfully"
+
+
+def add_report_comment(
+    report_id: str,
+    text: str,
+    author_type: str = "gamer",
+    author_name: str = "",
+    screenshot_data: Optional[str] = None,
+    admin_pin: Optional[str] = None,
+    firebase_url: Optional[str] = None
+) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+    """
+    Add a comment/reply to an existing report.
+    If author_type is 'admin', verifies admin_pin.
+    Pushes to Firebase RTDB (/reports/{report_id}/comments/{comment_id}.json) and mirrors locally.
+    """
+    clean_rid = str(report_id).strip()
+    clean_text = (text or "").strip()
+    clean_author_type = (author_type or "gamer").lower().strip()
+    if clean_author_type not in ("admin", "reporter", "gamer"):
+        clean_author_type = "gamer"
+
+    if clean_author_type == "admin":
+        if not admin_pin or not verify_admin_pin(admin_pin):
+            return False, "Unauthorized: Invalid admin passkey", None
+
+    if not clean_rid:
+        return False, "Invalid report ID", None
+
+    if not clean_text and not screenshot_data:
+        return False, "Comment text or attachment cannot be empty", None
+
+    comment_id = f"c_{int(time.time())}_{os.urandom(3).hex()}"
+    now_iso = get_current_utc_iso()
+
+    safe_screenshot = screenshot_data
+    if safe_screenshot and len(safe_screenshot) > 800 * 1024:
+        safe_screenshot = safe_screenshot[:800 * 1024]
+
+    comment_payload = {
+        "id": comment_id,
+        "author_type": clean_author_type,
+        "author_name": (author_name or ("Admin" if clean_author_type == "admin" else "Gamer"))[:50],
+        "text": clean_text[:3000],
+        "screenshot_data": safe_screenshot or "",
+        "created_at": now_iso,
+        "app_version": updater.CURRENT_VERSION
+    }
+
+    # 1. Update local persistent store
+    local_data = _load_local_reports()
+    if clean_rid in local_data:
+        rep = local_data[clean_rid]
+        if "comments" not in rep or not isinstance(rep["comments"], dict):
+            rep["comments"] = {}
+        rep["comments"][comment_id] = comment_payload
+        rep["comments_count"] = len(rep["comments"])
+        _save_local_reports(local_data)
+
+    # 2. Push to Firebase RTDB
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    url = f"{base_url}/reports/{clean_rid}/comments/{comment_id}.json"
+    _http_request(url, method="PUT", data=comment_payload, timeout=6.0)
+
+    return True, comment_id, comment_payload
+
+
+def delete_report_comment(
+    report_id: str,
+    comment_id: str,
+    admin_pin: str,
+    firebase_url: Optional[str] = None
+) -> Tuple[bool, str]:
+    """
+    Delete a specific comment from an issue report. Requires admin PIN authorization.
+    """
+    if not verify_admin_pin(admin_pin):
+        return False, "Unauthorized: Invalid admin passkey"
+
+    clean_rid = str(report_id).strip()
+    clean_cid = str(comment_id).strip()
+    if not clean_rid or not clean_cid:
+        return False, "Invalid report or comment ID"
+
+    # 1. Delete from local persistent store
+    local_data = _load_local_reports()
+    if clean_rid in local_data:
+        rep = local_data[clean_rid]
+        if isinstance(rep.get("comments"), dict) and clean_cid in rep["comments"]:
+            del rep["comments"][clean_cid]
+            rep["comments_count"] = len(rep["comments"])
+            _save_local_reports(local_data)
+
+    # 2. Delete from Firebase RTDB
+    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+    url = f"{base_url}/reports/{clean_rid}/comments/{clean_cid}.json"
+    _http_request(url, method="DELETE", timeout=5.0)
+
+    return True, f"Comment {clean_cid} deleted successfully"
 
 
 def report_crash_log(
