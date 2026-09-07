@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from 'svelte';
   import DefragMosaic from './DefragMosaic.svelte';
   import type { PartItem } from '../types';
   import SelectiveFilter from './SelectiveFilter.svelte';
@@ -23,14 +22,44 @@
 
   let activeView: 'mosaic' | 'table' | 'log' = 'mosaic';
   let exportMenuOpen = false;
-  let terminalScrollEl: HTMLElement | null = null;
+  let logsCopied = false;
+  let copyTimeout: any = null;
 
-  $: if (logs && logs.length && terminalScrollEl) {
-    tick().then(() => {
-      if (terminalScrollEl) {
-        terminalScrollEl.scrollTop = terminalScrollEl.scrollHeight;
+  function handleCopyLogs() {
+    playClickSound();
+    const text = logs.join('\n');
+    if (typeof window !== 'undefined' && (window as any).pywebview) {
+      (window as any).pywebview.api.copy_to_clipboard(text);
+    } else {
+      navigator.clipboard.writeText(text);
+    }
+    logsCopied = true;
+    if (copyTimeout) clearTimeout(copyTimeout);
+    copyTimeout = setTimeout(() => {
+      logsCopied = false;
+    }, 2000);
+  }
+
+  function autoScroll(node: HTMLElement, _deps: any) {
+    const scrollToBottom = (smooth: boolean = false) => {
+      node.scrollTo({
+        top: node.scrollHeight,
+        behavior: smooth ? 'smooth' : 'instant'
+      });
+    };
+
+    // Initial scroll on mount
+    scrollToBottom(false);
+
+    return {
+      update() {
+        // Sticky scroll: auto-scroll only if user is already near bottom (<= 50px)
+        const isNearBottom = node.scrollHeight - node.scrollTop - node.clientHeight <= 50;
+        if (isNearBottom) {
+          scrollToBottom(true);
+        }
       }
-    });
+    };
   }
 
   function handleCoverError(e: Event) {
@@ -292,9 +321,20 @@
             <Icon name="terminal" size={14} color="var(--accent-secondary)" />
             <span>REAL-TIME ENGINE TELEMETRY</span>
           </div>
-          <span>{logs.length} EVENTS</span>
+          <div class="terminal-actions">
+            <span class="events-count">{logs.length} EVENTS</span>
+            <button 
+              type="button" 
+              class="btn-copy-logs" 
+              title="Copy all telemetry logs to clipboard"
+              on:click={handleCopyLogs}
+            >
+              <Icon name={logsCopied ? "check" : "copy"} size={12} color={logsCopied ? "var(--accent-primary)" : "currentColor"} />
+              <span>{logsCopied ? "Copied!" : "Copy Logs"}</span>
+            </button>
+          </div>
         </div>
-        <div class="terminal-scroll" bind:this={terminalScrollEl}>
+        <div class="terminal-scroll" use:autoScroll={logs}>
           {#each logs as logLine}
             <div class="log-entry font-mono">{logLine}</div>
           {/each}
@@ -688,6 +728,39 @@
     display: flex;
     align-items: center;
     gap: 6px;
+  }
+
+  .terminal-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .events-count {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: var(--font-mono);
+  }
+
+  .btn-copy-logs {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-secondary);
+    border-radius: var(--radius-xs);
+    padding: 3px 8px;
+    font-size: 10.5px;
+    font-family: var(--font-mono);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+  }
+
+  .btn-copy-logs:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.2);
   }
 
   .terminal-scroll {
