@@ -76,9 +76,9 @@ graph LR
 ## Application Interface
 
 <p align="center">
-  <img src="screenshots/step1.png" alt="Link Extractor Modern Gaming Hub Interface" width="90%" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);" />
+  <img src="screenshots/landing.png" alt="Link Extractor v3.8.0 Gaming Hub Interface" width="95%" style="border-radius: 12px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);" />
   <br>
-  <em>Figure 1: Link Extractor next-generation cyberpunk gaming hub interface.</em>
+  <em>Figure 1: Link Extractor v3.8.0 next-generation cyberpunk gaming hub interface.</em>
 </p>
 
 ---
