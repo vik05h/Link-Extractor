@@ -11,12 +11,29 @@ from typing import Optional, Dict, Any, Tuple, Callable, List
 
 import utils
 
-CURRENT_VERSION = "v3.8.0"
+CURRENT_VERSION = "v3.8.1"
 GITHUB_REPO = "vik05h/Link-Extractor"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
+    "v3.8.1": {
+        "title": "Community Discussion Threads, Release Update Auto-Popup & Cyber Concurrency Slider",
+        "highlights": [
+            "Interactive Community Discussion Thread drawer on Issue Center tickets with badge attribution (Official Admin, Original Reporter, Community Gamer).",
+            "One-click Engine Telemetry Log dumping directly into discussion replies for rapid collaborative bug diagnosis.",
+            "Full screenshot attachment pipeline supporting file dropzone, file picker, and clipboard Ctrl+V pasting with client-side canvas compression.",
+            "Administrative comment moderation and ticket status management protected by secure passkey authorization.",
+            "Automatic release update popup notification on startup with session-based dismissal suppression to prevent repetitive popups.",
+            "Cyberpunk animated concurrency slider in Settings with glowing thumb halo and tactile stepped performance tiers (Eco, Balanced, Turbo)."
+        ],
+        "bug_fixes": [
+            "Fixed terminal hanging and application freeze when clicking Telemetry & Terminal tab by virtualizing log stream updates.",
+            "Resolved content.d.ts type generation issue by configuring glob paths in tsconfig.json.",
+            "Fixed comment normalization and timestamp sorting across Firebase Realtime Database and local JSON cache.",
+            "Enforced constant-time cryptographic verification for Admin passkey authentication in AppData."
+        ]
+    },
     "v3.8.0": {
         "title": "Next-Gen Gaming Hub UI/UX Overhaul, Live Guided Tour & Community Issue Center",
         "highlights": [

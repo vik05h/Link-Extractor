@@ -199,7 +199,7 @@
             id="remark-input-{report.id}"
             type="text" 
             class="glass-input admin-text"
-            placeholder="e.g. Fixed in v3.8.0, or workaround: disable VPN..."
+            placeholder="e.g. Fixed in v3.8.1, or workaround: disable VPN..."
             bind:value={editingRemark}
           />
         </div>

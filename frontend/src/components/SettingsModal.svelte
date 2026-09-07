@@ -11,7 +11,7 @@
   export let onCheckUpdates: () => void = () => {};
   export let onOpenTour: () => void = () => {};
   export let onOpenIssueCenter: () => void = () => {};
-  export let currentVersion: string = 'v3.8.0';
+  export let currentVersion: string = 'v3.8.1';
 
   let currentTheme = 'cyber';
   let isCheckingUpdates = false;

@@ -1,6 +1,6 @@
 {
   "name": "link-extractor-frontend",
-  "version": "3.8.0",
+  "version": "3.8.1",
   "description": "Next-Gen Gaming Hub Frontend for FitGirl Link Extractor",
   "type": "module",
   "scripts": {

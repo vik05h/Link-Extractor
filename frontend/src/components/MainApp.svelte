@@ -47,7 +47,7 @@
   let updateModalOpen = false;
   let updateReleaseInfo: any = null;
   let isFrozenApp = false;
-  let appCurrentVersion = 'v3.8.0';
+  let appCurrentVersion = 'v3.8.1';
   let hasUpdateAvailable = false;
   let isFirstRunPendingTour = false;
 
@@ -61,7 +61,7 @@
     if (isFirstRunPendingTour) {
       isFirstRunPendingTour = false;
       try {
-        localStorage.setItem('le_first_run_v3.8.0', 'true');
+        localStorage.setItem('le_first_run_v3.8.1', 'true');
       } catch {}
       setTimeout(() => {
         tourOpen = true;
@@ -73,7 +73,7 @@
     updateModalOpen = false;
     isFirstRunPendingTour = false;
     try {
-      localStorage.setItem('le_first_run_v3.8.0', 'true');
+      localStorage.setItem('le_first_run_v3.8.1', 'true');
     } catch {}
     setTimeout(() => {
       tourOpen = true;
@@ -685,8 +685,8 @@
         }
       });
 
-      // Check first-time launch for v3.8: show What's New first, then the interactive Tutorial!
-      const FIRST_RUN_KEY = 'le_first_run_v3.8.0';
+      // Check first-time launch for v3.8.1: show What's New first, then the interactive Tutorial!
+      const FIRST_RUN_KEY = 'le_first_run_v3.8.1';
       const hasSeenFirstRun = localStorage.getItem(FIRST_RUN_KEY);
 
       if (!hasSeenFirstRun) {
@@ -832,7 +832,7 @@
         type="button" 
         class="sidebar-icon-btn update-btn" 
         class:has-update={hasUpdateAvailable}
-        title={hasUpdateAvailable ? "Update Available! View What's New & Download" : "What's New & Updates (v3.8.0)"}
+        title={hasUpdateAvailable ? "Update Available! View What's New & Download" : "What's New & Updates (" + appCurrentVersion + ")"}
         on:click={() => { playClickSound(); updateModalOpen = true; }}
       >
         <Icon name="sparkles" size={18} />

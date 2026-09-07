@@ -13,7 +13,7 @@
   <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/"><img src="https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-0284C7.svg" alt="CC BY-NC-SA 4.0" /></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.10+-10B981.svg" alt="Python" /></a>
   <a href="https://astro.build"><img src="https://img.shields.io/badge/UI-Astro_Svelte_WebView2-F59E0B.svg" alt="UI" /></a>
-  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.8.0-blue.svg" alt="Release" /></a>
+  <a href="https://github.com/vik05h/Link-Extractor/releases"><img src="https://img.shields.io/badge/Release-v3.8.1-blue.svg" alt="Release" /></a>
 </p>
 
 ---

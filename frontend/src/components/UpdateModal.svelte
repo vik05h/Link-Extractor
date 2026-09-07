@@ -6,7 +6,7 @@
   export let isOpen: boolean = false;
   export let releaseInfo: any = null;
   export let isFrozen: boolean = false;
-  export let currentVersion: string = 'v3.8.0';
+  export let currentVersion: string = 'v3.8.1';
   export let isFirstRun: boolean = false;
   export let onClose: () => void = () => {};
   export let onStartTour: (() => void) | undefined = undefined;
@@ -28,9 +28,29 @@
 
   const FALLBACK_CHANGELOGS = [
     {
+      version: 'v3.8.1',
+      title: 'Community Discussion Threads, Release Update Auto-Popup & Cyber Concurrency Slider',
+      is_current: true,
+      previous_version: 'v3.8.0',
+      highlights: [
+        'Interactive Community Discussion Thread drawer on Issue Center tickets with badge attribution (Official Admin, Original Reporter, Community Gamer).',
+        'One-click Engine Telemetry Log dumping directly into discussion replies for rapid collaborative bug diagnosis.',
+        'Full screenshot attachment pipeline supporting file dropzone, file picker, and clipboard Ctrl+V pasting with client-side canvas compression.',
+        'Administrative comment moderation and ticket status management protected by secure passkey authorization.',
+        'Automatic release update popup notification on startup with session-based dismissal suppression to prevent repetitive popups.',
+        'Cyberpunk animated concurrency slider in Settings with glowing thumb halo and tactile stepped performance tiers (Eco, Balanced, Turbo).'
+      ],
+      bug_fixes: [
+        'Fixed terminal hanging and application freeze when clicking Telemetry & Terminal tab by virtualizing log stream updates.',
+        'Resolved content.d.ts type generation issue by configuring glob paths in tsconfig.json.',
+        'Fixed comment normalization and timestamp sorting across Firebase Realtime Database and local JSON cache.',
+        'Enforced constant-time cryptographic verification for Admin passkey authentication in AppData.'
+      ]
+    },
+    {
       version: 'v3.8.0',
       title: 'Next-Gen Gaming Hub UI/UX Overhaul, Live Guided Tour & Community Issue Center',
-      is_current: true,
+      is_current: false,
       previous_version: 'v3.5.0',
       highlights: [
         'Complete architectural migration from legacy Flet UI to hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.',
@@ -423,7 +443,7 @@
               {#if hasUpdate}
                 Update Ready: {releaseInfo?.latest_version || 'New Release'}
               {:else if isFirstRun}
-                v3.8.0 Installed & Ready
+                {currentVersion} Installed & Ready
               {:else}
                 Up to Date ({currentVersion})
               {/if}
@@ -612,7 +632,7 @@
       <div class="modal-footer">
         {#if step === 'overview'}
           <div class="footer-meta font-mono">
-            <span>Link Extractor v3.8.0 • PolyForm & CC BY-NC-SA 4.0</span>
+            <span>Link Extractor {currentVersion} • PolyForm & CC BY-NC-SA 4.0</span>
           </div>
 
           <div class="footer-btn-group">
