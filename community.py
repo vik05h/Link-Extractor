@@ -8,7 +8,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Callable
 
 import validator
 import updater
