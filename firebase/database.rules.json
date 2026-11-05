@@ -1,0 +1,118 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "games_meta": {
+      ".read": true,
+      "$slug": {
+        ".write": "newData.exists()",
+        ".validate": "newData.hasChildren(['title', 'timestamp_utc'])",
+        "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 300" },
+        "source_url": { ".validate": "newData.isString() && newData.val().length <= 2000 && newData.val().matches(/^$|^https?:\\/\\/(www\\.|paste\\.)?fitgirl-repacks\\.site\\/[^\\s]*$|^https?:\\/\\/(www\\.)?fuckingfast\\.co\\/[^\\s]*$/)" },
+        "image_url": { ".validate": "newData.isString() && newData.val().length <= 8000 && newData.val().matches(/^$|^https?:\\/\\/[^\\s]+$|^data:image\\/svg\\+xml/)" },
+        "timestamp_utc": { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "total_parts": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "resolved_count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "total_size_bytes": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "used_count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "total_size_str": { ".validate": "newData.isString() && newData.val().length <= 60" },
+        "uploader": { ".validate": "newData.isString() && newData.val().length <= 60" },
+        "app_version": { ".validate": "newData.isString() && newData.val().length <= 30" },
+        "presence": {
+          "$session": {
+            ".validate": "newData.hasChildren(['t'])",
+            "t": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "v": { ".validate": "newData.isString() && newData.val().length <= 30" },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "games_urls": {
+      ".read": true,
+      "$slug": {
+        ".write": "newData.exists()",
+        ".validate": "newData.hasChildren(['urls'])",
+        "urls": {
+          "$index": { ".validate": "newData.isString() && newData.val().length <= 2000 && newData.val().matches(/^https:\\/\\/dl\\.fuckingfast\\.co\\/[^\\s]+$/)" }
+        },
+        "updated_at": { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "reports": {
+      ".read": true,
+      "$report": {
+        ".write": "!data.exists() && newData.exists()",
+        ".validate": "newData.hasChildren(['subject', 'created_at'])",
+        "id": { ".validate": "newData.isString() && newData.val() === $report" },
+        "subject": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 150" },
+        "category": { ".validate": "newData.isString() && newData.val().length <= 50" },
+        "description": { ".validate": "newData.isString() && newData.val().length <= 3000" },
+        "screenshot_data": { ".validate": "newData.isString() && newData.val().length <= 900000 && (newData.val() === '' || newData.val().beginsWith('data:image/'))" },
+        "has_screenshot": { ".validate": "newData.isBoolean()" },
+        "status": { ".validate": "newData.val() === 'open'" },
+        "admin_remark": { ".validate": "newData.val() === ''" },
+        "created_at": { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "app_version": { ".validate": "newData.isString() && newData.val().length <= 30" },
+        "os_info": { ".validate": "newData.isString() && newData.val().length <= 30" },
+        "comments_count": { ".validate": "newData.isNumber()" },
+        "telemetry": {
+          "$field": { ".validate": "newData.isString() && newData.val().length <= 60" }
+        },
+        "affected_users_count": {
+          ".write": "data.exists() && newData.isNumber() && newData.val() >= data.val()",
+          ".validate": "newData.isNumber() && newData.val() >= 1"
+        },
+        "comments": {
+          "$comment": {
+            ".write": "!data.exists() && newData.exists()",
+            ".validate": "newData.hasChildren(['id', 'author_type', 'created_at']) && (newData.child('author_type').val() === 'reporter' || newData.child('author_type').val() === 'gamer')",
+            "id": { ".validate": "newData.isString() && newData.val() === $comment" },
+            "author_type": { ".validate": "newData.isString()" },
+            "author_name": { ".validate": "newData.isString() && newData.val().length <= 50" },
+            "text": { ".validate": "newData.isString() && newData.val().length <= 3000" },
+            "screenshot_data": { ".validate": "newData.isString() && newData.val().length <= 900000 && (newData.val() === '' || newData.val().beginsWith('data:image/'))" },
+            "has_screenshot": { ".validate": "newData.isBoolean()" },
+            "created_at": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "app_version": { ".validate": "newData.isString() && newData.val().length <= 30" },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      }
+    },
+
+    "report_screenshots": {
+      ".read": true,
+      "$report": {
+        "$key": {
+          ".write": "!data.exists() && newData.exists()",
+          ".validate": "newData.isString() && newData.val().length <= 900000 && newData.val().matches(/^data:image\\/(jpeg|png|webp|gif);base64,/)"
+        }
+      }
+    },
+
+    "crash_logs": {
+      "$crash": {
+        ".write": "!data.exists() && newData.exists()",
+        ".validate": "newData.hasChildren(['error_type', 'timestamp_utc'])",
+        "error_type": { ".validate": "newData.isString() && newData.val().length <= 100" },
+        "error_message": { ".validate": "newData.isString() && newData.val().length <= 500" },
+        "traceback": { ".validate": "newData.isString() && newData.val().length <= 5000" },
+        "context": { ".validate": "newData.isString() && newData.val().length <= 50" },
+        "app_version": { ".validate": "newData.isString() && newData.val().length <= 30" },
+        "platform": { ".validate": "newData.isString() && newData.val().length <= 30" },
+        "timestamp_utc": { ".validate": "newData.isString() && newData.val().length <= 40" },
+        "telemetry": {
+          "$field": { ".validate": "newData.isString() && newData.val().length <= 60" }
+        },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}

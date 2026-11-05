@@ -1,5 +1,4 @@
-import os
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 def create_app_icon():
     size = 512

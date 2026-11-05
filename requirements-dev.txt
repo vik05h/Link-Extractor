@@ -1,0 +1,6 @@
+# Everything needed to test and build the app.
+-r requirements.txt
+pytest==9.2.0
+ruff==0.17.3
+pyright==1.1.414
+pyinstaller==6.21.0

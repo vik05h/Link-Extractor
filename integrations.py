@@ -1,10 +1,18 @@
+"""JDownloader 2 push and file exporters."""
+
+import http.client
+import json
+import logging
 import os
 import re
-import json
 import time
-import urllib.request
 import urllib.parse
-from typing import List, Optional, Tuple, Dict, Any
+import urllib.request
+from typing import List, Tuple
+
+import links
+
+log = logging.getLogger(__name__)
 
 
 def get_jd_folderwatch_dirs() -> List[str]:
@@ -16,52 +24,19 @@ def get_jd_folderwatch_dirs() -> List[str]:
         os.path.join(os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)"), "JDownloader 2", "folderwatch"),
     ]
     valid = []
-    for c in candidates:
-        parent = os.path.dirname(c)
-        if os.path.exists(parent):
+    for candidate in candidates:
+        if os.path.exists(os.path.dirname(candidate)):
             try:
-                os.makedirs(c, exist_ok=True)
-                valid.append(c)
-            except Exception:
-                pass
+                os.makedirs(candidate, exist_ok=True)
+                valid.append(candidate)
+            except OSError as error:
+                log.info("Cannot use JDownloader folder %s: %s", candidate, error)
     return valid
 
 
-def format_urls_for_jdownloader(urls: List[str], package_name: str = "FitGirl_Repack") -> List[str]:
-    """
-    Ensure every direct download URL has a '#filename.partXX.rar' fragment.
-    This guarantees JDownloader 2 treats it as a direct archive file and never
-    triggers 'Deep Link Analysis' or 'Nothing Found' dialogs.
-    """
-    safe_pkg = re.sub(r'[^a-zA-Z0-9_-]', '_', package_name).strip('_') or "FitGirl_Repack"
-    formatted = []
-    for i, u in enumerate(urls):
-        clean = u.strip()
-        if not clean:
-            continue
-        if "#" in clean:
-            formatted.append(clean)
-        else:
-            formatted.append(f"{clean}#{safe_pkg}.part{i+1:03d}.rar")
-    return formatted
-
-
-def is_jdownloader_running(port: int = 9666, timeout: float = 2.0) -> bool:
-    """Check if JDownloader 2 local HTTP server is alive on port 9666."""
-    try:
-        url = f"http://127.0.0.1:{port}/"
-        req = urllib.request.Request(url, headers={"User-Agent": "FitGirlLinkExtractor/3.0"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            content = resp.read().decode("utf-8", errors="ignore").lower()
-            return "jdownloader" in content or resp.status == 200
-    except Exception:
-        try:
-            url = f"http://127.0.0.1:{port}/flash/"
-            req = urllib.request.Request(url, headers={"User-Agent": "FitGirlLinkExtractor/3.0"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                return resp.status in (200, 404, 405)
-        except Exception:
-            return bool(get_jd_folderwatch_dirs())
+def _single_line(text: str) -> str:
+    """Titles can come from the shared database, and a line break could add crawljob settings."""
+    return re.sub(r"[\r\n]+", " ", text or "").strip()
 
 
 def push_to_jdownloader(
@@ -69,113 +44,79 @@ def push_to_jdownloader(
     package_name: str = "FitGirl Repack",
     source_url: str = "",
     port: int = 9666,
-    timeout: float = 5.0
+    timeout: float = 5.0,
 ) -> Tuple[bool, str]:
-    """
-    Push direct download links into JDownloader 2 via dual channels:
-    1. Local FlashGot/CNL HTTP API (port 9666)
-    2. Direct .crawljob write to JDownloader 2 folderwatch directory
-    Returns (success: bool, message: str).
-    """
+    """Send links to JDownloader 2 over its local API, or through its watch folder if that fails."""
     if not urls:
         return False, "No URLs to push."
 
-    # Format URLs with #filename.rar fragments so JDownloader recognizes them as archives
-    clean_urls = format_urls_for_jdownloader(urls, package_name)
-    url_data = "\r\n".join(clean_urls)
-    endpoint = f"http://127.0.0.1:{port}/flash/add"
-
-    form_data = urllib.parse.urlencode({
-        "urls": url_data,
-        "package": package_name,
-        "source": source_url or "https://fitgirl-repacks.site/"
+    package = _single_line(package_name) or "FitGirl Repack"
+    named_urls = links.with_filename_fragments(urls, package)
+    form = urllib.parse.urlencode({
+        "urls": "\r\n".join(named_urls),
+        "package": package,
+        "source": source_url or "https://fitgirl-repacks.site/",
     }).encode("utf-8")
-
-    req = urllib.request.Request(
-        endpoint,
-        data=form_data,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/flash/add",
+        data=form,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Content-Type": "application/x-www-form-urlencoded"},
     )
 
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            if resp.status in (200, 204):
-                return True, f"Successfully pushed {len(clean_urls)} links for '{package_name}' into JDownloader 2!"
-            return True, f"Pushed {len(clean_urls)} links to JDownloader (Status {resp.status})."
-    except Exception as http_err:
-        # Dual-channel: Fallback to JDownloader folderwatch directory if HTTP port is busy/blocked
-        fw_dirs = get_jd_folderwatch_dirs()
-        if fw_dirs:
-            safe_pkg = re.sub(r'[^a-zA-Z0-9_-]', '_', package_name).strip('_') or "repack"
-            cj_path = os.path.join(fw_dirs[0], f"{safe_pkg}_{int(time.time())}.crawljob")
-            if export_crawljob(cj_path, clean_urls, package_name=package_name):
-                return True, f"Pushed {len(clean_urls)} links to JDownloader 2 via folderwatch!"
-        return False, f"Could not connect to JDownloader 2 on port {port}. Please make sure JDownloader 2 is running."
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            if response.status in (200, 204):
+                return True, f"Successfully pushed {len(named_urls)} links for '{package}' into JDownloader 2!"
+            return True, f"Pushed {len(named_urls)} links to JDownloader (Status {response.status})."
+    except (OSError, ValueError, http.client.HTTPException) as error:
+        log.info("JDownloader API unavailable, trying the watch folder: %s", error)
+
+    for folder in get_jd_folderwatch_dirs()[:1]:
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", package).strip("_") or "repack"
+        if export_crawljob(os.path.join(folder, f"{safe_name}_{int(time.time())}.crawljob"), named_urls, package):
+            return True, f"Pushed {len(named_urls)} links to JDownloader 2 via folderwatch!"
+    return False, f"Could not connect to JDownloader 2 on port {port}. Please make sure JDownloader 2 is running."
 
 
-def export_crawljob(
-    filepath: str,
-    urls: List[str],
-    package_name: str = "FitGirl Repack",
-    auto_start: bool = False
-) -> bool:
-    """
-    Export URLs as a JDownloader 2 .crawljob file.
-    """
-    try:
-        clean_urls = format_urls_for_jdownloader(urls, package_name)
-        content_lines = [
-            f"text={'\\r\\n'.join(clean_urls)}",
-            f"packageName={package_name}",
-            "enabled=true",
-            f"autoStart={'true' if auto_start else 'false'}",
-            "forcedStart=false",
-            "autoConfirm=true"
-        ]
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write("\n".join(content_lines) + "\n")
-        return True
-    except Exception:
-        return False
+def export_crawljob(filepath: str, urls: List[str], package_name: str = "FitGirl Repack", auto_start: bool = False) -> bool:
+    """Write a JDownloader 2 .crawljob file."""
+    package = _single_line(package_name)
+    # The format expects a literal backslash-r backslash-n between links on one line.
+    joined_links = "\\r\\n".join(links.with_filename_fragments(urls, package))
+    lines = [
+        f"text={joined_links}",
+        f"packageName={package}",
+        "enabled=true",
+        f"autoStart={'true' if auto_start else 'false'}",
+        "forcedStart=false",
+        "autoConfirm=true",
+    ]
+    return _write_text(filepath, "\n".join(lines) + "\n")
 
 
-def export_json(
-    filepath: str,
-    title: str,
-    source_url: str,
-    urls: List[str],
-    total_size_str: str = ""
-) -> bool:
-    """
-    Export extraction results as formatted JSON.
-    """
-    try:
-        clean_urls = format_urls_for_jdownloader(urls, title)
-        data = {
-            "title": title,
-            "source_url": source_url,
-            "total_parts": len(clean_urls),
-            "total_size": total_size_str,
-            "urls": clean_urls
-        }
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-        return True
-    except Exception:
-        return False
+def export_json(filepath: str, title: str, source_url: str, urls: List[str], total_size_str: str = "") -> bool:
+    """Write extraction results as formatted JSON."""
+    named_urls = links.with_filename_fragments(urls, title)
+    data = {
+        "title": title,
+        "source_url": source_url,
+        "total_parts": len(named_urls),
+        "total_size": total_size_str,
+        "urls": named_urls,
+    }
+    return _write_text(filepath, json.dumps(data, indent=2))
 
 
 def export_text(filepath: str, urls: List[str], package_name: str = "FitGirl_Repack") -> bool:
-    """
-    Export URLs as simple text list with #filename.rar fragments.
-    """
+    """Write a plain list of links."""
+    return _write_text(filepath, "\n".join(links.with_filename_fragments(urls, package_name)) + "\n")
+
+
+def _write_text(filepath: str, content: str) -> bool:
     try:
-        clean_urls = format_urls_for_jdownloader(urls, package_name)
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write("\n".join(clean_urls) + "\n")
+        with open(filepath, "w", encoding="utf-8") as handle:
+            handle.write(content)
         return True
-    except Exception:
+    except OSError as error:
+        log.warning("Could not write %s: %s", filepath, error)
         return False

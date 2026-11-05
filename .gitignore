@@ -57,6 +57,7 @@ history.db-shm
 *.sqlite3
 settings.json
 community_reports.json
+community_games_cache.json
 crash_logs.json
 admin_key.secret
 *.secret

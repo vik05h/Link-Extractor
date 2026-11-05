@@ -1,52 +1,56 @@
 import re
 import html
+import http.client
 import json
+import logging
 import urllib.request
 import urllib.parse
-from typing import List, Dict, Tuple, Optional, Callable
+from typing import List, Dict, Tuple, Optional
+
+import game_records
+import links
+
+log = logging.getLogger(__name__)
+
+
+def _with_scheme(text: str) -> str:
+    return text if "://" in text else f"https://{text}"
+
+
+def extract_hoster_links(text: str) -> List[str]:
+    """The unique hoster page links in pasted text, in order."""
+    found = [url for url in links.extract_urls(text) if links.is_hoster_page_url(url)]
+    return list(dict.fromkeys(found))
 
 
 def detect_url_type(raw_input: str) -> str:
     """
-    Detect the type of URL or text entered by the user.
+    Decide what the user pasted, judging links by their exact hostname.
     Returns one of:
       - 'fitgirl_game_page': e.g. https://fitgirl-repacks.site/black-myth-wukong/
       - 'fitgirl_pastebin': e.g. https://paste.fitgirl-repacks.site/?dc64365f494f3ba0#...
-      - 'fuckingfast_direct': single https://fuckingfast.co/... link
-      - 'raw_links': multiple links containing fuckingfast.co
-      - 'unknown': unrecognized input
+      - 'fuckingfast_direct': a single https://fuckingfast.co/... part page
+      - 'raw_links': several part pages and nothing else
+      - 'unknown': anything else, including finished dl.fuckingfast.co links
     """
-    text = raw_input.strip()
+    text = (raw_input or "").strip()
     if not text:
         return "unknown"
 
-    # Check for multiple URLs in input
-    all_urls = re.findall(r'https?://[^\s,]+', text)
-    ff_urls = [u for u in all_urls if "fuckingfast.co" in urllib.parse.urlparse(u).netloc]
-    if len(ff_urls) > 1:
-        return "raw_links"
-    elif len(ff_urls) == 1 and len(all_urls) == 1:
-        return "fuckingfast_direct"
+    all_urls = links.extract_urls(text)
+    if len(all_urls) > 1:
+        return "raw_links" if all(links.is_hoster_page_url(url) for url in all_urls) else "unknown"
 
-    # Parse primary URL
-    parsed = urllib.parse.urlparse(text)
-    host = parsed.netloc.lower()
-
-    if "paste.fitgirl-repacks.site" in host:
+    # A single link and nothing else. Sentences that merely mention a site do not count.
+    if re.search(r"\s", text):
+        return "unknown"
+    url = _with_scheme(text)
+    if links.is_fitgirl_paste_url(url):
         return "fitgirl_pastebin"
-    elif "fitgirl-repacks.site" in host:
+    if links.is_fitgirl_page_url(url):
         return "fitgirl_game_page"
-    elif "fuckingfast.co" in host:
+    if links.is_hoster_page_url(url):
         return "fuckingfast_direct"
-
-    # Fallback to substring matching if URL was entered without protocol
-    if text.startswith("paste.fitgirl-repacks.site") or "paste.fitgirl-repacks.site" in text.split("#")[0]:
-        return "fitgirl_pastebin"
-    elif "fitgirl-repacks.site" in text.split("#")[0]:
-        return "fitgirl_game_page"
-    elif "fuckingfast.co" in text:
-        return "fuckingfast_direct"
-
     return "unknown"
 
 
@@ -108,21 +112,6 @@ def extract_game_cover_image(url: str, page_html: Optional[str] = None) -> str:
     return ""
 
 
-def extract_game_slug(url: str, title: str = "") -> str:
-    """Extract clean URL slug for game."""
-    if "fitgirl-repacks.site" in url:
-        parsed = urllib.parse.urlparse(url)
-        path_parts = [p for p in parsed.path.strip("/").split("/") if p]
-        if path_parts:
-            return path_parts[-1].lower()
-    if title:
-        clean = re.sub(r'\[.*?\]|\(.*?\)', '', title)
-        slug = re.sub(r'[^a-zA-Z0-9]+', '-', clean.lower()).strip('-')
-        if slug:
-            return slug
-    return "fitgirl-game"
-
-
 def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], str, str]:
     """
     Fetch a FitGirl game page and extract all pastebin links with hoster names, game title, and cover image.
@@ -153,11 +142,16 @@ def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], st
                 page_html = content_bytes.decode("utf-8")
             except UnicodeDecodeError:
                 page_html = content_bytes.decode("windows-1252", errors="ignore")
-    except Exception as e:
-        raise RuntimeError(f"Failed to fetch FitGirl game page: {e}")
+    except (OSError, ValueError, http.client.HTTPException) as e:
+        raise RuntimeError(f"Failed to fetch FitGirl game page: {e}") from e
 
     game_title = extract_game_title(game_url, page_html)
     cover_image_url = extract_game_cover_image(game_url, page_html)
+    return parse_pastebins_from_html(page_html), game_title, cover_image_url
+
+
+def parse_pastebins_from_html(page_html: str) -> List[Dict[str, str]]:
+    """All pastebin links on a game page, with the hoster each one is for."""
     results = []
 
     pattern = r'<a[^>]+href=[\x22\x27](https?://paste\.fitgirl-repacks\.site/[^\x22\x27]+)[\x22\x27][^>]*>(.*?)</a>'
@@ -165,14 +159,14 @@ def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], st
 
     for url, raw_label in matches:
         clean_label = clean_title_text(re.sub(r'<[^>]+>', '', raw_label))
-        hoster = "Unknown"
-        if "fuckingfast" in clean_label.lower():
+        lowered = clean_label.lower()
+        if "fuckingfast" in lowered:
             hoster = "FuckingFast"
-        elif "datanodes" in clean_label.lower():
+        elif "datanodes" in lowered:
             hoster = "DataNodes"
-        elif "filekeeper" in clean_label.lower():
+        elif "filekeeper" in lowered:
             hoster = "FileKeeper"
-        elif "multiupload" in clean_label.lower():
+        elif "multiupload" in lowered:
             hoster = "MultiUpload"
         else:
             hoster = clean_label or "Mirror"
@@ -192,22 +186,13 @@ def extract_game_page_pastebins(game_url: str) -> Tuple[List[Dict[str, str]], st
                 "label": "FitGirl Pastebin"
             })
 
-    return results, game_title, cover_image_url
+    return results
 
 
 def extract_links_from_pastebin_html(page_content: str) -> List[str]:
-    """
-    Extract all fuckingfast.co links from decrypted pastebin HTML or text.
-    """
+    """The unique part links in a decrypted pastebin page, in order."""
     urls = re.findall(r'https?://(?:www\.)?fuckingfast\.co/[^\s\x22\x27<>]+', page_content)
-    seen = set()
-    deduped = []
-    for u in urls:
-        clean_u = u.strip()
-        if clean_u not in seen:
-            seen.add(clean_u)
-            deduped.append(clean_u)
-    return deduped
+    return list(dict.fromkeys(url.strip() for url in urls))
 
 
 def extract_game_info_from_part_urls(urls: List[str]) -> Tuple[str, str]:
@@ -272,7 +257,8 @@ def search_fitgirl_site(query: str, timeout: float = 6.0) -> Optional[Dict[str, 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             page_html = resp.read().decode("utf-8", errors="ignore")
-    except Exception:
+    except (OSError, ValueError, http.client.HTTPException) as error:
+        log.info("FitGirl site search failed: %s", error)
         return None
 
     matches = re.findall(
@@ -337,8 +323,8 @@ def search_steam_artwork(query: str, timeout: float = 4.0) -> Optional[Dict[str,
                                 "image_url": header_url,
                                 "app_id": str(app_id)
                             }
-                except Exception:
-                    pass
+                except (OSError, ValueError, http.client.HTTPException) as error:
+                    log.debug("Steam header image unavailable: %s", error)
 
                 # Fallback to verified capsule image returned by Steam API
                 if tiny_img and tiny_img.startswith("http"):
@@ -347,8 +333,8 @@ def search_steam_artwork(query: str, timeout: float = 4.0) -> Optional[Dict[str,
                         "image_url": tiny_img,
                         "app_id": str(app_id)
                     }
-    except Exception:
-        pass
+    except (OSError, ValueError, http.client.HTTPException) as error:
+        log.info("Steam artwork search failed: %s", error)
     return None
 
 
@@ -399,12 +385,12 @@ def resolve_pastebin_metadata(pastebin_url: str, part_urls: List[str]) -> Dict[s
                 _, _, page_cover = extract_game_page_pastebins(source_url)
                 if page_cover and page_cover.startswith("http") and not page_cover.startswith("data:"):
                     image_url = page_cover
-            except Exception:
-                pass
+            except RuntimeError as error:
+                log.info("Could not read cover from the game page: %s", error)
 
     # Fallback title if search failed
     final_title = official_title or candidate_title or "FitGirl Repack"
-    final_slug = slug or extract_game_slug(source_url, final_title)
+    final_slug = slug or game_records.generate_game_slug(source_url, final_title)
 
     # Tier 2: Search Steam Store API if no FitGirl page cover found
     if not image_url:
@@ -423,9 +409,3 @@ def resolve_pastebin_metadata(pastebin_url: str, part_urls: List[str]) -> Dict[s
         "source_url": source_url,
         "slug": final_slug
     }
-
-
-def extract_game_slug(url: str, title: str = "") -> str:
-    """Extract canonical slug from URL or game title."""
-    import community
-    return community.generate_game_slug(url, title)

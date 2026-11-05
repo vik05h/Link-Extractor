@@ -6,8 +6,24 @@
   export let parts: PartItem[] = [];
   const dispatch = createEventDispatcher();
 
+  const STORAGE_KEY = 'le_selective_filter';
+
   let keepOnlyEnglish = true;
   let excludeBonuses = false;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      keepOnlyEnglish = saved.keepOnlyEnglish ?? true;
+      excludeBonuses = saved.excludeBonuses ?? false;
+    } catch {}
+  }
+
+  function saveChoices() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOnlyEnglish, excludeBonuses }));
+    } catch {}
+  }
 
   // Classify a filename
   export function classifyPart(filename: string): 'core' | 'language' | 'optional' {
@@ -47,6 +63,15 @@
     });
   }
 
+  // Apply the chips as they appear whenever a new set of parts arrives, so what the
+  // chips show is always what gets pushed, copied and exported.
+  let appliedTo = '';
+  $: signature = parts.map(p => p.filename || '').join('|');
+  $: if (signature && signature !== appliedTo) {
+    appliedTo = signature;
+    applyFilter();
+  }
+
   // Count categories
   $: languagePacksCount = parts.filter(p => classifyPart(p.filename || '') === 'language').length;
   $: bonusPacksCount = parts.filter(p => classifyPart(p.filename || '') === 'optional').length;
@@ -66,7 +91,7 @@
           type="button"
           class="filter-chip" 
           class:active={keepOnlyEnglish}
-          on:click={() => { keepOnlyEnglish = !keepOnlyEnglish; applyFilter(); }}
+          on:click={() => { keepOnlyEnglish = !keepOnlyEnglish; saveChoices(); applyFilter(); }}
         >
           <span class="chip-status">
             {#if keepOnlyEnglish}
@@ -84,7 +109,7 @@
           type="button"
           class="filter-chip" 
           class:active={excludeBonuses}
-          on:click={() => { excludeBonuses = !excludeBonuses; applyFilter(); }}
+          on:click={() => { excludeBonuses = !excludeBonuses; saveChoices(); applyFilter(); }}
         >
           <span class="chip-status">
             {#if excludeBonuses}

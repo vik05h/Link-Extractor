@@ -1,457 +1,195 @@
-import os
-import sys
-import re
+"""Community Cloud Cache: the shared list of games and their direct links.
+
+Everything read from the database is treated as untrusted and checked by links.py
+and game_records.py. This module only ever adds or updates game records. It never
+deletes them, because every client would then be able to remove other people's games.
+"""
+
 import json
-import time
+import logging
+import os
+import re
 import threading
-import urllib.request
-import urllib.parse
-import urllib.error
+import time
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Optional, Tuple, Callable
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-import validator
-import updater
-import scraper
+import firebase_client
+import game_records
+import links
 import utils
+from firebase_client import FirebaseError
+from version import APP_VERSION
 
-DEFAULT_FIREBASE_URL = "https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app"
+log = logging.getLogger(__name__)
 
-# Built-in local offline fallback repository for initial offline experience
-DEMO_COMMUNITY_DATA = {
-    "elden-ring-shadow-of-the-erdtree": {
-        "slug": "elden-ring-shadow-of-the-erdtree",
-        "title": "ELDEN RING: Shadow of the Erdtree Edition",
-        "image_url": "https://fitgirl-repacks.site/wp-content/uploads/2024/06/elden-ring-sote.jpg",
-        "source_url": "https://fitgirl-repacks.site/elden-ring-shadow-of-the-erdtree/",
-        "timestamp_utc": "2026-08-20T18:15:00Z",
-        "total_parts": 14,
-        "resolved_count": 14,
-        "total_size_str": "61.2 GB",
-        "total_size_bytes": 65712000000,
-        "status": "aging",
-        "uploader": "Community Scout"
-    },
-    "cyberpunk-2077-phantom-liberty": {
-        "slug": "cyberpunk-2077-phantom-liberty",
-        "title": "Cyberpunk 2077: Ultimate Edition – v2.13",
-        "image_url": "https://fitgirl-repacks.site/wp-content/uploads/2023/12/cyberpunk-2077-ue.jpg",
-        "source_url": "https://fitgirl-repacks.site/cyberpunk-2077/",
-        "timestamp_utc": "2026-08-21T06:00:00Z",
-        "total_parts": 18,
-        "resolved_count": 18,
-        "total_size_str": "78.9 GB",
-        "total_size_bytes": 84724000000,
-        "status": "fresh",
-        "uploader": "CyberRunner"
-    },
-    "god-of-war-ragnarok": {
-        "slug": "god-of-war-ragnarok",
-        "title": "God of War: Ragnarök – Digital Deluxe Edition",
-        "image_url": "https://fitgirl-repacks.site/wp-content/uploads/2024/09/god-of-war-ragnarok.jpg",
-        "source_url": "https://fitgirl-repacks.site/god-of-war-ragnarok/",
-        "timestamp_utc": "2026-08-19T14:20:00Z",
-        "total_parts": 24,
-        "resolved_count": 24,
-        "total_size_str": "104.5 GB",
-        "total_size_bytes": 112211000000,
-        "status": "expired",
-        "uploader": "KratosBlade"
+META_PATH = "games_meta"
+URLS_PATH = "games_urls"
+# Presence lives under one game's record because the database rules grew around that path.
+PRESENCE_PATH = f"{META_PATH}/grand-theft-auto-v/presence"
+PRESENCE_ACTIVE_SECONDS = 300
+PRESENCE_PRUNE_LIMIT = 15
+
+FEED_MAX_AGE_SECONDS = 300.0
+FEED_TIMEOUT_SECONDS = 15.0
+
+# Older versions saved these made-up records into the local cache file.
+_LEGACY_DEMO_UPLOADERS = {"Community Scout", "CyberRunner", "KratosBlade"}
+
+FeedCallback = Callable[[List[Dict[str, Any]]], None]
+
+
+class _FeedState:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.games: Optional[List[Dict[str, Any]]] = None
+        self.synced_at = 0.0
+        self.syncing = False
+        self.offline = False
+        self.waiting: List[FeedCallback] = []
+        self.live_gamers = 1
+
+
+_feed = _FeedState()
+
+
+def reset_feed_cache() -> None:
+    """Forget everything held in memory. The next read starts from the saved list."""
+    global _feed
+    _feed = _FeedState()
+
+
+def _cache_file() -> str:
+    return os.path.join(utils.get_app_data_dir(), "community_games_cache.json")
+
+
+def _clean_feed(raw: Any) -> List[Dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return []
+    cleaned = (game_records.clean_feed_record(slug, record) for slug, record in raw.items())
+    return game_records.dedupe_feed(record for record in cleaned if record)
+
+
+def _load_cached_feed() -> List[Dict[str, Any]]:
+    try:
+        with open(_cache_file(), "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except FileNotFoundError:
+        return []
+    except (OSError, ValueError) as error:
+        log.warning("Ignoring unreadable community cache: %s", error)
+        return []
+    if not isinstance(data, list):
+        return []
+    usable = {
+        record["slug"]: record
+        for record in data
+        if isinstance(record, dict)
+        and isinstance(record.get("slug"), str)
+        and record.get("uploader") not in _LEGACY_DEMO_UPLOADERS
     }
-}
-
-DEMO_COMMUNITY_URLS = {
-    "elden-ring-shadow-of-the-erdtree": [
-        f"https://dl.fuckingfast.co/dl/er_sote_part{i:02d}#Elden_Ring_SOTE.part{i:02d}.rar" for i in range(1, 15)
-    ],
-    "cyberpunk-2077-phantom-liberty": [
-        f"https://dl.fuckingfast.co/dl/cp2077_ue_part{i:02d}#Cyberpunk_2077_UE.part{i:02d}.rar" for i in range(1, 19)
-    ],
-    "god-of-war-ragnarok": [
-        f"https://dl.fuckingfast.co/dl/gow_rag_part{i:02d}#God_of_War_Ragnarok.part{i:02d}.rar" for i in range(1, 25)
-    ]
-}
+    return _clean_feed(usable)
 
 
-def sanitize_slug(slug_str: str) -> str:
-    """Sanitize slug for safe Firebase path and URL parsing."""
-    slug = re.sub(r'[^a-zA-Z0-9_-]', '-', slug_str.lower())
-    slug = re.sub(r'-+', '-', slug).strip('-')
-    return slug or "unnamed-game"
-
-
-def generate_game_slug(url: str, title: str = "") -> str:
-    """Generate canonical game slug from URL or title."""
-    url_clean = (url or "").strip()
-    if "fitgirl-repacks.site" in url_clean:
-        parsed = urllib.parse.urlparse(url_clean)
-        path_parts = [p for p in parsed.path.strip("/").split("/") if p]
-        if path_parts:
-            return sanitize_slug(path_parts[-1])
-
-    if title:
-        clean = re.sub(r'\[.*?\]|\(.*?\)', '', title)
-        return sanitize_slug(clean)
-
-    if url_clean:
-        return sanitize_slug(url_clean.split("/")[-1].split("?")[0])
-
-    return "fitgirl-game"
-
-
-def get_current_utc_iso() -> str:
-    """Get ISO-8601 formatted UTC timestamp string."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def parse_iso_timestamp(iso_str: str) -> datetime:
-    """Parse ISO-8601 UTC timestamp string to datetime object."""
+def _save_cached_feed(games: List[Dict[str, Any]]) -> None:
     try:
-        clean_str = iso_str.replace("Z", "+00:00")
-        return datetime.fromisoformat(clean_str)
+        utils.write_json_atomic(_cache_file(), games)
+    except OSError as error:
+        log.warning("Could not save community cache: %s", error)
+
+
+def _sync_feed(state: _FeedState) -> None:
+    games: Optional[List[Dict[str, Any]]] = None
+    try:
+        games = _clean_feed(firebase_client.request(META_PATH, timeout=FEED_TIMEOUT_SECONDS))
+    except FirebaseError as error:
+        log.warning("Community feed sync failed: %s", error)
     except Exception:
-        return datetime.now(timezone.utc)
+        # A sync must always end below, or the feed would stay stuck as "syncing".
+        log.exception("Could not process the community feed")
+
+    with state.lock:
+        if games is not None:
+            state.games = games
+        state.synced_at = time.time()
+        state.offline = games is None
+        state.syncing = False
+        waiting, state.waiting = state.waiting, []
+        current = list(state.games or [])
+
+    if games is not None:
+        _save_cached_feed(games)
+
+    aged = [game_records.with_age(game) for game in current]
+    for callback in waiting:
+        try:
+            callback(aged)
+        except Exception:
+            log.exception("Community feed listener failed")
 
 
-def format_localized_timestamp(iso_str: str) -> Tuple[str, str, str]:
+def get_community_games(force_refresh: bool = False, on_synced: Optional[FeedCallback] = None) -> List[Dict[str, Any]]:
+    """Return the games known right now, instantly, and refresh in the background if needed.
+
+    on_synced is called when a background refresh ends, whether it worked or not. It
+    is not called when the current list is recent enough to need no refresh.
     """
-    Convert UTC ISO timestamp to client local time.
-    Returns:
-      (local_time_formatted, relative_age_str, freshness_category)
-      - local_time_formatted: e.g. "21 Aug 2026, 05:25 PM IST"
-      - relative_age_str: e.g. "2 hours ago", "15m ago", "Just now"
-      - freshness_category: "fresh" (<12h), "aging" (12-36h), "expired" (>36h)
-    """
+    state = _feed
+    with state.lock:
+        if state.games is None:
+            state.games = _load_cached_feed()
+        stale = time.time() - state.synced_at >= FEED_MAX_AGE_SECONDS
+        start_sync = (force_refresh or stale) and not state.syncing
+        if start_sync:
+            state.syncing = True
+        if state.syncing and on_synced and on_synced not in state.waiting:
+            state.waiting.append(on_synced)
+        games = list(state.games)
+
+    if start_sync:
+        threading.Thread(target=_sync_feed, args=(state,), daemon=True, name="feed-sync").start()
+    return [game_records.with_age(game) for game in games]
+
+
+def feed_status() -> Dict[str, bool]:
+    """Whether the last sync failed and whether one is running now."""
+    state = _feed
+    with state.lock:
+        return {"offline": state.offline, "syncing": state.syncing}
+
+
+def get_game_by_slug(slug: str) -> Optional[Dict[str, Any]]:
+    """Read and validate one game's record directly from the database."""
+    clean_slug = game_records.sanitize_slug(slug)
     try:
-        dt_utc = parse_iso_timestamp(iso_str)
-        dt_local = dt_utc.astimezone()
-
-        # Format local date and time with compact timezone name
-        raw_tz = dt_local.strftime("%Z") or ""
-        if len(raw_tz) > 5:
-            # Abbreviate Windows full timezone name (e.g. India Standard Time -> IST)
-            tz_abbr = "".join([c for c in raw_tz if c.isupper()])
-        else:
-            tz_abbr = raw_tz
-
-        time_part = dt_local.strftime("%d %b %Y, %I:%M %p")
-        local_time_str = f"{time_part} {tz_abbr}".strip() if tz_abbr else time_part
-
-        # Calculate relative difference
-        now_local = datetime.now(dt_local.tzinfo)
-        diff_seconds = max(0, int((now_local - dt_local).total_seconds()))
-
-        hours = diff_seconds / 3600.0
-
-        if diff_seconds < 60:
-            age_str = "Just now"
-        elif diff_seconds < 3600:
-            mins = diff_seconds // 60
-            age_str = f"{mins} min{'s' if mins != 1 else ''} ago"
-        elif diff_seconds < 86400:
-            hrs = diff_seconds // 3600
-            age_str = f"{hrs} hour{'s' if hrs != 1 else ''} ago"
-        else:
-            days = diff_seconds // 86400
-            age_str = f"{days} day{'s' if days != 1 else ''} ago"
-
-        if hours < 12.0:
-            freshness = "fresh"
-        elif hours <= 36.0:
-            freshness = "aging"
-        else:
-            freshness = "expired"
-
-        return local_time_str, age_str, freshness
-
-    except Exception:
-        return iso_str, "Recently", "aging"
-
-
-def _http_request(url: str, method: str = "GET", data: Optional[Dict[str, Any]] = None, timeout: float = 6.0) -> Optional[Any]:
-    """Lightweight HTTP helper using standard urllib with JSON payload handling."""
-    req_headers = {
-        "User-Agent": "FitGirlLinkExtractor/3.2.0 (Community Hub Client)",
-        "Accept": "application/json"
-    }
-
-    body = None
-    if data is not None:
-        body = json.dumps(data).encode("utf-8")
-        req_headers["Content-Type"] = "application/json"
-
-    req = urllib.request.Request(url, data=body, headers=req_headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8")
-            if raw.strip():
-                return json.loads(raw)
-            return None
-    except Exception:
+        raw = firebase_client.request(f"{META_PATH}/{clean_slug}", timeout=5.0)
+    except FirebaseError as error:
+        log.info("Could not read game %s: %s", clean_slug, error)
         return None
+    record = game_records.clean_feed_record(clean_slug, raw)
+    return game_records.with_age(record) if record else None
 
 
-_COMMUNITY_GAMES_CACHE: Optional[List[Dict[str, Any]]] = None
-_COMMUNITY_GAMES_CACHE_TIME: float = 0.0
-_COMMUNITY_CACHE_LOCK = threading.Lock()
-_COMMUNITY_SYNC_RUNNING = False
-
-
-def _get_local_games_cache_file() -> str:
-    """Get persistent path for local community games cache."""
-    data_dir = utils.get_app_data_dir()
-    return os.path.join(data_dir, "community_games_cache.json")
-
-
-def _load_local_games_cache() -> List[Dict[str, Any]]:
-    """Load locally persisted community games list or fallback to demo data."""
-    fpath = _get_local_games_cache_file()
-    if os.path.exists(fpath):
-        try:
-            with open(fpath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list) and data:
-                    return data
-        except Exception:
-            pass
-
-    # Built-in fallback
-    results = []
-    for slug, item in DEMO_COMMUNITY_DATA.items():
-        rec = dict(item)
-        rec["used_count"] = int(item.get("used_count", 12))
-        iso_ts = rec.get("timestamp_utc", get_current_utc_iso())
-        loc_time, age_str, fresh = format_localized_timestamp(iso_ts)
-        rec["local_time"] = loc_time
-        rec["age_str"] = age_str
-        rec["freshness"] = fresh
-        results.append(rec)
-    return results
-
-
-def _save_local_games_cache(games_list: List[Dict[str, Any]]):
-    """Save community games list to persistent local storage."""
-    fpath = _get_local_games_cache_file()
+def get_game_urls(slug: str) -> List[str]:
+    """The direct links for a game, or nothing at all if any of them cannot be trusted."""
+    clean_slug = game_records.sanitize_slug(slug)
     try:
-        with open(fpath, "w", encoding="utf-8") as f:
-            json.dump(games_list, f, indent=2, ensure_ascii=False)
-    except Exception:
-        pass
+        data = firebase_client.request(f"{URLS_PATH}/{clean_slug}", timeout=8.0)
+    except FirebaseError as error:
+        log.warning("Could not read links for %s: %s", clean_slug, error)
+        return []
 
-
-def invalidate_community_cache():
-    """Invalidates the in-memory community feed cache."""
-    global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
-    with _COMMUNITY_CACHE_LOCK:
-        _COMMUNITY_GAMES_CACHE = None
-        _COMMUNITY_GAMES_CACHE_TIME = 0.0
-
-
-def _fetch_and_cache_community_games(firebase_url: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Internal synchronous fetch from Firebase with deduplication and persistence."""
-    global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
-
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    endpoint = f"{base_url}/games_meta.json"
-
-    data = _http_request(endpoint, method="GET", timeout=4.0)
-
-    results = []
-    if isinstance(data, dict) and data:
-        for slug, item in data.items():
-            if isinstance(item, dict):
-                rec = dict(item)
-                rec["slug"] = slug
-                rec["used_count"] = int(item.get("used_count", 0))
-                iso_ts = rec.get("timestamp_utc", get_current_utc_iso())
-                loc_time, age_str, fresh = format_localized_timestamp(iso_ts)
-                rec["local_time"] = loc_time
-                rec["age_str"] = age_str
-                rec["freshness"] = fresh
-                results.append(rec)
-    else:
-        results = _load_local_games_cache()
-
-    # Sort descending by timestamp initially
-    results.sort(key=lambda r: r.get("timestamp_utc", ""), reverse=True)
-
-    # Intelligent Canonical Deduplication
-    deduped = []
-    seen_identities = {}
-    stale_prune_slugs = []
-
-    for r in results:
-        title = (r.get("title") or "").strip()
-        img = (r.get("image_url") or "").strip()
-        src = (r.get("source_url") or "").strip()
-        slug = r.get("slug", "")
-
-        is_generic_title = title.lower() in (
-            "fuckingfast direct parts", "fitgirl pastebin download",
-            "direct repack", "fitgirl repack"
-        ) or title.startswith("Part ")
-
-        canonical_key = None
-
-        norm_title = re.sub(r'[^a-z0-9]', '', title.lower())
-        norm_core = re.sub(r'(deluxeedition|completeedition|ultimateedition|jackdawedition|bonusost|bonuscontent|repack|repak|v\d+.*)', '', norm_title)
-
-        if len(norm_core) > 5 and not is_generic_title:
-            canonical_key = f"title:{norm_core[:24]}"
-        elif img and img.startswith("http") and not img.startswith("data:"):
-            canonical_key = f"img:{img}"
-        elif src and "fitgirl-repacks.site" in src:
-            clean_path = urllib.parse.urlparse(src).path.strip("/")
-            if clean_path:
-                canonical_key = f"src:{clean_path}"
-        else:
-            canonical_key = f"slug:{slug}"
-
-        if canonical_key in seen_identities:
-            existing_idx = seen_identities[canonical_key]
-            existing_rec = deduped[existing_idx]
-            existing_is_generic = existing_rec.get("title", "").lower() in (
-                "fuckingfast direct parts", "fitgirl pastebin download",
-                "direct repack", "fitgirl repack"
-            )
-
-            if existing_is_generic and not is_generic_title:
-                stale_prune_slugs.append(existing_rec.get("slug"))
-                r["used_count"] = max(r.get("used_count", 0), existing_rec.get("used_count", 0))
-                deduped[existing_idx] = r
-            elif not existing_is_generic and is_generic_title:
-                stale_prune_slugs.append(slug)
-                existing_rec["used_count"] = max(existing_rec.get("used_count", 0), r.get("used_count", 0))
-            else:
-                ts_cur = r.get("timestamp_utc", "")
-                ts_ext = existing_rec.get("timestamp_utc", "")
-                if ts_cur > ts_ext:
-                    stale_prune_slugs.append(existing_rec.get("slug"))
-                    r["used_count"] = max(r.get("used_count", 0), existing_rec.get("used_count", 0))
-                    deduped[existing_idx] = r
-                else:
-                    stale_prune_slugs.append(slug)
-                    existing_rec["used_count"] = max(existing_rec.get("used_count", 0), r.get("used_count", 0))
-        else:
-            seen_identities[canonical_key] = len(deduped)
-            deduped.append(r)
-
-    if stale_prune_slugs:
-        def _prune_worker(slugs):
-            for s in slugs:
-                if s and s not in ("grand-theft-auto-v", "elden-ring-shadow-of-the-erdtree", "cyberpunk-2077-phantom-liberty"):
-                    try:
-                        _http_request(f"{base_url}/games_meta/{s}.json", method="DELETE", timeout=3.0)
-                        _http_request(f"{base_url}/games_urls/{s}.json", method="DELETE", timeout=3.0)
-                    except Exception:
-                        pass
-        threading.Thread(target=_prune_worker, args=(stale_prune_slugs,), daemon=True).start()
-
-    results = deduped
-    _save_local_games_cache(results)
-
-    with _COMMUNITY_CACHE_LOCK:
-        _COMMUNITY_GAMES_CACHE = results
-        _COMMUNITY_GAMES_CACHE_TIME = time.time()
-
-    return results
-
-
-def sync_community_games_in_background(firebase_url: Optional[str] = None, on_complete: Optional[Callable[[List[Dict[str, Any]]], None]] = None):
-    """Asynchronously fetches fresh games from Firebase and updates cache without blocking caller."""
-    global _COMMUNITY_SYNC_RUNNING
-    with _COMMUNITY_CACHE_LOCK:
-        if _COMMUNITY_SYNC_RUNNING:
-            return
-        _COMMUNITY_SYNC_RUNNING = True
-
-    def _worker():
-        global _COMMUNITY_SYNC_RUNNING
-        try:
-            res = _fetch_and_cache_community_games(firebase_url)
-            if on_complete and callable(on_complete):
-                on_complete(res)
-        except Exception:
-            pass
-        finally:
-            with _COMMUNITY_CACHE_LOCK:
-                _COMMUNITY_SYNC_RUNNING = False
-
-    threading.Thread(target=_worker, daemon=True).start()
-
-
-def get_community_games(firebase_url: Optional[str] = None, force_refresh: bool = False) -> List[Dict[str, Any]]:
-    """
-    Fetch game metadata records from local persistent cache or Firebase RTDB.
-    Returns immediately with cached data (< 1ms) so the UI never hangs.
-    Spawns background sync if cache is cold or force_refresh is requested.
-    """
-    global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
-
-    with _COMMUNITY_CACHE_LOCK:
-        if _COMMUNITY_GAMES_CACHE is None:
-            _COMMUNITY_GAMES_CACHE = _load_local_games_cache()
-            _COMMUNITY_GAMES_CACHE_TIME = 0.0
-
-    now = time.time()
-    is_cache_fresh = (now - _COMMUNITY_GAMES_CACHE_TIME < 30.0)
-
-    # If force refresh is requested, return cached immediately and sync in background
-    if force_refresh or not is_cache_fresh:
-        sync_community_games_in_background(firebase_url)
-
-    return _COMMUNITY_GAMES_CACHE or []
-
-
-def get_game_by_slug(slug: str, firebase_url: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Retrieve metadata for a specific game by slug."""
-    clean_slug = sanitize_slug(slug)
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    endpoint = f"{base_url}/games_meta/{clean_slug}.json"
-
-    data = _http_request(endpoint, method="GET", timeout=4.0)
-    if isinstance(data, dict) and data:
-        data["slug"] = clean_slug
-        iso_ts = data.get("timestamp_utc", get_current_utc_iso())
-        loc_time, age_str, fresh = format_localized_timestamp(iso_ts)
-        data["local_time"] = loc_time
-        data["age_str"] = age_str
-        data["freshness"] = fresh
-        return data
-
-    # Check fallback demo
-    if clean_slug in DEMO_COMMUNITY_DATA:
-        rec = dict(DEMO_COMMUNITY_DATA[clean_slug])
-        iso_ts = rec.get("timestamp_utc", get_current_utc_iso())
-        loc_time, age_str, fresh = format_localized_timestamp(iso_ts)
-        rec["local_time"] = loc_time
-        rec["age_str"] = age_str
-        rec["freshness"] = fresh
-        return rec
-
-    return None
-
-
-def get_game_urls(slug: str, firebase_url: Optional[str] = None) -> List[str]:
-    """Retrieve direct URLs payload for a game from Firebase."""
-    clean_slug = sanitize_slug(slug)
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    endpoint = f"{base_url}/games_urls/{clean_slug}.json"
-
-    data = _http_request(endpoint, method="GET", timeout=5.0)
-    if isinstance(data, dict) and "urls" in data and isinstance(data["urls"], list):
-        return data["urls"]
-    elif isinstance(data, list):
-        return data
-
-    # Check fallback demo
-    if clean_slug in DEMO_COMMUNITY_URLS:
-        return DEMO_COMMUNITY_URLS[clean_slug]
-
-    return []
+    urls = data.get("urls") if isinstance(data, dict) else data
+    if not isinstance(urls, list) or not urls:
+        return []
+    if not all(links.is_direct_link(url) for url in urls):
+        log.warning("Rejected links for %s: a link is not on an allowed host", clean_slug)
+        return []
+    return urls
 
 
 def upload_game_record(
+    *,
     slug: str,
     title: str,
     source_url: str,
@@ -460,783 +198,202 @@ def upload_game_record(
     total_parts: int,
     total_size_str: str,
     total_size_bytes: int = 0,
-    uploader: str = "Anonymous",
-    firebase_url: Optional[str] = None
 ) -> Tuple[bool, str]:
-    """
-    Upload or update a game extraction record in Firebase Realtime Database.
-    Enforces overwrite rule (updates if newer).
-    """
-    global _COMMUNITY_GAMES_CACHE, _COMMUNITY_GAMES_CACHE_TIME
-    if not urls:
-        return False, "No URLs provided for upload."
+    """Publish one fully verified game. Returns (success, message)."""
+    clean_urls = [url.strip() for url in urls if isinstance(url, str) and url.strip()]
+    if not clean_urls:
+        return False, "No links to publish."
+    if not all(links.is_direct_link(url) for url in clean_urls):
+        return False, "Refused to publish a link that is not on an allowed host."
 
-    clean_slug = sanitize_slug(slug or generate_game_slug(source_url, title))
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    utc_now = get_current_utc_iso()
-
-    # Verify regex on links
-    valid_urls = []
-    for u in urls:
-        clean_u = u.strip()
-        if "fuckingfast.co" in clean_u:
-            valid_urls.append(clean_u)
-
-    if not valid_urls:
-        return False, "URLs do not match valid fuckingfast pattern."
-
-    # Preserve existing used_count if updating existing game
-    used_count = 0
-    existing = get_game_by_slug(clean_slug, firebase_url)
-    if existing and isinstance(existing, dict):
-        used_count = int(existing.get("used_count", 0))
-    elif clean_slug in DEMO_COMMUNITY_DATA:
-        used_count = int(DEMO_COMMUNITY_DATA[clean_slug].get("used_count", 0))
-
-    meta_payload = {
+    clean_slug = game_records.sanitize_slug(slug or game_records.generate_game_slug(source_url, title))
+    now = game_records.utc_now_iso()
+    # PATCH leaves used_count and the presence data on a record untouched.
+    meta = {
         "title": title.strip() or "FitGirl Repack",
-        "source_url": source_url.strip(),
-        "image_url": image_url.strip() if image_url else "",
-        "timestamp_utc": utc_now,
-        "total_parts": total_parts or len(valid_urls),
-        "resolved_count": len(valid_urls),
+        "source_url": source_url.strip() if links.is_allowed_source_url(source_url.strip()) else "",
+        "image_url": image_url if links.is_safe_image_url(image_url) else "",
+        "timestamp_utc": now,
+        "total_parts": total_parts or len(clean_urls),
+        "resolved_count": len(clean_urls),
         "total_size_str": total_size_str or "0 B",
         "total_size_bytes": total_size_bytes or 0,
-        "used_count": used_count,
-        "uploader": uploader or "Community",
-        "app_version": updater.CURRENT_VERSION
+        "uploader": "Community",
+        "app_version": APP_VERSION,
     }
 
-    url_payload = {
-        "urls": valid_urls,
-        "updated_at": utc_now
-    }
-
-    meta_endpoint = f"{base_url}/games_meta/{clean_slug}.json"
-    urls_endpoint = f"{base_url}/games_urls/{clean_slug}.json"
-
-    # Push to Firebase
-    res_meta = _http_request(meta_endpoint, method="PUT", data=meta_payload, timeout=6.0)
-    res_urls = _http_request(urls_endpoint, method="PUT", data=url_payload, timeout=6.0)
-
-    # Also update in-memory demo cache
-    DEMO_COMMUNITY_DATA[clean_slug] = meta_payload
-    DEMO_COMMUNITY_DATA[clean_slug]["slug"] = clean_slug
-    DEMO_COMMUNITY_URLS[clean_slug] = valid_urls
-
-    # Update active community feed cache with fresh entry
-    with _COMMUNITY_CACHE_LOCK:
-        if _COMMUNITY_GAMES_CACHE is not None:
-            updated_item = dict(meta_payload)
-            updated_item["slug"] = clean_slug
-            loc_time, age_str, fresh = format_localized_timestamp(utc_now)
-            updated_item["local_time"] = loc_time
-            updated_item["age_str"] = age_str
-            updated_item["freshness"] = fresh
-
-            _COMMUNITY_GAMES_CACHE = [item for item in _COMMUNITY_GAMES_CACHE if item.get("slug") != clean_slug]
-            _COMMUNITY_GAMES_CACHE.insert(0, updated_item)
-            _COMMUNITY_GAMES_CACHE_TIME = time.time()
-
-    if res_meta is not None or res_urls is not None:
-        return True, f"Successfully published '{title}' to Community Cloud Cache!"
-    else:
-        # Fallback local update acknowledged
-        return True, f"Saved '{title}' to local community cache (offline fallback)."
-
-
-def check_link_health(direct_url: str) -> Tuple[bool, str]:
-    """
-    Perform a rapid 1-byte HTTP Range GET to verify if direct URL is alive.
-    """
-    if not direct_url:
-        return False, "No URL provided"
-
-    clean_url = direct_url.split("#")[0].strip()
     try:
-        val_res = validator.validate_single_url(0, clean_url, timeout=8.0)
-        if val_res.is_valid:
-            size_txt = val_res.content_length_str if val_res.content_length_bytes > 0 else "Active"
-            return True, size_txt
-        else:
-            return False, f"HTTP {val_res.status_code or 'Timeout'}"
-    except Exception as e:
-        return False, f"Error: {e}"
+        # Links first, so the feed never lists a game whose links are not there yet.
+        firebase_client.request(f"{URLS_PATH}/{clean_slug}", "PUT", {"urls": clean_urls, "updated_at": now})
+        firebase_client.request(f"{META_PATH}/{clean_slug}", "PATCH", meta)
+    except FirebaseError as error:
+        log.warning("Could not publish %s: %s", clean_slug, error)
+        return False, f"Could not publish to the community: {error}"
+
+    _add_to_feed(clean_slug, meta)
+    return True, f"Published '{meta['title']}' to the community."
 
 
-def test_firebase_connection(firebase_url: Optional[str] = None) -> Tuple[bool, str]:
-    """Test connection to Firebase Realtime Database endpoint."""
-    raw_url = (firebase_url or DEFAULT_FIREBASE_URL).strip()
-    if not raw_url.startswith("http://") and not raw_url.startswith("https://"):
-        raw_url = "https://" + raw_url
-    base_url = raw_url.rstrip("/")
+def _add_to_feed(slug: str, meta: Dict[str, Any]) -> None:
+    record = game_records.clean_feed_record(slug, meta)
+    if record is None:
+        return
+    state = _feed
+    with state.lock:
+        known = next((game for game in state.games or [] if game.get("slug") == slug), None)
+        if known:
+            record["used_count"] = known.get("used_count", 0)
+        others = [game for game in state.games or [] if game.get("slug") != slug]
+        state.games = game_records.dedupe_feed([record, *others])
+        games = list(state.games)
+    _save_cached_feed(games)
 
-    # Check games_meta endpoint directly
-    endpoint = f"{base_url}/games_meta.json?shallow=true"
 
+def _parse_local_timestamp(value: str) -> str:
+    """Convert a history timestamp in local time to the UTC form used everywhere else."""
     try:
-        req = urllib.request.Request(
-            endpoint,
-            headers={"User-Agent": "FitGirlLinkExtractor/3.2.0"},
-            method="GET"
-        )
-        with urllib.request.urlopen(req, timeout=5.0) as resp:
-            if resp.status in (200, 204):
-                return True, "Firebase Cloud endpoint is online and reachable!"
-            return False, f"Firebase returned status code {resp.status}"
-    except urllib.error.HTTPError as he:
-        if he.code in (401, 403):
-            return True, "Firebase reached (Authentication/Rules enforced)."
-        return False, f"HTTP Error: {he.code} {he.reason}"
-    except Exception as ex:
-        return False, f"Connection failed: {ex}"
+        local = datetime.strptime(value, "%Y-%m-%d %H:%M:%S").astimezone()
+    except (TypeError, ValueError):
+        return ""
+    return local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# ==========================================
-# Presence & Community Usage Metrics
-# ==========================================
-
-def ping_presence(session_id: str, app_version: str = "", firebase_url: Optional[str] = None) -> int:
-    """
-    Register or renew a lightweight presence heartbeat in Firebase Realtime Database.
-    Prunes stale sessions (>180s old) asynchronously to guarantee database stays < 10 KB.
-    Returns the current count of active online gamers.
-    """
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    now_iso = get_current_utc_iso()
-    session_clean = re.sub(r'[^a-zA-Z0-9_-]', '', session_id or "")[:32]
-    endpoint = f"{base_url}/games_meta/grand-theft-auto-v/presence/{session_clean}.json"
-
-    # 1. Heartbeat PUT (~30 bytes)
-    if session_clean:
-        _http_request(endpoint, method="PUT", data={"t": now_iso, "v": app_version or updater.CURRENT_VERSION}, timeout=4.0)
-
-    # 2. Get all presence sessions
-    all_presence = _http_request(f"{base_url}/games_meta/grand-theft-auto-v/presence.json", method="GET", timeout=4.0)
-    if not isinstance(all_presence, dict):
-        return 1
-
-    active_count = 0
-    stale_keys = []
-    now_dt = datetime.now(timezone.utc)
-
-    for sid, data in all_presence.items():
-        if isinstance(data, dict) and "t" in data:
-            try:
-                t_dt = parse_iso_timestamp(data["t"])
-                delta = abs((now_dt - t_dt).total_seconds())
-                if delta <= 300:
-                    active_count += 1
-                else:
-                    stale_keys.append(sid)
-            except Exception:
-                stale_keys.append(sid)
-        else:
-            stale_keys.append(sid)
-
-    # 3. Asynchronously prune stale entries in daemon thread
-    if stale_keys:
-        def _prune_worker(keys):
-            for k in keys[:15]:
-                try:
-                    _http_request(f"{base_url}/games_meta/grand-theft-auto-v/presence/{k}.json", method="DELETE", timeout=3.0)
-                except Exception:
-                    pass
-        threading.Thread(target=_prune_worker, args=(stale_keys,), daemon=True).start()
-
-    return max(1, active_count)
+def _match_in_community(query: str) -> Optional[Dict[str, Any]]:
+    match = game_records.find_match(query, get_community_games())
+    if match or "://" not in query:
+        return match or get_game_by_slug(query)
+    if links.is_fitgirl_page_url(query):
+        return get_game_by_slug(game_records.generate_game_slug(query))
+    return None
 
 
-def increment_game_usage(slug: str, firebase_url: Optional[str] = None) -> int:
-    """
-    Atomically increment download count for a game in Firebase RTDB and update global counter.
-    Returns the new used_count.
-    """
-    clean_slug = sanitize_slug(slug)
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    meta_url = f"{base_url}/games_meta/{clean_slug}.json"
-
-    game_meta = _http_request(meta_url, method="GET", timeout=4.0)
-    current_count = 0
-    if isinstance(game_meta, dict):
-        current_count = int(game_meta.get("used_count", 0))
-
-    new_count = current_count + 1
-    # Patch game record in Firebase RTDB
-    _http_request(meta_url, method="PATCH", data={"used_count": new_count}, timeout=4.0)
-    invalidate_community_cache()
-
-    return new_count
+def _match_in_history(query: str, history_records: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    complete = [
+        {**row, "slug": game_records.generate_game_slug(row.get("source_url") or "", row.get("title") or "")}
+        for row in history_records
+        if (row.get("resolved_count") or 0) >= (row.get("total_parts") or 0) and row.get("urls")
+    ]
+    return game_records.find_match(query, complete)
 
 
-def get_community_stats(firebase_url: Optional[str] = None) -> Dict[str, Any]:
-    """Retrieve live online gamers count and total community grabs."""
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
+def find_existing_game(query: str, history_records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Look for exactly this game in the community cache, then in local history."""
+    clean = (query or "").strip()
+    if not clean:
+        return {"exists": False}
 
-    # Global grabs - aggregated directly from Firebase records
-    games = get_community_games(firebase_url)
-    total_grabs = sum(int(g.get("used_count", 0)) for g in games if isinstance(g, dict))
-
-    # Live gamers count
-    live_count = 1
-    try:
-        all_presence = _http_request(f"{base_url}/games_meta/grand-theft-auto-v/presence.json", method="GET", timeout=3.0)
-        if isinstance(all_presence, dict):
-            now_dt = datetime.now(timezone.utc)
-            count = 0
-            for sid, data in all_presence.items():
-                if isinstance(data, dict) and "t" in data:
-                    try:
-                        t_dt = parse_iso_timestamp(data["t"])
-                        if abs((now_dt - t_dt).total_seconds()) <= 300:
-                            count += 1
-                    except Exception:
-                        pass
-            live_count = max(1, count)
-    except Exception:
-        pass
-
-    return {
-        "live_gamers": live_count,
-        "total_grabs": total_grabs
-    }
-
-
-def enrich_generic_record(slug: str, base_url: str):
-    """Enriches generic pastebin records by inspecting their part URLs and fetching real title/art."""
-    try:
-        urls = get_game_urls(slug, base_url)
+    game = _match_in_community(clean)
+    if game:
+        urls = get_game_urls(game["slug"])
         if urls:
-            meta = scraper.resolve_pastebin_metadata("", urls)
-            if meta.get("title") and meta["title"] != "FitGirl Repack":
-                patch_data = {
-                    "title": meta["title"],
-                    "image_url": meta["image_url"],
-                }
-                if meta.get("source_url") and "fitgirl-repacks.site" in meta["source_url"]:
-                    patch_data["source_url"] = meta["source_url"]
-                _http_request(f"{base_url}/games_meta/{slug}.json", method="PATCH", data=patch_data, timeout=5.0)
-    except Exception:
-        pass
+            expired = game.get("freshness") == "expired"
+            return {
+                "exists": True,
+                "source": "community",
+                "is_expired": expired,
+                "record": {**game, "is_expired": expired, "source": "community", "urls": urls},
+            }
+
+    row = _match_in_history(clean, history_records)
+    if row:
+        timestamp = _parse_local_timestamp(row.get("timestamp", ""))
+        age = game_records.describe_age(timestamp)
+        expired = age.freshness == "expired"
+        return {
+            "exists": True,
+            "source": "history",
+            "is_expired": expired,
+            "record": {
+                "slug": row["slug"],
+                "title": row.get("title", "FitGirl Repack"),
+                "image_url": "",
+                "source_url": row.get("source_url", clean),
+                "total_parts": row.get("total_parts", len(row["urls"])),
+                "total_size_str": row.get("total_size_str", "0 B"),
+                "age_str": age.age_str,
+                "timestamp_utc": timestamp,
+                "freshness": age.freshness,
+                "is_expired": expired,
+                "used_count": 0,
+                "source": "history",
+                "urls": row["urls"],
+            },
+        }
+    return {"exists": False}
 
 
-# ---------------------------------------------------------------------------
-# Community Issue Reporting & Crash Telemetry
-_reported_crash_hashes = set()
-_crash_lock = threading.Lock()
-
-def get_admin_key_path() -> str:
-    """
-    Get the persistent path for admin_key.secret in AppData.
-    Never creates or writes to the local project repository.
-    """
-    app_data = os.environ.get("APPDATA")
-    if app_data:
-        target_dir = os.path.join(app_data, "FitGirlLinkExtractor")
-    else:
-        target_dir = os.path.join(os.path.expanduser("~"), ".config", "FitGirlLinkExtractor")
-    return os.path.join(target_dir, "admin_key.secret")
-
-
-def ensure_admin_key_file() -> str:
-    """
-    Ensure admin_key.secret exists in %APPDATA%/FitGirlLinkExtractor so the maintainer
-    can view, edit, and configure their admin PIN directly in Explorer.
-    Generates a secure random passkey if none exists.
-    """
-    k_path = get_admin_key_path()
-    target_dir = os.path.dirname(k_path)
+def _is_recent(entry: Any) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    timestamp = entry.get("t")
+    if not isinstance(timestamp, str):
+        return False
     try:
-        os.makedirs(target_dir, exist_ok=True)
-        if not os.path.exists(k_path):
-            import secrets
-            generated_pin = secrets.token_hex(4)
-            with open(k_path, "w", encoding="utf-8") as f:
-                f.write("# Link Extractor Administrator Passkey\n")
-                f.write("# Edit this value to change your Admin Mode PIN anytime.\n")
-                f.write("# Keep this secret and never commit or share this file.\n")
-                f.write(f"{generated_pin}\n")
-    except Exception:
-        pass
-    return k_path
-
-
-def verify_admin_pin(candidate_pin: str) -> bool:
-    """
-    Cryptographically verify admin PIN against environment variable or
-    the maintainer's local secret file in AppData using constant-time comparison.
-    No hardcoded default PIN or hash is allowed.
-    """
-    if not candidate_pin:
+        seen = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        return abs((datetime.now(timezone.utc) - seen).total_seconds()) <= PRESENCE_ACTIVE_SECONDS
+    except (TypeError, ValueError):
         return False
 
-    clean_pin = str(candidate_pin).strip()
-    if not clean_pin:
-        return False
 
-    import hmac
-
-    # 1. Check environment variable override
-    env_pin = os.environ.get("LINK_EXTRACTOR_ADMIN_PIN", "").strip()
-    if env_pin and hmac.compare_digest(clean_pin, env_pin):
-        return True
-
-    # 2. Check local maintainer secret file in AppData
-    k_path = get_admin_key_path()
-    if os.path.exists(k_path):
-        try:
-            with open(k_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#"):
-                        if hmac.compare_digest(clean_pin, line):
-                            return True
-        except Exception:
-            pass
-
-    return False
-
-
-def _get_local_reports_file() -> str:
-    """Get persistent path for local issues and reports archive."""
-    data_dir = utils.get_app_data_dir()
-    return os.path.join(data_dir, "community_reports.json")
-
-
-def _load_local_reports() -> Dict[str, Any]:
-    """Load locally persisted reports dictionary."""
-    fpath = _get_local_reports_file()
-    if os.path.exists(fpath):
-        try:
-            with open(fpath, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-        except Exception:
-            pass
-    return {}
-
-
-def _save_local_reports(reports_dict: Dict[str, Any]):
-    """Save reports dictionary to persistent local storage."""
-    fpath = _get_local_reports_file()
+def ping_presence(session_id: str) -> int:
+    """Renew this session's heartbeat and return how many sessions are active."""
+    state = _feed
+    session = re.sub(r"[^a-zA-Z0-9_-]", "", session_id or "")[:32]
     try:
-        with open(fpath, "w", encoding="utf-8") as f:
-            json.dump(reports_dict, f, indent=2, ensure_ascii=False)
-    except Exception:
-        pass
+        if session:
+            firebase_client.request(
+                f"{PRESENCE_PATH}/{session}", "PUT", {"t": game_records.utc_now_iso(), "v": APP_VERSION}, timeout=4.0
+            )
+        sessions = firebase_client.request(PRESENCE_PATH, timeout=4.0)
+    except FirebaseError as error:
+        log.debug("Presence update failed: %s", error)
+        return state.live_gamers
+
+    if not isinstance(sessions, dict):
+        return state.live_gamers
+
+    stale = [key for key, entry in sessions.items() if not _is_recent(entry)]
+    state.live_gamers = max(1, len(sessions) - len(stale))
+    if stale:
+        threading.Thread(target=_prune_presence, args=(stale,), daemon=True, name="presence-prune").start()
+    return state.live_gamers
 
 
-def fetch_all_reports(firebase_url: Optional[str] = None) -> Tuple[bool, List[Dict[str, Any]], str]:
-    """
-    Fetch all public bug reports from Firebase RTDB (/reports.json), merged with locally saved reports.
-    Returns (success: bool, reports: list, message: str).
-    """
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    url = f"{base_url}/reports.json"
-    cloud_reports: Dict[str, Any] = {}
-    try:
-        data = _http_request(url, method="GET", timeout=5.0)
-        if isinstance(data, dict):
-            cloud_reports = data
-    except Exception:
-        pass
-
-    # Merge local reports archive with cloud reports
-    local_reports = _load_local_reports()
-    merged: Dict[str, Any] = {}
-
-    for rid, item in cloud_reports.items():
-        if isinstance(item, dict):
-            rec = item.copy()
-            rec["id"] = rid
-            merged[rid] = rec
-
-    for rid, item in local_reports.items():
-        if isinstance(item, dict):
-            if rid not in merged:
-                rec = item.copy()
-                rec["id"] = rid
-                merged[rid] = rec
-            else:
-                # Merge local state updates
-                merged[rid].update(item)
-                merged[rid]["id"] = rid
-
-    reports_list = list(merged.values())
-    for r in reports_list:
-        raw_comments = r.get("comments")
-        if isinstance(raw_comments, dict):
-            c_list = list(raw_comments.values())
-            c_list.sort(key=lambda c: c.get("created_at", ""))
-            r["comments"] = c_list
-            r["comments_count"] = len(c_list)
-        elif isinstance(raw_comments, list):
-            r["comments"] = raw_comments
-            r["comments_count"] = len(raw_comments)
-        else:
-            r["comments"] = []
-            r["comments_count"] = 0
-
-    reports_list.sort(key=lambda r: r.get("created_at", ""), reverse=True)
-    return True, reports_list, f"Loaded {len(reports_list)} reports"
-
-
-def _compute_similarity(text1: str, text2: str) -> float:
-    """Compute word token Jaccard similarity between two strings with basic stemming."""
-    def _tokenize(t: str) -> set:
-        clean = re.sub(r'[^a-zA-Z0-9\s]', ' ', t.lower())
-        words = []
-        for w in clean.split():
-            if len(w) > 2:
-                if w.endswith('ing') and len(w) > 5:
-                    w = w[:-3]
-                elif w.endswith('s') and len(w) > 4:
-                    w = w[:-1]
-                elif w.endswith('ed') and len(w) > 4:
-                    w = w[:-2]
-                words.append(w)
-        return set(words)
-
-    s1 = _tokenize(text1)
-    s2 = _tokenize(text2)
-    if not s1 or not s2:
-        return 0.0
-    intersection = len(s1.intersection(s2))
-    union = len(s1.union(s2))
-    return intersection / union if union > 0 else 0.0
-
-
-def find_duplicate_report(subject: str, existing_reports: List[Dict[str, Any]], threshold: float = 0.55) -> Optional[Dict[str, Any]]:
-    """
-    Find if a report with matching or similar subject already exists.
-    Returns the matching report dict or None.
-    """
-    clean_subj = subject.strip().lower()
-    if not clean_subj or len(clean_subj) < 4:
-        return None
-
-    best_match = None
-    highest_score = 0.0
-
-    for rep in existing_reports:
-        rep_subj = rep.get("subject", "").strip().lower()
-        if not rep_subj:
+def _prune_presence(keys: List[str]) -> None:
+    for key in keys[:PRESENCE_PRUNE_LIMIT]:
+        safe = firebase_client.safe_key(key)
+        if not safe:
             continue
-        if clean_subj == rep_subj or clean_subj in rep_subj or rep_subj in clean_subj:
-            return rep
-
-        sim = _compute_similarity(clean_subj, rep_subj)
-        if sim > highest_score and sim >= threshold:
-            highest_score = sim
-            best_match = rep
-
-    return best_match
-
-
-def submit_user_report(
-    subject: str,
-    category: str,
-    description: str,
-    screenshot_data: Optional[str] = None,
-    telemetry: Optional[Dict[str, Any]] = None,
-    firebase_url: Optional[str] = None,
-    force_create: bool = False
-) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-    """
-    Submit a user report. Checks for duplicates against existing reports unless force_create is True.
-    If duplicate exists and force_create is False, increments affected_users_count and returns (False, "duplicate", existing_record).
-    If new or force_create is True, persists locally and pushes to Firebase RTDB (/reports/{report_id}.json).
-    """
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    clean_subject = (subject or "").strip()
-    clean_desc = (description or "").strip()
-    clean_category = (category or "Bug Report").strip()
-
-    if not clean_subject:
-        return False, "Subject cannot be empty", None
-
-    if not force_create:
-        success, existing_reports, _ = fetch_all_reports(base_url)
-        if success and existing_reports:
-            duplicate = find_duplicate_report(clean_subject, existing_reports)
-            if duplicate:
-                dup_id = duplicate.get("id")
-                if dup_id:
-                    increment_report_affected(dup_id, firebase_url=base_url)
-                    duplicate["affected_users_count"] = int(duplicate.get("affected_users_count", 1)) + 1
-                return False, "duplicate", duplicate
-
-    report_id = f"rep_{int(time.time())}_{os.urandom(3).hex()}"
-    now_iso = get_current_utc_iso()
-
-    safe_screenshot = screenshot_data
-    if safe_screenshot and len(safe_screenshot) > 800 * 1024:
-        safe_screenshot = safe_screenshot[:800 * 1024]
-
-    report_payload = {
-        "id": report_id,
-        "subject": clean_subject[:150],
-        "category": clean_category[:50],
-        "description": clean_desc[:3000],
-        "screenshot_data": safe_screenshot or "",
-        "status": "open",
-        "affected_users_count": 1,
-        "admin_remark": "",
-        "created_at": now_iso,
-        "app_version": updater.CURRENT_VERSION,
-        "os_info": sys.platform,
-        "telemetry": telemetry or {}
-    }
-
-    # 1. Persist to local reports store first
-    local_data = _load_local_reports()
-    local_data[report_id] = report_payload
-    _save_local_reports(local_data)
-
-    # 2. Attempt push to Firebase RTDB
-    url = f"{base_url}/reports/{report_id}.json"
-    res = _http_request(url, method="PUT", data=report_payload, timeout=6.0)
-    if res is not None:
-        return True, report_id, report_payload
-
-    # If Firebase returned 401 or network offline, report is safely preserved in local storage
-    return True, report_id, report_payload
-
-
-def increment_report_affected(report_id: str, firebase_url: Optional[str] = None) -> Tuple[bool, int]:
-    """Increment affected_users_count for an existing issue report in local and cloud stores."""
-    # Update local store
-    local_data = _load_local_reports()
-    current_count = 1
-    if report_id in local_data:
-        current_count = int(local_data[report_id].get("affected_users_count", 1))
-        current_count += 1
-        local_data[report_id]["affected_users_count"] = current_count
-        _save_local_reports(local_data)
-
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    url = f"{base_url}/reports/{report_id}.json"
-    data = _http_request(url, method="GET", timeout=4.0)
-    if isinstance(data, dict):
-        current_count = int(data.get("affected_users_count", 1)) + 1
-    _http_request(url, method="PATCH", data={"affected_users_count": current_count}, timeout=4.0)
-    return True, current_count
-
-
-def update_report_status_and_remark(
-    report_id: str,
-    new_status: str,
-    admin_remark: str,
-    admin_pin: str,
-    firebase_url: Optional[str] = None
-) -> Tuple[bool, str]:
-    """
-    Update status and admin remark on a report. Requires valid admin_pin.
-    """
-    if not verify_admin_pin(admin_pin):
-        return False, "Unauthorized: Invalid admin passkey"
-
-    valid_statuses = {"open", "investigating", "fixed", "closed"}
-    status_clean = (new_status or "open").lower().strip()
-    if status_clean not in valid_statuses:
-        status_clean = "open"
-
-    now_iso = get_current_utc_iso()
-
-    # Update local store
-    local_data = _load_local_reports()
-    if report_id in local_data:
-        local_data[report_id]["status"] = status_clean
-        local_data[report_id]["admin_remark"] = (admin_remark or "").strip()
-        local_data[report_id]["updated_at"] = now_iso
-        _save_local_reports(local_data)
-
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    url = f"{base_url}/reports/{report_id}.json"
-
-    patch_data = {
-        "status": status_clean,
-        "admin_remark": (admin_remark or "").strip(),
-        "updated_at": now_iso
-    }
-
-    _http_request(url, method="PATCH", data=patch_data, timeout=5.0)
-    return True, f"Report {report_id} updated to {status_clean}"
-
-
-def delete_report(
-    report_id: str,
-    admin_pin: str,
-    firebase_url: Optional[str] = None
-) -> Tuple[bool, str]:
-    """
-    Permanently delete an issue report from both local archive and Firebase RTDB.
-    Requires verified admin PIN authorization.
-    """
-    if not verify_admin_pin(admin_pin):
-        return False, "Unauthorized: Invalid admin passkey"
-
-    clean_id = str(report_id).strip()
-    if not clean_id:
-        return False, "Invalid report ID"
-
-    # 1. Delete from local persistent store
-    local_data = _load_local_reports()
-    if clean_id in local_data:
-        del local_data[clean_id]
-        _save_local_reports(local_data)
-
-    # 2. Delete from Firebase RTDB via HTTP DELETE
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    url = f"{base_url}/reports/{clean_id}.json"
-    _http_request(url, method="DELETE", timeout=5.0)
-
-    return True, f"Report {clean_id} deleted successfully"
-
-
-def add_report_comment(
-    report_id: str,
-    text: str,
-    author_type: str = "gamer",
-    author_name: str = "",
-    screenshot_data: Optional[str] = None,
-    admin_pin: Optional[str] = None,
-    firebase_url: Optional[str] = None
-) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
-    """
-    Add a comment/reply to an existing report.
-    If author_type is 'admin', verifies admin_pin.
-    Pushes to Firebase RTDB (/reports/{report_id}/comments/{comment_id}.json) and mirrors locally.
-    """
-    clean_rid = str(report_id).strip()
-    clean_text = (text or "").strip()
-    clean_author_type = (author_type or "gamer").lower().strip()
-    if clean_author_type not in ("admin", "reporter", "gamer"):
-        clean_author_type = "gamer"
-
-    if clean_author_type == "admin":
-        if not admin_pin or not verify_admin_pin(admin_pin):
-            return False, "Unauthorized: Invalid admin passkey", None
-
-    if not clean_rid:
-        return False, "Invalid report ID", None
-
-    if not clean_text and not screenshot_data:
-        return False, "Comment text or attachment cannot be empty", None
-
-    comment_id = f"c_{int(time.time())}_{os.urandom(3).hex()}"
-    now_iso = get_current_utc_iso()
-
-    safe_screenshot = screenshot_data
-    if safe_screenshot and len(safe_screenshot) > 800 * 1024:
-        safe_screenshot = safe_screenshot[:800 * 1024]
-
-    comment_payload = {
-        "id": comment_id,
-        "author_type": clean_author_type,
-        "author_name": (author_name or ("Admin" if clean_author_type == "admin" else "Gamer"))[:50],
-        "text": clean_text[:3000],
-        "screenshot_data": safe_screenshot or "",
-        "created_at": now_iso,
-        "app_version": updater.CURRENT_VERSION
-    }
-
-    # 1. Update local persistent store
-    local_data = _load_local_reports()
-    if clean_rid in local_data:
-        rep = local_data[clean_rid]
-        if "comments" not in rep or not isinstance(rep["comments"], dict):
-            rep["comments"] = {}
-        rep["comments"][comment_id] = comment_payload
-        rep["comments_count"] = len(rep["comments"])
-        _save_local_reports(local_data)
-
-    # 2. Push to Firebase RTDB
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    url = f"{base_url}/reports/{clean_rid}/comments/{comment_id}.json"
-    _http_request(url, method="PUT", data=comment_payload, timeout=6.0)
-
-    return True, comment_id, comment_payload
-
-
-def delete_report_comment(
-    report_id: str,
-    comment_id: str,
-    admin_pin: str,
-    firebase_url: Optional[str] = None
-) -> Tuple[bool, str]:
-    """
-    Delete a specific comment from an issue report. Requires admin PIN authorization.
-    """
-    if not verify_admin_pin(admin_pin):
-        return False, "Unauthorized: Invalid admin passkey"
-
-    clean_rid = str(report_id).strip()
-    clean_cid = str(comment_id).strip()
-    if not clean_rid or not clean_cid:
-        return False, "Invalid report or comment ID"
-
-    # 1. Delete from local persistent store
-    local_data = _load_local_reports()
-    if clean_rid in local_data:
-        rep = local_data[clean_rid]
-        if isinstance(rep.get("comments"), dict) and clean_cid in rep["comments"]:
-            del rep["comments"][clean_cid]
-            rep["comments_count"] = len(rep["comments"])
-            _save_local_reports(local_data)
-
-    # 2. Delete from Firebase RTDB
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    url = f"{base_url}/reports/{clean_rid}/comments/{clean_cid}.json"
-    _http_request(url, method="DELETE", timeout=5.0)
-
-    return True, f"Comment {clean_cid} deleted successfully"
-
-
-def report_crash_log(
-    error_type: str,
-    error_message: str,
-    traceback_str: str,
-    context: str = "runtime",
-    telemetry: Optional[Dict[str, Any]] = None,
-    firebase_url: Optional[str] = None
-) -> Tuple[bool, str]:
-    """
-    Report an unhandled crash or exception to Firebase RTDB (/crash_logs).
-    Includes in-memory deduplication to avoid flooding repetitive error loops.
-    """
-    import hashlib
-    sig_raw = f"{error_type}:{traceback_str[:120]}"
-    sig_hash = hashlib.md5(sig_raw.encode("utf-8", errors="ignore")).hexdigest()
-
-    with _crash_lock:
-        if sig_hash in _reported_crash_hashes:
-            return True, "already_reported"
-        _reported_crash_hashes.add(sig_hash)
-
-    base_url = (firebase_url or DEFAULT_FIREBASE_URL).rstrip("/")
-    crash_id = f"crash_{int(time.time())}_{sig_hash[:6]}"
-    now_iso = get_current_utc_iso()
-
-    payload = {
-        "error_type": str(error_type)[:100],
-        "error_message": str(error_message)[:500],
-        "traceback": str(traceback_str)[:5000],
-        "context": str(context)[:50],
-        "app_version": updater.CURRENT_VERSION,
-        "platform": sys.platform,
-        "timestamp_utc": now_iso,
-        "telemetry": telemetry or {}
-    }
-
-    def _async_send():
         try:
-            _http_request(f"{base_url}/crash_logs/{crash_id}.json", method="PUT", data=payload, timeout=5.0)
-        except Exception:
-            pass
-
-    threading.Thread(target=_async_send, daemon=True).start()
-    return True, crash_id
+            firebase_client.request(f"{PRESENCE_PATH}/{safe}", "DELETE", timeout=3.0)
+        except FirebaseError as error:
+            log.debug("Presence prune failed: %s", error)
+            return
 
 
+def increment_game_usage(slug: str) -> int:
+    """Count one grab of a game already in the database. Returns the new count, or 0 if none."""
+    clean_slug = game_records.sanitize_slug(slug)
+    try:
+        exists = firebase_client.request(
+            f"{META_PATH}/{clean_slug}", query={"shallow": "true"}, timeout=4.0
+        )
+        if not exists:
+            return 0
+        count = firebase_client.request(
+            f"{META_PATH}/{clean_slug}/used_count", "PUT", {".sv": {"increment": 1}}, timeout=4.0
+        )
+    except FirebaseError as error:
+        log.info("Could not count a grab for %s: %s", clean_slug, error)
+        return 0
+    return count if isinstance(count, int) else 0
+
+
+def get_community_stats() -> Dict[str, int]:
+    """Live count and total grabs from what is already known. Never touches the network."""
+    state = _feed
+    with state.lock:
+        if state.games is None:
+            state.games = _load_cached_feed()
+        grabs = sum(int(game.get("used_count") or 0) for game in state.games)
+        return {"live_gamers": state.live_gamers, "total_grabs": grabs}

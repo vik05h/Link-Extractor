@@ -21,9 +21,9 @@
 | :--- | :--- | :--- |
 | **GUI Framework** | Astro 5 + Svelte 5 + WebView2 (`pywebview`) | Hardware-accelerated desktop web UI with Living Canvas, Defrag Mosaic, and Apple Liquid Glass design (migrated from legacy Flet in v3.8.0) |
 | **Automation Engine** | `playwright` (async) | Headless/Headed Chromium & Edge worker pool for JS decryption |
-| **HTML Parsing** | `beautifulsoup4`, `lxml` | Fast extraction of pastebin links and game titles |
+| **HTML Parsing** | Regular expressions in `scraper.py` | Extraction of pastebin links and game titles |
 | **Local Storage** | `sqlite3` | Persistent local extraction history and fast search |
-| **Integration** | `requests`, `pyperclip` | JDownloader 2 Click'n'Load / FlashGot API & clipboard automation |
+| **Integration** | `urllib`, `pyperclip` | JDownloader 2 Click'n'Load / FlashGot API & clipboard automation |
 | **Packaging** | `pyinstaller` (6.21+) | Standalone single-file Windows executable generation |
 
 ---
@@ -32,129 +32,78 @@
 
 ```mermaid
 graph TD
-    A["User Input (Game URL / Pastebin / FuckingFast)"] --> B["scraper.detect_url_type()"]
-    B --> C{"Check Community Cloud Cache"}
-    C -->|Instant Pre-Fetched| D["Direct Import to Extractor Table"]
+    A["User Input (Game URL / Pastebin / FuckingFast)"] --> B["community.find_existing_game()"]
+    B -->|Exact match, links pass links.py| D["Load into Stage"]
     D --> E["JDownloader 2 / Clipboard / Export"]
-    C -->|Fresh Resolution| F["scraper.extract_game_page_pastebins()"]
+    B -->|Fresh Resolution| F["pipeline.ExtractionPipeline"]
     F --> G["engine.ResolutionEngine (Playwright Pool)"]
-    G --> H["Concurrent Worker Tabs (3-4 Parallel)"]
-    H --> I["validator.validate_links (1-Byte Range HTTP)"]
-    I --> J["sqlite3: %APPDATA%/FitGirlLinkExtractor/history.db"]
-    I --> K["Auto-Upload: community.upload_game_record()"]
-    K --> L["Firebase Realtime Database: /games_meta & /games_urls"]
-    I --> M["Export Engine (.txt, .json, .crawljob)"]
-    I --> N["JDownloader 2 API (localhost:9666)"]
+    G --> I["validator.validate_links (1-Byte Range HTTP)"]
+    I --> J["history.db (complete and partial runs)"]
+    I -->|Complete and verified only| K["community.upload_game_record()"]
+    K --> L["Firebase: /games_meta & /games_urls"]
+    I --> E
 ```
 
 ---
 
 ## 4. Solved Technical Gotchas & Critical Traps
 
-### 1. PyInstaller %TEMP% Wipe vs %APPDATA% Storage
-* **The Problem**: PyInstaller single-file binaries unpack into `%TEMP%/_MEIxxxxxx` on startup and delete the folder on exit. Using `os.path.dirname(__file__)` wiped `history.db` and `settings.json` on every app restart.
-* **The Solution**: All persistent state must use `get_app_data_dir()`, which resolves to `%APPDATA%\FitGirlLinkExtractor\` when frozen (`getattr(sys, 'frozen', False)`).
+### Packaging and desktop shell
 
-### 2. PyInstaller Missing `flet/controls/material/icons.json`
-* **The Problem**: Flet 0.86+ dynamically loads icon definitions from internal JSON files. Basic PyInstaller runs omitted this file, crashing the `.exe` with `[Errno 2] No such file or directory: ...icons.json`.
-* **The Solution**: In `LinkExtractor_Single.spec`, use `from PyInstaller.utils.hooks import collect_all` and include `collect_all('flet')` in `datas` and `hiddenimports`.
+* **PyInstaller %TEMP% wipe**: Single-file binaries unpack into `%TEMP%/_MEIxxxxxx` and delete it on exit. All persistent state uses `get_app_data_dir()`, which resolves to `%APPDATA%\FitGirlLinkExtractor\` when frozen.
+* **PyInstaller and pywebview**: `pythonnet` C-extensions and WebView2 bindings need `collect_all('webview')`, `collect_all('pythonnet')`, and `collect_all('clr_loader')`, alongside `('dist_web', 'dist_web')` in `datas`.
+* **pywebview private mode**: `webview.start()` defaults to `private_mode=True`, which wipes `localStorage` on exit. Always pass `private_mode=False`.
+* **Local assets**: `file://` breaks the Web Audio context and root-relative asset URLs. Always pass `http_server=True`.
+* **JS API reflection recursion**: pywebview reflects every public attribute of the API object into JavaScript and recursed through WinForms and COM objects when given `self.window`. Keep internal references private (`self._window`).
+* **Off-screen headed browser**: A visible browser steals foreground focus and Windows throttles the app's rendering. Chromium launches with `--window-position=-3000,-3000`.
+* **Dynamic export directory**: Hardcoded `C:\Users\...` breaks on other drive layouts. Use `get_export_dir()` and `open_folder_cross_platform()`.
 
-### 3. Flet Detached Control `.update()` Crash
-* **The Problem**: Calling `.update()` on a control that is currently swapped out of the active container (e.g. updating `log_column` while on the `Direct URLs` tab) raises `Control must be added to the page first`.
-* **The Solution**: Never call direct `.update()` on sub-controls from background threads without verifying their mounting state; use top-level `page.update()` instead.
+### Trusting shared data
 
-### 4. Windows Taskbar / Window Icon
-* **The Problem**: The Flutter runner binary (`flet.exe`) displays the default Flutter origami fish icon by default.
-* **The Solution**: Use `apply_windows_native_icon()` Win32 helper (`ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, ...)` + `SetClassLongPtrW(hwnd, GCLP_HICON, ...)`) on startup to bind `app_icon.ico` directly to the window class handle.
+* **The database has no login**: Anyone can send requests to Firebase directly, so client checks protect only the client. Server protection lives in `firebase/database.rules.json`, and client checks in `links.py` and `game_records.clean_feed_record()`. Both must agree, which `tests/test_firebase_rules_static.py` checks.
+* **Substring host checks**: `"fuckingfast.co" in url` accepted `https://evil.example/fuckingfast.co/setup.exe`. Compare parsed hostnames through `links.py`.
+* **A clickable source_url is a script risk**: A `javascript:` link in `<a href>` runs with access to the bridge, even with no `{@html}` in the frontend. `clean_feed_record()` drops records whose source host is not allowed.
+* **Clients must never delete games**: An older "Intelligent Canonical Deduplication" compared the first 24 letters of titles and sent DELETE requests. It removed real games such as Modern Warfare II versus III. `dedupe_feed()` now only hides repeats from display.
+* **Admin rights live on the server**: An older passkey was checked against a local file or environment variable, so any user could become admin. The key is now the Firebase database secret, sent with each change for the server to judge. It must never reach logs or settings.
+* **Old data shapes**: About 72 records from old versions have the title `FuckingFast Direct Parts` and a blob of links as `source_url`. They stay in the database and are hidden from the Hub.
 
-### 5. Live AnimatedSwitcher Duration Updates
-* **The Problem**: Flutter's `AnimatedSwitcher` locks its internal `AnimationController` duration on `initState()`. Mutating `duration` in-place does not change the running controller.
-* **The Solution**: Wrap the switcher in a `screen_holder = ft.Container(...)` and rebuild `screen_holder.content = create_screen_switcher(cfg, cur_screen)` upon setting change.
+### Pipeline results
 
-### 6. Dynamic Cross-Platform Downloads Directory
-* **The Problem**: Hardcoding `C:\Users\...` breaks on custom drive layouts (`D:\`, `E:\`) and non-Windows systems.
-* **The Solution**: Use `os.path.expanduser("~")/Downloads` with `%USERPROFILE%` fallback and `open_folder_cross_platform()` (`os.startfile` on Windows, `open` on macOS, `xdg-open` on Linux).
+* **What may be saved and published**: `pipeline.py` is the single place that decides. Cancelled runs keep nothing. Partial runs are saved locally with `resolved_count < total_parts`, and are never published or offered as a cached match.
+* **Validator verdicts**: `dead` means the server said the file is gone, including a 200 HTML page. `unknown` means a timeout, 429, or 5xx, so the link is kept but the run does not count as verified. Throwing away unknown links would lose minutes of work to a network hiccup.
+* **Part names must match across the bridge**: The frontend matches progress events by filename, so `pipeline.py` and `engine.py` both use `links.part_name()`.
 
-### 7. Modular UI Architecture & Package Boundaries
-* **The Pattern**: Monolithic UI code in `main.py` is decomposed into a dedicated `ui/` package (`ui/constants.py`, `ui/state.py`, `ui/screens/extractor.py`, `ui/screens/community.py`, `ui/screens/pipeline.py`, `ui/screens/history.py`, `ui/screens/settings.py`) with shared system helpers in `utils.py`.
-* **The Solution**: `main.py` serves strictly as the application entrypoint (< 150 lines) managing window initialization, navigation rails, and animated switcher wiring. All screen state is coordinated via `AppState` and `UIContext` without circular dependencies.
+### Community feed
 
-### 8. In-App Auto-Update & Post-Update What's New Popup
-* **The Pattern**: On application startup, `check_startup_updates()` runs in a background daemon thread without blocking initial rendering. If a new release is available on GitHub, an in-app download progress dialog appears upon user confirmation.
-* **The Solution**: On Windows, `apply_update_and_restart()` writes a detached `apply_update.bat` script that monitors the current PID, waits for termination, replaces the target `.exe`, restarts the new executable, and cleans up. The first run of the new version checks `settings.json` (`last_seen_version`) and displays a structured What's New & Bug Fixes dialog.
+* **Feed update loop**: `community:feed_updated` must trigger a non-forced refresh. A forced one starts a new sync, which fires the event again, forever.
+* **Cost**: `games_meta` is about 550 KB and Firebase ignores gzip on this API. Stats and heartbeats must read the cached list and never trigger a download.
+* **Local reports never override the server**: A local copy is only an outbox. It used to overwrite the status and remark from the server, so reporters never saw replies.
+* **Presence path**: Presence lives at `games_meta/grand-theft-auto-v/presence` because the live rules grew around it. Uploads use PATCH so they do not wipe it, and `clean_feed_record()` strips it from the feed.
 
-### 9. Flet Native Async Event Loop vs Sync Socket Buffer Stalling
-* **The Problem**: When `main` was synchronous (`def main(page: ft.Page)`), Flet's Python process communicated with Flutter via a synchronous session loop. Calling `page.update()` from background threads placed mutations into an outgoing buffer that was only flushed when an incoming user event (such as a click or window drag) was received from Flutter.
-* **The Solution**: Define `async def main(page: ft.Page):` and run background operations via `page.run_task(...)` or native `asyncio`. Every update directly yields and flushes across the active WebSocket transport in real time with zero event backlog.
+### Updater
 
-### 10. Headed Browser Window Focus Stealing & OS VSync Deprioritization
-* **The Problem**: When Playwright launched Chromium/Edge in headed mode (`headless=False`), the browser window stole foreground focus from the Flet app. Windows automatically throttles or pauses VSync rendering signals to unfocused background applications, causing the Flet UI to appear frozen until focused or clicked.
-* **The Solution**: Launch Chromium/Edge with `--window-position=-3000,-3000` and `--window-size=1280,720`. The browser runs in full headed mode (guaranteeing 100% reliable Cloudflare Turnstile token bypass) but renders off-screen, never stealing foreground focus from the Flet application.
+* **PyInstaller relaunch**: A one-file exe started from the old process's environment looks for the deleted temp folder. The update script sets `PYINSTALLER_RESET_ENVIRONMENT=1`.
+* **Truncated downloads pass silently**: `http.client` returns short reads without raising, so `download_update()` compares the byte count itself, plus size, SHA-256 (from the `digest` field in the GitHub API), and the `MZ` header.
+* **A self-deleting batch file**: Plain `del "%~f0"` makes cmd report an error. Use `(goto) 2>nul & del "%~f0"`.
 
-### 11. DataTable Deep Child Mutation & Rebuild State Pattern
-* **The Problem**: Mutating child controls inside existing `DataCell`s (e.g. `row.cells[3].content = ft.Chip(...)`) does not trigger deep serialization down the Flet widget tree because the parent `DataTable` reference remains unchanged.
-* **The Solution**: Maintain an internal state list (`_row_states`) and use `rebuild_table()` to clear `data_table.rows` and re-populate fresh `DataRow`/`DataCell` instances on each progress callback.
+### Names that drift
 
-### 12. Community Cloud Split Storage & Lightweight REST
-* **The Pattern**: Zero-SDK lightweight integration using Python standard `urllib.request` / `json`.
-* **The Solution**: Split database schema into `/games_meta/{slug}` (minimal metadata bandwidth for feed rendering) and `/games_urls/{slug}` (full payload fetched on demand). All timestamps are stored in UTC ISO-8601 and converted client-side to the user's localized timezone with relative age calculation.
-
-### 13. Validator API Positional Argument Ordering Trap
-* **The Problem**: `validator.validate_links(urls, max_workers, cancel_event)` silently passed `cancel_event` (a `threading.Event`) into the `on_progress` callback parameter, causing `TypeError: 'Event' object is not callable` inside the worker loop. This swallowed the error and reported `0 B` total repack size.
-* **The Solution**: The correct signature is `validator.validate_links(urls, max_workers=15, on_progress=None, cancel_event=None)`. Always use `validator.validate_links(urls, 15, None, state.cancel_event)` with explicit `None` for `on_progress` when no progress callback is needed.
-
-### 14. Community Health Check Validator Function Name
-* **The Problem**: `community.check_link_health()` called `validator.validate_single_link(url)`, which does not exist. The `AttributeError` was caught by a broad `except` and silently returned `(False, "Error")`, making every link appear "Expired" in the UI health pill.
-* **The Solution**: The correct function is `validator.validate_single_url(index, url, timeout=8.0)`. It returns `(index, is_valid, size_str)`. Health check should call `validator.validate_single_url(0, clean_url, timeout=8.0)` and interpret `result[1]` as the alive boolean and `result[2]` as the size string.
-
-### 16. Flet Native Card Elevation vs Container BoxShadow Smudge
-* **The Problem**: Combining semi-transparent container backgrounds with high `blur_radius` `BoxShadow` creates thick gray halos on light surfaces.
-* **The Solution**: Use native `ft.Card(elevation=1)` with animated hover elevation (`card.elevation = 4`) and hover scaling (`card.scale = 1.012`) attached to the card content container.
-
-### 17. 1-Byte Health Check vs Aggregate Repack Size
-* **The Problem**: Rapid 1-byte HTTP Range verification tests Part 1 (`urls[0]`) for instantaneous server uptime verification. Displaying "Active (1.95 GB)" misled users into thinking the entire game repack was 1.95 GB instead of 39.10 GB.
-* **The Solution**: Explicitly format the health badge as `Part 1 Live (1.95 GB)` with a detailed tooltip explaining that Part 1 is verified online and referencing the total aggregate size.
-
-### 18. Interactive GUI Onboarding Tutorial & Multi-Step Carousel
-* **The Pattern**: First-time users are automatically presented with a 4-step onboarding carousel (`show_tutorial_dialog()`) detailing Turbo Extractor, Community Cloud Cache, 1-Click Health Check, and JDownloader 2 Push.
-* **The Solution**: Persist `has_seen_tutorial` in `settings.json`. Provide easy access points via the Navigation Rail Help button and Settings screen to replay the tutorial at any time.
-
-### 19. pywebview Private Mode vs Persistent Storage
-* **The Problem**: By default, `pywebview.start()` enables `private_mode=True`, which wipes `localStorage` and cookies on application exit. Theme choices and audio settings were reset on restart.
-* **The Solution**: Always invoke `webview.start(http_server=True, private_mode=False)` to persist client-side settings, themes, and sound toggles.
-
-### 20. Local Static Asset Serving in WebView2
-* **The Problem**: Opening local HTML bundles via `file://` protocol in WebView2 restricts Web Audio API context and breaks root-relative asset URLs (e.g. `/_astro/styles.css`).
-* **The Solution**: Enable `http_server=True` in `webview.start()`. `pywebview` spins up a lightweight embedded local HTTP server (using `bottle`) that maps root-relative paths directly to `dist_web/` with full Web Audio API support.
-
-### 21. PyInstaller Packaging for pywebview and pythonnet
-* **The Problem**: PyInstaller single-file packaging fails to bundle `pythonnet` C-extensions and WebView2 bindings without explicit hooks.
-* **The Solution**: Use `from PyInstaller.utils.hooks import collect_all` and include `collect_all('webview')`, `collect_all('pythonnet')`, and `collect_all('clr_loader')`, alongside `('dist_web', 'dist_web')` in `datas`.
-
-### 22. pywebview js_api Public Attribute Introspection Recursion
-* **The Problem**: Storing the window reference as a public attribute (`self.window = window`) on `AppBridge` caused `[pywebview] Error while processing window.native.AccessibilityObject.Bounds.Empty... maximum recursion depth exceeded`. `pywebview` reflects all public properties to the JS context and gets trapped in circular WinForms/WPF COM object hierarchies.
-* **The Solution**: Always store internal references as private attributes with leading underscores (`self._window = window`). `pywebview` ignores private members during JS proxy generation.
-
-### 23. ValidationSummary total_bytes Attribute Name
-* **The Problem**: In `bridge.py`, accessing `val_summary.total_size_bytes` threw `AttributeError: 'ValidationSummary' object has no attribute 'total_size_bytes'`, halting the pipeline before SQLite history insertion and community cloud auto-upload could fire.
-* **The Solution**: The correct dataclass field in `validator.py` is `val_summary.total_bytes`. Use `getattr(val_summary, 'total_bytes', 0)` defensively.
-
-### 24. HistoryManager API Signatures
-* **The Problem**: Calling `history_mgr.get_all_records()` or passing `game_title=...` to `history_mgr.add_record()` caused silent failures or `AttributeError`.
-* **The Solution**: The correct method is `history_mgr.get_records(search_query="", limit=100)`. `add_record` takes `title`, `source_url`, `total_parts`, `resolved_count`, `total_size_bytes`, `total_size_str`, `urls`.
+* **Wrong names hidden by broad excepts**: Several past bugs were a wrong function or attribute name swallowed by `except Exception`, such as `validate_single_link` and `total_size_bytes`. `ruff` (BLE rules) and `pyright` in CI catch this class, and `tests/test_contracts.py` checks bridge methods and events against the frontend. Catch specific exceptions, and log anything caught broadly.
 
 ---
 
-## 5. Security & Penetration Baseline
+## 5. Security Baseline
 
-Automated security penetration testing ([`scratch/security_pen_test.py`](file:///c:/Code/link/scratch/security_pen_test.py)) validates the following 6 vectors:
-* **SSRF / Cloud Metadata Protection**: Blocks `169.254.169.254` and non-whitelisted domains.
-* **Command Injection**: Strict subprocess argument sanitization (no shell interpolation).
-* **SQL Injection**: 100% parameterized SQLite queries in `history.py`.
-* **Path Traversal**: Filename and slug sanitization (`re.sub(r'[^a-zA-Z0-9_-]', '-', slug)`).
-* **CRLF / Header Injection**: JDownloader 2 FlashGot payload encoding.
-* **ReDoS Prevention**: Safe regex limits on `Content-Disposition` and pastebin link parsing.
-* **Result**: **6/6 Tests Passed (100% Clean)**.
+Security checks run against real app code as part of `python -m pytest`, offline:
+
+* **Link trust**: `tests/test_links.py`, and `tests/test_community.py` for shared records.
+* **Moderation**: `tests/test_issues.py`.
+* **What the page may trigger** (SSRF, settings, updates): `tests/test_bridge.py`.
+* **Update safety**: `tests/test_updater.py`.
+* **SQL injection**: `tests/test_history.py`.
+* **Path traversal, slowdowns from hostile input, secrets**: `tests/test_security.py`.
+* **Crawljob injection**: `tests/test_integrations.py`.
+* **Database rules**: `tests/test_firebase_rules.py`, on the Firebase emulator.
 
 ---
 
@@ -164,7 +113,6 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 - [x] **Phase 2: Modern Material 3 UI & Suite** (Flet M3, SQLite archive, JD2 push, EXE packaging).
 - [x] **Phase 3: Community Cloud Cache & Shared Link Hub** (Firebase Realtime DB REST API, Pixel Dino loading animation, 3D game cards, local timezone intelligence, instant pre-fetched resolver).
 - [x] **Phase 4: Next-Gen Gaming Hub UI/UX Overhaul** (Astro + Svelte, pywebview, Living Canvas, Defrag Mosaic, Selective Bandwidth Saver, Clipboard Sentinel, Audio Haptics).
-- [ ] **Phase 4.5: Multi-Hoster & Universal Automation** (DataNodes, FileKeeper, CLI mode).
 
 ---
 
@@ -172,7 +120,7 @@ Automated security penetration testing ([`scratch/security_pen_test.py`](file://
 
 1. **Always Maintain Author Credit**: Vikash (@vik05h) must remain in all legal/UI headers.
 2. **Never Hardcode System Paths**: Always use `get_app_data_dir()`, `get_resource_path()`, or `get_export_dir()`.
-3. **Verify Build Correctness**: When modifying GUI or dependencies, re-verify with `pyinstaller LinkExtractor_Single.spec --noconfirm`.
+3. **Verify Build Correctness**: When modifying GUI or dependencies, re-verify with `pyinstaller LinkExtractor_Single.spec --noconfirm`. Add new modules to `hiddenimports` in the spec files.
 4. **Preserve Cancellation Integrity**: Aborted extractions must never be persisted to `history.db`.
 5. **No Emojis in Documentation or UI**: Maintain professional, clean typography across all documentation files and UI labels/buttons. Use SVG components (`<Icon />`) instead of Unicode emojis in frontend components.
-6. **Verify Validator API Signatures**: Before calling any `validator.*` function, check `validator.py` for the exact function name and positional argument order. Silent `AttributeError` or `TypeError` from wrong names/ordering is a recurring trap.
+6. **Run the Checks**: `python -m pytest`, `ruff check .`, `pyright`, and `npm run check` in `frontend/`. After changing `firebase/database.rules.json`, also run the emulator tests described in `firebase/README.md`.

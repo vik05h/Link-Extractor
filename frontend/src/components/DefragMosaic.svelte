@@ -36,6 +36,7 @@
   $: resolvedCount = parts.filter(p => p.status === 'resolved').length;
   $: activeCount = parts.filter(p => p.status === 'decrypting').length;
   $: excludedCount = parts.filter(p => p.excluded).length;
+  $: failedCount = parts.filter(p => p.status === 'failed').length;
 </script>
 
 <div class="mosaic-container" role="region" aria-label="Repack Defrag Matrix" on:mousemove={handleMouseMove}>
@@ -50,6 +51,9 @@
         {/if}
         {#if excludedCount > 0}
           <span class="excluded-badge">• {excludedCount} Filtered Out</span>
+        {/if}
+        {#if failedCount > 0}
+          <span class="failed-badge">• {failedCount} Failed</span>
         {/if}
       </span>
     </div>
@@ -160,6 +164,11 @@
   .active-badge {
     color: var(--accent-secondary);
     animation: pulse 1.2s infinite;
+  }
+
+  .failed-badge {
+    color: var(--status-expired);
+    font-weight: 600;
   }
 
   .excluded-badge {

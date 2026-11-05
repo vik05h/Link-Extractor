@@ -1,6 +1,6 @@
 # AI Agent Memory & Context Index
 
-> **Primary Memory File**: See [MEMORY.md](file:///c:/Code/link/MEMORY.md) in the workspace root for the complete, up-to-date architectural decisions, solved technical gotchas, security baseline, and Phase 3 roadmap.
+> **Primary Memory File**: See [MEMORY.md](file:///c:/Code/link/MEMORY.md) in the workspace root for the complete, up-to-date architectural decisions, solved technical gotchas, security baseline, and roadmap.
 
 ---
 

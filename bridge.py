@@ -1,1179 +1,518 @@
-"""
-bridge.py — Asynchronous Bi-Directional RPC Bridge for Link Extractor Desktop.
+"""RPC bridge between the WebView2 frontend and the Python modules.
 
-Exposes core extraction, community caching, JDownloader 2 push, history, and
-settings APIs to the web frontend via pywebview's window.pywebview.api.
-Dispatches real-time events to the frontend via JavaScript CustomEvents.
+This is an adapter only: it translates calls from window.pywebview.api into module
+calls and sends events back. Decisions live in the modules behind it. Internal
+references stay private, because pywebview reflects public attributes into JavaScript.
 """
 
-import os
-import sys
-import re
 import json
-import time
-import asyncio
+import logging
+import os
+import re
+import sqlite3
+import sys
 import threading
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+import time
+from typing import Any, Dict, List, Optional
+
 import pyperclip
 
-import utils
-import scraper
-import engine
-import validator
 import community
+import engine
+import game_records
 import integrations
+import issues
+import links
+import palette
+import scraper
+import telemetry
 import updater
+import utils
+import validator
 from history import HistoryManager
+from pipeline import ExtractionPipeline, PipelinePorts
+
+log = logging.getLogger(__name__)
+
+SAVABLE_SETTINGS = {
+    "concurrency",
+    "auto_validate",
+    "jd_port",
+    "community_auto_upload",
+    "clipboard_sentinel_enabled",
+    "auto_crash_reporting",
+}
+CLIPBOARD_POLL_SECONDS = 1.5
+RESOLVABLE_CLIPBOARD_TYPES = {"fitgirl_game_page", "fitgirl_pastebin", "fuckingfast_direct", "raw_links"}
+DUPLICATE_CHOICE_TIMEOUT_SECONDS = 60.0
 
 
 class AppBridge:
     def __init__(self):
         self._window = None
         self._settings = utils.load_settings()
-        self._history_mgr = HistoryManager()
+        self._history = HistoryManager()
         self._cancel_event = threading.Event()
         self._is_running = False
-        self._current_engine: Optional[engine.ResolutionEngine] = None
-        self._clipboard_thread = None
+        self._run_lock = threading.Lock()
         self._clipboard_running = False
         self._last_clipboard_val = ""
         self._duplicate_wait_event = threading.Event()
-        self._duplicate_action = None
+        self._duplicate_action: Optional[str] = None
         self._instance_id = f"proc_{os.getpid()}_{int(time.time()) % 10000}"
         self._update_available = False
-        self._latest_release_info = None
+        self._latest_release_info: Optional[Dict[str, Any]] = None
+        self._update_downloading = False
+        self._update_cancel_event = threading.Event()
+        self._verified_update_path: Optional[str] = None
 
     def bind_window(self, window):
-        """Binds the active pywebview window reference."""
+        """Attach the pywebview window and start the background watchers."""
         self._window = window
         self._start_clipboard_sentinel()
-        self._start_startup_updater_check()
-
-    def _start_startup_updater_check(self):
-        def _check():
-            time.sleep(3.5)
-            try:
-                has_up, rel_info, msg = updater.check_for_updates()
-                if has_up and rel_info:
-                    self._update_available = True
-                    self._latest_release_info = rel_info
-                    self.dispatch_event("updater:available", {
-                        "release_info": rel_info,
-                        "is_frozen": updater.is_running_frozen(),
-                        "current_version": updater.CURRENT_VERSION
-                    })
-            except Exception as e:
-                print(f"[Startup Updater Check] {e}")
-
-        threading.Thread(target=_check, daemon=True).start()
+        threading.Thread(target=self._check_updates_at_startup, daemon=True, name="update-check").start()
 
     def dispatch_event(self, event_name: str, payload: Any = None):
-        """Dispatches a custom event to the web frontend."""
+        """Send a CustomEvent to the frontend."""
         if not self._window:
             return
+        data = json.dumps(payload if payload is not None else {})
         try:
-            data_json = json.dumps(payload if payload is not None else {})
-            js_code = f"window.dispatchEvent(new CustomEvent('{event_name}', {{ detail: {data_json} }}));"
-            self._window.evaluate_js(js_code)
-        except Exception as err:
-            print(f"[Bridge Event Error] {event_name}: {err}")
-
-    # ==========================================
-    # Window Controls
-    # ==========================================
-
-    def minimize_window(self):
-        """Minimizes the native desktop window."""
-        if self._window:
-            try:
-                self._window.minimize()
-            except Exception:
-                pass
-
-    def maximize_window(self):
-        """Toggles maximize or restore on the native desktop window."""
-        if self._window:
-            try:
-                self._window.toggle_fullscreen()
-            except Exception:
-                pass
-
-    def close_window(self):
-        """Closes the desktop application."""
-        if self._window:
-            try:
-                self._window.destroy()
-            except Exception:
-                pass
+            self._window.evaluate_js(f"window.dispatchEvent(new CustomEvent('{event_name}', {{ detail: {data} }}));")
+        except Exception:
+            log.exception("Could not send event %s", event_name)
 
     # ==========================================
     # Clipboard Sentinel
     # ==========================================
 
-    def _start_clipboard_sentinel(self):
+    def _start_clipboard_sentinel(self) -> None:
         if self._clipboard_running:
             return
         self._clipboard_running = True
 
-        def _sentinel_loop():
+        def watch() -> None:
             while self._clipboard_running:
-                try:
-                    if self._settings.get("clipboard_sentinel_enabled", True):
-                        clip_val = (pyperclip.paste() or "").strip()
-                        if clip_val and clip_val != self._last_clipboard_val:
-                            self._last_clipboard_val = clip_val
-                            url_type = scraper.detect_url_type(clip_val)
-                            if url_type in ("fitgirl_game_page", "fitgirl_pastebin", "fuckingfast_direct", "raw_links"):
-                                slug = scraper.extract_game_slug(clip_val)
-                                self.dispatch_event("clipboard:detected", {
-                                    "url": clip_val,
-                                    "url_type": url_type,
-                                    "slug": slug
-                                })
-                except Exception:
-                    pass
-                time.sleep(1.5)
+                if self._settings.get("clipboard_sentinel_enabled", True):
+                    try:
+                        self._check_clipboard((pyperclip.paste() or "").strip())
+                    except pyperclip.PyperclipException as error:
+                        log.debug("Clipboard unavailable: %s", error)
+                time.sleep(CLIPBOARD_POLL_SECONDS)
 
-        self._clipboard_thread = threading.Thread(target=_sentinel_loop, daemon=True)
-        self._clipboard_thread.start()
+        threading.Thread(target=watch, daemon=True, name="clipboard-sentinel").start()
+
+    def _check_clipboard(self, value: str) -> None:
+        if not value or value == self._last_clipboard_val:
+            return
+        self._last_clipboard_val = value
+        url_type = scraper.detect_url_type(value)
+        if url_type in RESOLVABLE_CLIPBOARD_TYPES:
+            slug = game_records.generate_game_slug(value) if url_type == "fitgirl_game_page" else ""
+            self.dispatch_event("clipboard:detected", {"url": value, "url_type": url_type, "slug": slug})
+
+    def copy_to_clipboard(self, text: str) -> Dict[str, Any]:
+        """Copy text for the user. The sentinel is told so it does not react to the app's own copy."""
+        clean = text or ""
+        self._last_clipboard_val = clean.strip()
+        try:
+            pyperclip.copy(clean)
+            return {"success": True}
+        except pyperclip.PyperclipException as error:
+            return {"success": False, "error": str(error)}
 
     # ==========================================
-    # URL & Metadata Discovery
+    # URL & Game Lookup
     # ==========================================
 
     def detect_url(self, url: str) -> Dict[str, Any]:
-        """Detects the input URL type and extracts game slug."""
         clean_url = (url or "").strip()
         url_type = scraper.detect_url_type(clean_url)
-        slug = scraper.extract_game_slug(clean_url) if url_type == "fitgirl_game_page" else ""
-        return {
-            "url": clean_url,
-            "url_type": url_type,
-            "slug": slug
-        }
+        slug = game_records.generate_game_slug(clean_url) if url_type == "fitgirl_game_page" else ""
+        return {"url": clean_url, "url_type": url_type, "slug": slug}
 
     def check_existing_game(self, url_or_slug: str) -> Dict[str, Any]:
-        """
-        Checks if a game already exists in Firebase Community Cloud or SQLite History.
-        Returns match status and record details.
-        """
-        clean_input = (url_or_slug or "").strip()
-        if not clean_input:
-            return {"exists": False}
-
-        # 1. Derive slug candidates
-        slug = ""
-        if "http://" in clean_input or "https://" in clean_input:
-            slug = scraper.extract_game_slug(clean_input)
-        else:
-            slug = community.sanitize_slug(clean_input)
-        fallback_slug = community.generate_game_slug(clean_input)
-
-        # 2. Check Firebase Community Cache
-        fb_url = self._settings.get("community_firebase_url")
-        comm_rec = None
-
-        cached_list = community.get_community_games(fb_url, force_refresh=False)
-        clean_lower = clean_input.lower()
-        for item in cached_list:
-            item_slug = item.get("slug", "")
-            item_title = item.get("title", "").lower()
-            item_src = item.get("source_url", "").lower()
-
-            if slug and (slug == item_slug or slug in item_src):
-                comm_rec = item
-                break
-            if clean_input and (clean_input == item.get("source_url") or (len(clean_lower) >= 4 and clean_lower in item_title)):
-                comm_rec = item
-                break
-            if fallback_slug and (fallback_slug == item_slug or fallback_slug in item_src):
-                comm_rec = item
-                break
-
-        if not comm_rec and slug:
-            single = community.get_game_by_slug(slug, fb_url)
-            if single and single.get("title"):
-                comm_rec = single
-
-        if comm_rec:
-            target_slug = comm_rec.get("slug") or slug
-            urls = community.get_game_urls(target_slug, fb_url)
-
-            # Check if record is expired (> 24h old or marked 'expired')
-            iso_ts = comm_rec.get("timestamp_utc", "")
-            freshness = comm_rec.get("freshness", "fresh")
-            is_expired = freshness == "expired"
-            if iso_ts and not is_expired:
-                try:
-                    dt_utc = community.parse_iso_timestamp(iso_ts)
-                    age_hours = (datetime.now(timezone.utc) - dt_utc).total_seconds() / 3600.0
-                    if age_hours >= 24.0:
-                        is_expired = True
-                        freshness = "expired"
-                except Exception:
-                    pass
-
-            return {
-                "exists": True,
-                "source": "community",
-                "is_expired": is_expired,
-                "record": {
-                    "slug": target_slug,
-                    "title": comm_rec.get("title", "FitGirl Repack"),
-                    "image_url": comm_rec.get("image_url", ""),
-                    "source_url": comm_rec.get("source_url", clean_input),
-                    "total_parts": comm_rec.get("total_parts", len(urls)),
-                    "total_size_str": comm_rec.get("total_size_str", "0 B"),
-                    "age_str": comm_rec.get("age_str", "Recently"),
-                    "timestamp_utc": comm_rec.get("timestamp_utc", ""),
-                    "freshness": freshness,
-                    "is_expired": is_expired,
-                    "used_count": comm_rec.get("used_count", 0),
-                    "urls": urls
-                }
-            }
-
-        # 3. Check SQLite Local History
+        """Look for exactly this game in the community cache and local history."""
         try:
-            hist_records = self._history_mgr.get_records(limit=200)
-            matched_hist = None
-            for r in hist_records:
-                src = (r.get("source_url") or "").strip()
-                title = (r.get("title") or "").strip()
-                if clean_input and (clean_input == src or (src and src in clean_input)):
-                    matched_hist = r
-                    break
-                if slug and (slug in community.generate_game_slug(src, title)):
-                    matched_hist = r
-                    break
-                if clean_input.lower() in title.lower() and len(clean_input) > 4:
-                    matched_hist = r
-                    break
-
-            if matched_hist:
-                derived_slug = community.generate_game_slug(matched_hist.get("source_url", ""), matched_hist.get("title", ""))
-                hist_ts = matched_hist.get("timestamp", "")
-                is_expired = False
-                try:
-                    dt_hist = datetime.strptime(hist_ts, "%Y-%m-%d %H:%M:%S")
-                    if (datetime.now() - dt_hist).total_seconds() >= 86400:
-                        is_expired = True
-                except Exception:
-                    pass
-
-                return {
-                    "exists": True,
-                    "source": "history",
-                    "is_expired": is_expired,
-                    "record": {
-                        "slug": derived_slug,
-                        "title": matched_hist.get("title", "FitGirl Repack"),
-                        "image_url": "",
-                        "source_url": matched_hist.get("source_url", clean_input),
-                        "total_parts": matched_hist.get("total_parts", len(matched_hist.get("urls", []))),
-                        "total_size_str": matched_hist.get("total_size_str", "0 B"),
-                        "age_str": hist_ts or "Local History",
-                        "timestamp_utc": hist_ts,
-                        "freshness": "expired" if is_expired else "fresh",
-                        "is_expired": is_expired,
-                        "used_count": 0,
-                        "urls": matched_hist.get("urls", [])
-                    }
-                }
-        except Exception as e:
-            print(f"[Bridge Check Error] SQLite check failed: {e}")
-
-        return {"exists": False}
+            history = self._history.get_records(limit=200)
+        except sqlite3.Error:
+            log.exception("Could not read history")
+            history = []
+        return community.find_existing_game(url_or_slug, history)
 
     def decide_duplicate(self, action: str) -> Dict[str, Any]:
-        """Handles user response to duplicate detected modal: 'instant' or 'fresh'."""
+        """The user's answer to the duplicate dialog: instant, fresh or cancel."""
         self._duplicate_action = action
-        if hasattr(self, "_duplicate_wait_event") and self._duplicate_wait_event:
-            self._duplicate_wait_event.set()
+        self._duplicate_wait_event.set()
         return {"status": "ok", "action": action}
 
     # ==========================================
-    # Community Cloud Cache APIs
+    # Community Cloud Cache
     # ==========================================
 
-    def get_community_feed(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
-        """Fetches trending pre-resolved games from Community Firebase Cache without blocking UI."""
-        try:
-            fb_url = self._settings.get("community_firebase_url")
-            games = community.get_community_games(fb_url, force_refresh=force_refresh)
-            
-            # Background callback to dispatch event when sync completes
-            if force_refresh or (time.time() - getattr(community, "_COMMUNITY_GAMES_CACHE_TIME", 0) > 30.0):
-                def _on_synced(updated_games):
-                    self.dispatch_event("community:feed_updated", {"count": len(updated_games)})
-                community.sync_community_games_in_background(fb_url, on_complete=_on_synced)
+    def _on_feed_synced(self, games: List[Dict[str, Any]]) -> None:
+        self.dispatch_event("community:feed_updated", {"count": len(games), **community.feed_status()})
 
-            return games or []
-        except Exception as err:
-            print(f"[Bridge Error] get_community_feed: {err}")
-            return []
-
-    def get_game_by_slug(self, slug: str) -> Dict[str, Any]:
-        """Queries single game metadata by slug."""
-        fb_url = self._settings.get("community_firebase_url")
-        data = community.get_game_by_slug(slug, fb_url)
-        return data or {}
+    def get_community_feed(self, force_refresh: bool = False) -> Dict[str, Any]:
+        """The games known right now. If a refresh runs, community:feed_updated fires when it ends."""
+        games = community.get_community_games(bool(force_refresh), on_synced=self._on_feed_synced)
+        return {"games": games, **community.feed_status()}
 
     def get_game_urls(self, slug: str) -> List[str]:
-        """Fetches direct URLs for a specific community game slug."""
-        fb_url = self._settings.get("community_firebase_url")
-        return community.get_game_urls(slug, fb_url)
+        return community.get_game_urls(slug)
 
     def check_health(self, url: str) -> Dict[str, Any]:
-        """Performs 1-byte Range check to verify if direct link is alive."""
-        try:
-            val_link = validator.validate_single_url(1, url, timeout=6.0)
-            return {
-                "is_alive": val_link.is_valid,
-                "status_code": val_link.status_code,
-                "message": val_link.content_length_str if val_link.is_valid else (val_link.error or "Link unreachable")
-            }
-        except Exception as err:
-            return {"is_alive": False, "status_code": 0, "message": str(err)}
+        """A 1-byte check of a shared direct link. Other addresses are refused."""
+        if not links.is_direct_link(url):
+            return {"is_alive": False, "status_code": 0, "message": "Unsupported link"}
+        link = validator.validate_single_url(0, url, timeout=6.0)
+        message = link.content_length_str if link.is_valid else (link.error or "Link unreachable")
+        return {"is_alive": link.is_valid, "status_code": link.status_code, "message": message}
 
     def ping_presence(self, session_id: str = "") -> Dict[str, Any]:
-        """Pings user presence heartbeat and returns online gamers count without blocking bridge."""
-        cached_count = getattr(self, "_cached_live_gamers", 1)
+        """Renew the heartbeat in the background and return the last known count."""
 
-        def _ping_bg():
-            try:
-                fb_url = self._settings.get("community_firebase_url")
-                sid = (session_id or "").strip() or self._instance_id
-                active = community.ping_presence(sid, updater.CURRENT_VERSION, fb_url)
-                self._cached_live_gamers = active
-                self.dispatch_event("community:stats_updated", {"live_gamers": active})
-            except Exception:
-                pass
+        def ping() -> None:
+            count = community.ping_presence((session_id or "").strip() or self._instance_id)
+            self.dispatch_event("community:stats_updated", {"live_gamers": count})
 
-        threading.Thread(target=_ping_bg, daemon=True).start()
-        return {"live_gamers": cached_count}
+        threading.Thread(target=ping, daemon=True, name="presence").start()
+        return {"live_gamers": community.get_community_stats()["live_gamers"]}
 
     def track_game_usage(self, slug: str) -> Dict[str, Any]:
-        """Increments usage/download counter for a community game."""
-        fb_url = self._settings.get("community_firebase_url")
-        new_count = community.increment_game_usage(slug, fb_url)
-        return {"slug": slug, "used_count": new_count}
+        return {"slug": slug, "used_count": community.increment_game_usage(slug)}
 
     def get_community_stats(self) -> Dict[str, Any]:
-        """Fetches live user count and global grabs without blocking bridge."""
-        cached_stats = getattr(self, "_cached_community_stats", {
-            "live_gamers": getattr(self, "_cached_live_gamers", 1),
-            "total_grabs": getattr(self, "_cached_total_grabs", 0)
-        })
-
-        def _fetch_stats_bg():
-            try:
-                fb_url = self._settings.get("community_firebase_url")
-                fresh_stats = community.get_community_stats(fb_url)
-                self._cached_community_stats = fresh_stats
-                if "live_gamers" in fresh_stats:
-                    self._cached_live_gamers = fresh_stats["live_gamers"]
-                if "total_grabs" in fresh_stats:
-                    self._cached_total_grabs = fresh_stats["total_grabs"]
-                self.dispatch_event("community:stats_updated", fresh_stats)
-            except Exception:
-                pass
-
-        threading.Thread(target=_fetch_stats_bg, daemon=True).start()
-        return cached_stats
+        return community.get_community_stats()
 
     def extract_game_palette(self, image_url: str) -> Dict[str, Any]:
-        """
-        Downloads game cover art via Python (bypassing browser CORS restrictions),
-        analyzes pixels using PIL and HSV space, and returns the signature vibrant
-        primary and harmonic secondary colors for YouTube-style ambient mode.
-        """
-        if not image_url or not isinstance(image_url, str):
-            return {
-                "primary": [16, 185, 129],
-                "secondary": [6, 182, 212],
-                "glow": "rgba(16, 185, 129, 0.35)"
-            }
-
-        if not hasattr(self, "_palette_cache"):
-            self._palette_cache = {}
-
-        if image_url in self._palette_cache:
-            return self._palette_cache[image_url]
-
-        try:
-            import urllib.request
-            import io
-            import colorsys
-            from PIL import Image
-
-            req = urllib.request.Request(
-                image_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            )
-            data = urllib.request.urlopen(req, timeout=5.0).read()
-            img = Image.open(io.BytesIO(data)).convert("RGB").resize((48, 48))
-            pixels = [img.getpixel((x, y)) for y in range(48) for x in range(48)]
-
-            def to_vibrant(h, l, s, min_l=0.66, max_l=0.76, min_s=0.82):
-                target_l = max(min_l, min(max_l, max(l, 0.68)))
-                target_s = max(min_s, min(1.0, max(s * 1.3, 0.85)))
-                rf, gf, bf = colorsys.hls_to_rgb(h, target_l, target_s)
-                return (int(round(rf * 255)), int(round(gf * 255)), int(round(bf * 255)))
-
-            scored = []
-            for r, g, b in pixels:
-                h, l, s = colorsys.rgb_to_hls(r / 255.0, g / 255.0, b / 255.0)
-                # Filter out pure whites, deep blacks, and muddy greys
-                if 0.10 < l < 0.94 and s > 0.16:
-                    score = (s * 2.5) + (1.0 - abs(l - 0.50))
-                    scored.append((score, (r, g, b), h, l, s))
-
-            if scored:
-                scored.sort(key=lambda item: item[0], reverse=True)
-                best = scored[0]
-                primary_h, primary_l, primary_s = best[2], best[3], best[4]
-                primary_rgb = to_vibrant(primary_h, primary_l, primary_s)
-
-                secondary_rgb = None
-                for _, rgb, h, l, s in scored[1:]:
-                    hue_diff = abs(h - primary_h)
-                    if hue_diff > 0.5:
-                        hue_diff = 1.0 - hue_diff
-                    if hue_diff > 0.10:
-                        secondary_rgb = to_vibrant(h, l, s)
-                        break
-
-                if not secondary_rgb:
-                    sec_h = (primary_h + 0.12) % 1.0
-                    secondary_rgb = to_vibrant(sec_h, 0.70, 0.88)
-
-                result = {
-                    "primary": list(primary_rgb),
-                    "secondary": list(secondary_rgb),
-                    "glow": f"rgba({primary_rgb[0]}, {primary_rgb[1]}, {primary_rgb[2]}, 0.4)"
-                }
-                self._palette_cache[image_url] = result
-                return result
-        except Exception:
-            pass
-
-        # Deterministic fallback from url hash if network fails
-        import colorsys
-        h_val = sum(ord(c) for c in image_url) % 360
-        r_f, g_f, b_f = [int(round(x * 255)) for x in colorsys.hls_to_rgb(h_val / 360.0, 0.70, 0.88)]
-        s_f, s_g, s_b = [int(round(x * 255)) for x in colorsys.hls_to_rgb(((h_val + 45) % 360) / 360.0, 0.68, 0.85)]
-        fallback = {
-            "primary": [r_f, g_f, b_f],
-            "secondary": [s_f, s_g, s_b],
-            "glow": f"rgba({r_f}, {g_f}, {b_f}, 0.35)"
-        }
-        self._palette_cache[image_url] = fallback
-        return fallback
+        return palette.extract_game_palette(image_url)
 
     # ==========================================
     # Extraction Pipeline
     # ==========================================
 
-    def start_extraction(self, url: str, concurrency: int = None, force_fresh: bool = False) -> Dict[str, Any]:
-        """Starts the asynchronous link extraction pipeline."""
-        if self._is_running:
-            return {"status": "error", "message": "An extraction is already in progress."}
-
-        target_url = (url or "").strip()
-        if not target_url:
+    def start_extraction(self, url: str, concurrency: Optional[int] = None, force_fresh: bool = False) -> Dict[str, Any]:
+        target = (url or "").strip()
+        if not target:
             return {"status": "error", "message": "Empty URL provided."}
+        with self._run_lock:
+            if self._is_running:
+                return {"status": "error", "message": "An extraction is already in progress."}
+            self._is_running = True
 
         self._cancel_event.clear()
         self._duplicate_wait_event.clear()
         self._duplicate_action = None
-        self._is_running = True
-        concurrency = concurrency or self._settings.get("concurrency", 3)
-
+        tabs = concurrency or self._settings.get("concurrency", 3)
         threading.Thread(
-            target=self._run_extraction_pipeline,
-            args=(target_url, concurrency, force_fresh),
-            daemon=True
+            target=self._run_pipeline, args=(target, tabs, bool(force_fresh)), daemon=True, name="extraction"
         ).start()
+        return {"status": "started", "target_url": target}
 
-        return {"status": "started", "target_url": target_url}
-
-    def _run_extraction_pipeline(self, target_url: str, concurrency: int, force_fresh: bool = False):
-        game_title = "Game Repack"
-        cover_image = ""
-        resolved_urls = []
-        val_summary = None
-
+    def _run_pipeline(self, target: str, concurrency: int, force_fresh: bool) -> None:
+        ports = PipelinePorts(
+            make_engine=lambda tabs: engine.ResolutionEngine(concurrency=tabs, headless=False),
+            validate_links=validator.validate_links,
+            fetch_game_page=scraper.extract_game_page_pastebins,
+            resolve_paste_metadata=scraper.resolve_pastebin_metadata,
+            publish=community.upload_game_record,
+            find_existing=self.check_existing_game,
+            ask_duplicate=self._ask_duplicate,
+        )
         try:
-            self.dispatch_event("pipeline:status", {"status": "starting", "message": "Inspecting URL..."})
-
-            url_type = scraper.detect_url_type(target_url)
-            intermediate_urls = []
-
-            if url_type == "fitgirl_game_page":
-                self.dispatch_event("pipeline:status", {"status": "scraping", "message": "Parsing FitGirl Game Page..."})
-                pastebins, game_title, cover_image = scraper.extract_game_page_pastebins(target_url)
-
-                ff_pastebins = [p for p in pastebins if p.get("hoster") == "FuckingFast"] or (pastebins[:1] if pastebins else [])
-                if not ff_pastebins:
-                    raise ValueError("No FuckingFast or compatible pastebin mirrors found on game page.")
-
-                target_pastebin = ff_pastebins[0]["url"]
-                self.dispatch_event("pipeline:status", {"status": "scraping", "message": "Decrypting Pastebin links..."})
-                self._current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
-                intermediate_urls = asyncio.run(self._current_engine.fetch_pastebin_links(target_pastebin))
-
-                if not intermediate_urls:
-                    raise ValueError("No direct download parts found inside pastebin.")
-
-                self.dispatch_event("pipeline:game_meta", {
-                    "title": game_title,
-                    "image_url": cover_image,
-                    "parts_count": len(intermediate_urls)
-                })
-
-            elif url_type == "fitgirl_pastebin":
-                self.dispatch_event("pipeline:status", {"status": "scraping", "message": "Decrypting Pastebin page..."})
-                self._current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
-                intermediate_urls = asyncio.run(self._current_engine.fetch_pastebin_links(target_url))
-
-                # Auto-resolve game title, artwork, and canonical slug from part filenames
-                self.dispatch_event("pipeline:status", {"status": "scraping", "message": "Resolving Game Intelligence & Artwork..."})
-                pastebin_meta = scraper.resolve_pastebin_metadata(target_url, intermediate_urls)
-                game_title = pastebin_meta.get("title") or "FitGirl Pastebin Repack"
-                cover_image = pastebin_meta.get("image_url") or ""
-                target_url = pastebin_meta.get("source_url") or target_url
-
-                self.dispatch_event("pipeline:game_meta", {
-                    "title": game_title,
-                    "image_url": cover_image,
-                    "parts_count": len(intermediate_urls)
-                })
-
-                # Mid-scrape duplicate check for pastebin
-                if not force_fresh:
-                    discovered_slug = scraper.extract_game_slug(target_url, game_title)
-                    dup_check = self.check_existing_game(discovered_slug)
-                    if not dup_check.get("exists"):
-                        dup_check = self.check_existing_game(game_title)
-                    if not dup_check.get("exists"):
-                        dup_check = self.check_existing_game(target_url)
-
-                    if dup_check.get("exists"):
-                        if dup_check.get("is_expired"):
-                            rec_age = dup_check.get("record", {}).get("age_str", "outdated")
-                            self.dispatch_event("pipeline:status", {
-                                "status": "resolving",
-                                "message": f"Cached links are outdated ({rec_age}). Resolving fresh mirrors to update database..."
-                            })
-                        else:
-                            self.dispatch_event("pipeline:duplicate_detected", dup_check.get("record"))
-                            self._duplicate_wait_event.wait(timeout=60.0)
-                            if self._duplicate_action == "instant":
-                                self.dispatch_event("pipeline:cancelled", {"message": "Switched to Instant Cached Links."})
-                                return
-            else:
-                intermediate_urls = [target_url]
-                game_title = "Direct Repack"
-
-            total_parts = len(intermediate_urls)
-            self.dispatch_event("pipeline:status", {
-                "status": "resolving",
-                "message": f"Bypassing Cloudflare Turnstile across {total_parts} parts ({concurrency} tabs)..."
-            })
-
-            # Initialize parts state on frontend
-            parts_payload = []
-            for idx, p_url in enumerate(intermediate_urls, 1):
-                clean_name = p_url.split("#")[-1] if "#" in p_url else f"Part {idx}"
-                parts_payload.append({
-                    "index": idx,
-                    "url": p_url,
-                    "filename": clean_name,
-                    "status": "pending",
-                    "size": "Pending"
-                })
-            self.dispatch_event("pipeline:init_parts", parts_payload)
-
-            # Callback for Playwright progress
-            def on_engine_progress(resolved_so_far, total_count, avg_speed, eta, active_workers, part_name, direct_url, status):
-                self.dispatch_event("pipeline:part_update", {
-                    "resolved_so_far": resolved_so_far,
-                    "total": total_count,
-                    "avg_speed": f"{avg_speed:.1f}s/part",
-                    "eta": f"~{int(eta)}s",
-                    "part_name": part_name,
-                    "direct_url": direct_url or "",
-                    "status": status
-                })
-
-            if not self._current_engine:
-                self._current_engine = engine.ResolutionEngine(concurrency=concurrency, headless=False)
-
-            raw_results = self._current_engine.resolve_all(
-                intermediate_urls,
-                on_progress=on_engine_progress,
-                cancel_event=self._cancel_event
+            ExtractionPipeline(ports, self._history, self._settings, self.dispatch_event).run(
+                target, concurrency, force_fresh, self._cancel_event
             )
-
-            if self._cancel_event.is_set():
-                self.dispatch_event("pipeline:cancelled", {"message": "Extraction cancelled by user."})
-                return
-
-            resolved_urls = [r.direct_url for r in raw_results if r.status == "resolved" and r.direct_url]
-            if not resolved_urls:
-                raise RuntimeError("No direct download links could be resolved.")
-
-            # Validation stage
-            auto_val = self._settings.get("auto_validate", True)
-            total_size_str = "0 B"
-            total_size_bytes = 0
-
-            if auto_val:
-                self.dispatch_event("pipeline:status", {
-                    "status": "validating",
-                    "message": f"Sending 1-byte Range HTTP requests to verify {len(resolved_urls)} parts..."
-                })
-
-                def on_val_prog(*args):
-                    if len(args) == 3:
-                        curr, tot, item = args
-                        p_url = getattr(item, 'url', '') if item else ""
-                        p_size = getattr(item, 'content_length_str', 'Unknown') if item else "Unknown"
-                        is_ok = getattr(item, 'is_valid', False) if item else False
-                        idx = getattr(item, 'index', None) if item else None
-                    elif len(args) >= 5:
-                        curr, tot, p_url, p_size, is_ok = args[:5]
-                        idx = None
-                    else:
-                        return
-                    self.dispatch_event("pipeline:val_update", {
-                        "current": curr,
-                        "total": tot,
-                        "url": p_url,
-                        "size": p_size,
-                        "valid": is_ok,
-                        "index": idx
-                    })
-
-                val_summary = validator.validate_links(
-                    resolved_urls,
-                    max_workers=15,
-                    on_progress=on_val_prog,
-                    cancel_event=self._cancel_event
-                )
-
-                if val_summary:
-                    total_size_str = val_summary.total_size_str
-                    total_size_bytes = getattr(val_summary, 'total_bytes', 0)
-
-            # Auto-save to SQLite History
-            self._history_mgr.add_record(
-                title=game_title,
-                source_url=target_url,
-                total_parts=len(resolved_urls),
-                resolved_count=len(resolved_urls),
-                total_size_bytes=total_size_bytes,
-                total_size_str=total_size_str,
-                urls=resolved_urls
-            )
-
-            # Auto-upload to Community Cloud if enabled
-            if self._settings.get("community_auto_upload", True) and game_title not in ("Direct Repack", "FitGirl Repack"):
-                try:
-                    game_slug = community.generate_game_slug(target_url, game_title)
-                    community.upload_game_record(
-                        slug=game_slug,
-                        title=game_title,
-                        image_url=cover_image,
-                        source_url=target_url,
-                        urls=resolved_urls,
-                        total_parts=len(resolved_urls),
-                        total_size_str=total_size_str,
-                        total_size_bytes=total_size_bytes,
-                        firebase_url=self._settings.get("community_firebase_url")
-                    )
-                    self.dispatch_event("community:feed_updated", {"slug": game_slug, "title": game_title})
-                except Exception as up_err:
-                    print(f"[Community Auto-Upload Warning] {up_err}")
-
-            # Notify frontend completion
-            self.dispatch_event("pipeline:complete", {
-                "title": game_title,
-                "image_url": cover_image,
-                "source_url": target_url,
-                "urls": resolved_urls,
-                "parts_count": len(resolved_urls),
-                "total_size_str": total_size_str,
-                "total_size_bytes": total_size_bytes
-            })
-
-        except Exception as exc:
-            self.dispatch_event("pipeline:error", {"message": str(exc)})
         finally:
             self._is_running = False
-            self._current_engine = None
+
+    def _ask_duplicate(self, record: Dict[str, Any]) -> Optional[str]:
+        self._duplicate_wait_event.clear()
+        self.dispatch_event("pipeline:duplicate_detected", record)
+        self._duplicate_wait_event.wait(timeout=DUPLICATE_CHOICE_TIMEOUT_SECONDS)
+        return self._duplicate_action
 
     def cancel_pipeline(self) -> Dict[str, Any]:
-        """Signals cancellation of active extraction."""
         if not self._is_running:
             return {"status": "idle"}
         self._cancel_event.set()
-        if hasattr(self, "_duplicate_wait_event") and self._duplicate_wait_event:
-            self._duplicate_wait_event.set()
-        if self._current_engine and hasattr(self._current_engine, "cancel"):
-            try:
-                self._current_engine.cancel()
-            except Exception:
-                pass
+        self._duplicate_wait_event.set()
         self.dispatch_event("pipeline:status", {"status": "cancelling", "message": "Cancelling workers..."})
         return {"status": "cancelling"}
 
     # ==========================================
-    # Integrations: JDownloader 2 & Export
+    # JDownloader 2 & Export
     # ==========================================
 
     def push_to_jd2(self, urls: List[str], title: str, source_url: str = "") -> Dict[str, Any]:
-        """Pushes direct URLs to JDownloader 2 via FlashGot API (port 9666) with folderwatch fallback."""
-        if not urls:
-            return {"success": False, "message": "No URLs to push."}
-        port = self._settings.get("jd_port", 9666)
-        success, msg = integrations.push_to_jdownloader(
-            urls,
-            package_name=title or "FitGirl Repack",
-            source_url=source_url,
-            port=port
+        success, message = integrations.push_to_jdownloader(
+            urls, package_name=title or "FitGirl Repack", source_url=source_url, port=self._settings.get("jd_port", 9666)
         )
-        return {"success": success, "message": msg}
+        return {"success": success, "message": message}
 
     def export_urls(self, format_type: str, urls: List[str], title: str, total_size_str: str = "") -> Dict[str, Any]:
-        """Exports URLs as .txt, .json, or .crawljob to Downloads folder."""
+        """Export links to the Downloads folder as .txt, .json or .crawljob."""
         if not urls:
             return {"success": False, "message": "No URLs to export."}
 
-        safe_title = re.sub(r'[^a-zA-Z0-9_-]', '_', title or "repack").strip('_') or "repack"
+        safe_title = re.sub(r"[^a-zA-Z0-9_-]", "_", title or "repack").strip("_") or "repack"
         out_dir = utils.get_export_dir()
         os.makedirs(out_dir, exist_ok=True)
 
         if format_type == "txt":
-            fp = os.path.join(out_dir, f"{safe_title}_direct_urls.txt")
-            integrations.export_text(fp, urls, title)
+            path = os.path.join(out_dir, f"{safe_title}_direct_urls.txt")
+            written = integrations.export_text(path, urls, title)
         elif format_type == "json":
-            fp = os.path.join(out_dir, f"{safe_title}.json")
-            integrations.export_json(fp, title, "", urls, total_size_str)
+            path = os.path.join(out_dir, f"{safe_title}.json")
+            written = integrations.export_json(path, title, "", urls, total_size_str)
         elif format_type == "crawljob":
-            fp = os.path.join(out_dir, f"{safe_title}.crawljob")
-            integrations.export_crawljob(fp, urls, title)
+            path = os.path.join(out_dir, f"{safe_title}.crawljob")
+            written = integrations.export_crawljob(path, urls, title)
         else:
             return {"success": False, "message": f"Unsupported format: {format_type}"}
 
+        if not written:
+            return {"success": False, "message": f"Could not write {os.path.basename(path)}."}
         utils.open_folder_cross_platform(out_dir)
-        return {
-            "success": True,
-            "file_path": fp,
-            "message": f"Saved {os.path.basename(fp)} to Downloads!"
-        }
-
-    def copy_to_clipboard(self, text: str) -> Dict[str, Any]:
-        """Copies given text to the system clipboard safely."""
-        try:
-            pyperclip.copy(text or "")
-            return {"success": True}
-        except Exception as err:
-            return {"success": False, "error": str(err)}
+        return {"success": True, "file_path": path, "message": f"Saved {os.path.basename(path)} to Downloads!"}
 
     # ==========================================
-    # History SQLite Archive
+    # History
     # ==========================================
 
     def get_history(self) -> List[Dict[str, Any]]:
-        """Retrieves past extractions from SQLite."""
         try:
-            records = self._history_mgr.get_records()
-            return [
-                {
-                    "id": r["id"],
-                    "game_title": r["title"],
-                    "source_url": r.get("source_url", ""),
-                    "parts_count": r.get("total_parts", 0),
-                    "total_size": r.get("total_size_str", "0 B"),
-                    "created_at": r.get("timestamp", "Recently"),
-                    "resolved_links": r.get("urls", [])
-                }
-                for r in records
-            ]
-        except Exception as err:
-            print(f"[History Error] {err}")
+            records = self._history.get_records()
+        except sqlite3.Error:
+            log.exception("Could not read history")
             return []
-
-    def search_history(self, query: str) -> List[Dict[str, Any]]:
-        """Searches SQLite history records by game title."""
-        try:
-            records = self._history_mgr.get_records(search_query=query)
-            return [
-                {
-                    "id": r["id"],
-                    "game_title": r["title"],
-                    "source_url": r.get("source_url", ""),
-                    "parts_count": r.get("total_parts", 0),
-                    "total_size": r.get("total_size_str", "0 B"),
-                    "created_at": r.get("timestamp", "Recently"),
-                    "resolved_links": r.get("urls", [])
-                }
-                for r in records
-            ]
-        except Exception as err:
-            return []
+        return [
+            {
+                "id": record["id"],
+                "game_title": record["title"],
+                "source_url": record.get("source_url", ""),
+                "parts_count": record.get("total_parts", 0),
+                "resolved_count": record.get("resolved_count", 0),
+                "is_partial": record.get("resolved_count", 0) < record.get("total_parts", 0),
+                "total_size": record.get("total_size_str", "0 B"),
+                "created_at": record.get("timestamp", "Recently"),
+                "resolved_links": record.get("urls", []),
+            }
+            for record in records
+        ]
 
     def delete_history_item(self, record_id: int) -> Dict[str, Any]:
-        """Deletes a record from SQLite history."""
         try:
-            self._history_mgr.delete_record(int(record_id))
+            self._history.delete_record(int(record_id))
             return {"success": True}
-        except Exception as err:
-            return {"success": False, "error": str(err)}
-
-    def clear_history(self) -> Dict[str, Any]:
-        """Clears all records from SQLite history."""
-        try:
-            self._history_mgr.clear_history()
-            return {"success": True}
-        except Exception as err:
-            return {"success": False, "error": str(err)}
+        except (sqlite3.Error, TypeError, ValueError) as error:
+            return {"success": False, "error": str(error)}
 
     # ==========================================
-    # Settings & Updater
+    # Settings
     # ==========================================
 
     def get_settings(self) -> Dict[str, Any]:
-        """Returns loaded user settings."""
         self._settings = utils.load_settings()
         return self._settings
 
     def save_settings(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Saves user settings to settings.json."""
-        self._settings.update(new_settings)
+        """Save the options the Settings screen offers, and nothing else."""
+        self._settings.update({key: value for key, value in new_settings.items() if key in SAVABLE_SETTINGS})
         utils.save_settings(self._settings)
         return {"success": True}
 
     # ==========================================
-    # Auto-Updater Endpoints
+    # Updater
     # ==========================================
 
+    def _check_updates_at_startup(self) -> None:
+        time.sleep(3.5)
+        has_update, release_info, message = updater.check_for_updates()
+        log.info("Startup update check: %s", message)
+        if has_update and release_info:
+            self._update_available = True
+            self._latest_release_info = release_info
+            self.dispatch_event("updater:available", {
+                "release_info": release_info,
+                "is_frozen": updater.is_running_frozen(),
+                "current_version": updater.CURRENT_VERSION,
+            })
+
     def get_changelogs(self) -> List[Dict[str, Any]]:
-        """Returns structured changelogs for all releases."""
         return updater.get_all_version_changelogs()
 
     def get_update_status(self) -> Dict[str, Any]:
-        """Returns currently known update availability and release information."""
         return {
-            "has_update": getattr(self, "_update_available", False),
-            "release_info": getattr(self, "_latest_release_info", None),
+            "has_update": self._update_available,
+            "release_info": self._latest_release_info,
             "current_version": updater.CURRENT_VERSION,
-            "is_frozen": updater.is_running_frozen()
+            "is_frozen": updater.is_running_frozen(),
         }
 
-    def check_for_updates(self, force_available: bool = False) -> Dict[str, Any]:
-        """Check GitHub Releases for newer version of the application."""
-        try:
-            has_update, release_info, message = updater.check_for_updates(force_available=force_available)
-            self._update_available = has_update
-            self._latest_release_info = release_info if has_update else None
-            return {
-                "has_update": has_update,
-                "available": has_update,
-                "release_info": release_info or {},
-                "message": message,
-                "is_frozen": updater.is_running_frozen(),
-                "current_version": updater.CURRENT_VERSION
-            }
-        except Exception as err:
-            return {
-                "has_update": False,
-                "available": False,
-                "release_info": None,
-                "message": f"Check failed: {err}",
-                "is_frozen": updater.is_running_frozen(),
-                "current_version": updater.CURRENT_VERSION
-            }
+    def check_for_updates(self) -> Dict[str, Any]:
+        has_update, release_info, message = updater.check_for_updates()
+        self._update_available = has_update
+        self._latest_release_info = release_info if has_update else None
+        return {
+            "has_update": has_update,
+            "available": has_update,
+            "release_info": release_info or {},
+            "message": message,
+            "is_frozen": updater.is_running_frozen(),
+            "current_version": updater.CURRENT_VERSION,
+        }
 
-    def check_updates(self) -> Dict[str, Any]:
-        """Backward-compatible alias for check_for_updates."""
-        return self.check_for_updates()
-
-    def start_update_download(self, download_url: str = "") -> Dict[str, Any]:
-        """Starts background download of update binary with live progress events."""
-        if hasattr(self, "_update_downloading") and self._update_downloading:
+    def start_update_download(self) -> Dict[str, Any]:
+        """Download the update found by the last check. The page cannot choose what gets downloaded."""
+        if self._update_downloading:
             return {"status": "downloading", "message": "Download already in progress."}
 
-        target_url = download_url
-        if not target_url:
-            _, rel, _ = updater.check_for_updates()
-            if rel and rel.get("download_url"):
-                target_url = rel["download_url"]
-            else:
-                return {"status": "error", "message": "No download URL found in release."}
+        release_info = self._latest_release_info
+        if not release_info:
+            _, release_info, _ = updater.check_for_updates()
+        if not release_info or not release_info.get("has_binary"):
+            return {"status": "error", "message": "This release has no installer attached."}
 
         self._update_cancel_event = threading.Event()
         self._update_downloading = True
-
-        def _download_thread():
-            def _prog(dl, tot, pct, speed):
-                spd_str = f"{speed / 1048576:.1f} MB/s" if speed > 0 else "Calculating..."
-                dl_str = f"{dl / 1048576:.1f} MB"
-                tot_str = f"{tot / 1048576:.1f} MB" if tot > 0 else "Unknown"
-                self.dispatch_event("updater:progress", {
-                    "downloaded": dl,
-                    "total": tot,
-                    "percent": round(pct, 1),
-                    "speed_str": spd_str,
-                    "downloaded_str": dl_str,
-                    "total_str": tot_str
-                })
-
-            try:
-                target_file = updater.download_update(
-                    target_url,
-                    progress_callback=_prog,
-                    cancel_event=self._update_cancel_event
-                )
-                self._downloaded_update_path = target_file
-                self._update_downloading = False
-                file_size = os.path.getsize(target_file) if os.path.exists(target_file) else 0
-                self.dispatch_event("updater:download_complete", {
-                    "file_path": target_file,
-                    "is_frozen": updater.is_running_frozen(),
-                    "file_size": file_size,
-                    "file_size_str": f"{file_size / 1048576:.1f} MB"
-                })
-            except Exception as ex:
-                self._update_downloading = False
-                if "cancelled" in str(ex).lower():
-                    self.dispatch_event("updater:download_cancelled", {})
-                else:
-                    self.dispatch_event("updater:error", {"error": str(ex)})
-
-        threading.Thread(target=_download_thread, daemon=True).start()
+        self._verified_update_path = None
+        threading.Thread(target=self._download_update, args=(release_info,), daemon=True, name="update-download").start()
         return {"status": "started"}
 
+    def _download_update(self, release_info: Dict[str, Any]) -> None:
+        def progress(downloaded: int, total: int, percent: float, speed: float) -> None:
+            self.dispatch_event("updater:progress", {
+                "downloaded": downloaded,
+                "total": total,
+                "percent": round(percent, 1),
+                "speed_str": f"{speed / 1048576:.1f} MB/s" if speed > 0 else "Calculating...",
+                "downloaded_str": f"{downloaded / 1048576:.1f} MB",
+                "total_str": f"{total / 1048576:.1f} MB" if total > 0 else "Unknown",
+            })
+
+        try:
+            path = updater.download_update(release_info, progress, self._update_cancel_event)
+        except updater.UpdateCancelled:
+            self.dispatch_event("updater:download_cancelled", {})
+        except updater.UpdateError as error:
+            log.warning("Update rejected: %s", error)
+            self.dispatch_event("updater:error", {"error": str(error)})
+        else:
+            self._verified_update_path = path
+            size = os.path.getsize(path)
+            self.dispatch_event("updater:download_complete", {
+                "file_path": path,
+                "is_frozen": updater.is_running_frozen(),
+                "file_size": size,
+                "file_size_str": f"{size / 1048576:.1f} MB",
+            })
+        finally:
+            self._update_downloading = False
+
     def cancel_update_download(self) -> Dict[str, Any]:
-        """Cancels an in-progress update download."""
-        if hasattr(self, "_update_cancel_event") and self._update_cancel_event:
-            self._update_cancel_event.set()
-        self._update_downloading = False
+        self._update_cancel_event.set()
         return {"status": "cancelled"}
 
     def apply_update_and_restart(self) -> Dict[str, Any]:
-        """Applies downloaded binary and restarts application in frozen mode."""
-        target_path = getattr(self, "_downloaded_update_path", None)
-        if not target_path or not os.path.exists(target_path):
-            updates_dir = os.path.join(utils.get_app_data_dir(), "updates")
-            target_path = os.path.join(updates_dir, "LinkExtractor_update.exe")
-
-        if not os.path.exists(target_path):
-            return {"status": "error", "message": "No downloaded update file found."}
-
-        applied = updater.apply_update_and_restart(target_path)
-        if applied:
-            threading.Thread(target=lambda: (time.sleep(0.5), os._exit(0)), daemon=True).start()
-            return {"status": "restarting"}
-        else:
+        """Install the file verified in this session, and never a leftover from an earlier run."""
+        path = self._verified_update_path
+        if not path or not os.path.exists(path):
+            return {"status": "error", "message": "No verified update has been downloaded."}
+        if not updater.apply_update_and_restart(path):
             return {"status": "not_frozen", "message": "Application is running in Python dev mode."}
+        threading.Thread(target=lambda: (time.sleep(0.5), os._exit(0)), daemon=True).start()
+        return {"status": "restarting"}
 
     def launch_downloaded_binary(self) -> Dict[str, Any]:
-        """Launches the downloaded standalone executable in development mode."""
-        target_path = getattr(self, "_downloaded_update_path", None)
-        if not target_path or not os.path.exists(target_path):
-            updates_dir = os.path.join(utils.get_app_data_dir(), "updates")
-            target_path = os.path.join(updates_dir, "LinkExtractor_update.exe")
-
-        if os.path.exists(target_path):
-            ok = updater.launch_downloaded_executable(target_path)
-            return {"status": "launched" if ok else "error"}
-        return {"status": "not_found", "message": "Downloaded binary not found."}
+        path = self._verified_update_path
+        if not path or not os.path.exists(path):
+            return {"status": "not_found", "message": "No verified update has been downloaded."}
+        return {"status": "launched" if updater.launch_downloaded_executable(path) else "error"}
 
     def open_updates_folder(self) -> Dict[str, Any]:
-        """Reveals the updates folder in Windows Explorer."""
-        folder = updater.open_updates_folder()
-        return {"status": "opened", "path": folder}
+        return {"status": "opened", "path": updater.open_updates_folder()}
 
     # ==========================================
-    # Community Issue Center & Crash Telemetry
+    # Community Issue Center
     # ==========================================
 
     def get_all_reports(self) -> Dict[str, Any]:
-        """Fetch all public issue reports."""
-        success, reports, msg = community.fetch_all_reports()
-        return {
-            "success": success,
-            "reports": reports,
-            "message": msg
-        }
+        reached, reports, message = issues.fetch_all_reports()
+        return {"success": reached, "reports": reports, "message": message}
 
     def submit_report(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Submit a new bug report or feature request with duplicate check."""
-        subject = data.get("subject", "")
-        category = data.get("category", "Bug Report")
-        description = data.get("description", "")
-        screenshot_data = data.get("screenshot_data", "")
-        telemetry = {
-            "app_version": updater.CURRENT_VERSION,
-            "platform": sys.platform,
-            "theme": getattr(self, "_settings", {}).get("theme", "")
-        }
-
-        force_create = bool(data.get("force_create", False))
-        success, res_str, record = community.submit_user_report(
-            subject=subject,
-            category=category,
-            description=description,
-            screenshot_data=screenshot_data,
-            telemetry=telemetry,
-            force_create=force_create
+        """Send a report. Returns success with queued=True if it is saved but not delivered yet."""
+        result = issues.submit_user_report(
+            subject=data.get("subject", ""),
+            category=data.get("category", "Bug Report"),
+            description=data.get("description", ""),
+            screenshot_data=data.get("screenshot_data", ""),
+            telemetry={
+                "app_version": updater.CURRENT_VERSION,
+                "platform": sys.platform,
+                "theme": self._settings.get("theme", ""),
+            },
+            force_create=bool(data.get("force_create", False)),
         )
-
-        if success:
-            return {
-                "success": True,
-                "is_duplicate": False,
-                "report_id": res_str,
-                "record": record,
-                "message": "Report submitted successfully!"
-            }
-        elif res_str == "duplicate":
-            return {
-                "success": False,
-                "is_duplicate": True,
-                "record": record,
-                "message": "This issue is already in the report logs. We have added your vote (+1) to help prioritize it!"
-            }
-        else:
-            return {
-                "success": False,
-                "is_duplicate": False,
-                "message": res_str or "Failed to submit report."
-            }
+        return {
+            "success": result.outcome in ("sent", "queued"),
+            "queued": result.outcome == "queued",
+            "is_duplicate": result.outcome == "duplicate",
+            "report_id": result.report_id,
+            "record": result.record,
+            "message": result.message,
+        }
 
     def upvote_report(self, report_id: str) -> Dict[str, Any]:
-        """Increment affected users count for an existing report."""
-        success, new_count = community.increment_report_affected(str(report_id))
-        return {
-            "success": success,
-            "new_count": new_count
-        }
+        success, count = issues.increment_report_affected(str(report_id))
+        return {"success": success, "new_count": count}
 
-    def verify_admin_pin(self, candidate_pin: str) -> Dict[str, Any]:
-        """Verify admin PIN securely against AppData secret file or environment variable."""
-        valid = community.verify_admin_pin(str(candidate_pin))
-        return {
-            "success": valid,
-            "message": "Admin authorization granted" if valid else "Invalid admin passkey"
-        }
+    def get_report_screenshot(self, report_id: str, key: str = issues.REPORT_SCREENSHOT_KEY) -> Dict[str, Any]:
+        data = issues.get_screenshot(str(report_id), str(key))
+        return {"success": bool(data), "screenshot_data": data}
 
-    def admin_update_report(self, report_id_or_data: Any, new_status: str = "open", admin_remark: str = "", admin_pin: str = "") -> Dict[str, Any]:
-        """Update report status and admin remark with secret PIN. Supports dict or positional args."""
-        if isinstance(report_id_or_data, dict):
-            report_id = report_id_or_data.get("report_id", "")
-            new_status = report_id_or_data.get("status", "open")
-            admin_remark = report_id_or_data.get("admin_remark", "")
-            admin_pin = report_id_or_data.get("admin_pin", "")
-        else:
-            report_id = str(report_id_or_data)
+    def verify_admin_key(self, candidate_key: str) -> Dict[str, Any]:
+        """Ask the database whether this key has admin rights."""
+        valid, message = issues.verify_admin_key(str(candidate_key))
+        return {"success": valid, "message": message}
 
-        success, msg = community.update_report_status_and_remark(
-            report_id=report_id,
-            new_status=new_status,
-            admin_remark=admin_remark,
-            admin_pin=admin_pin
+    def admin_update_report(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        success, message = issues.update_report(
+            data.get("report_id", ""), data.get("status", "open"), data.get("admin_remark", ""), data.get("admin_key", "")
         )
-        return {
-            "success": success,
-            "message": msg
-        }
+        return {"success": success, "message": message}
 
-    def admin_delete_report(self, report_id_or_data: Any, admin_pin: str = "") -> Dict[str, Any]:
-        """Delete an issue report with admin authorization. Supports dict or positional args."""
-        if isinstance(report_id_or_data, dict):
-            report_id = report_id_or_data.get("report_id", "")
-            admin_pin = report_id_or_data.get("admin_pin", "")
-        else:
-            report_id = str(report_id_or_data)
-
-        success, msg = community.delete_report(
-            report_id=report_id,
-            admin_pin=admin_pin
-        )
-        return {
-            "success": success,
-            "message": msg
-        }
+    def admin_delete_report(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        success, message = issues.delete_report(data.get("report_id", ""), data.get("admin_key", ""))
+        return {"success": success, "message": message}
 
     def add_report_comment(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Add a reply/comment to an existing issue report."""
-        report_id = data.get("report_id", "")
-        text = data.get("text", "")
-        author_type = data.get("author_type", "gamer")
-        author_name = data.get("author_name", "")
-        screenshot_data = data.get("screenshot_data", "")
-        admin_pin = data.get("admin_pin", "")
-
-        success, res_str, comment_record = community.add_report_comment(
-            report_id=report_id,
-            text=text,
-            author_type=author_type,
-            author_name=author_name,
-            screenshot_data=screenshot_data,
-            admin_pin=admin_pin
+        success, result, comment = issues.add_comment(
+            report_id=data.get("report_id", ""),
+            text=data.get("text", ""),
+            author_type=data.get("author_type", "gamer"),
+            author_name=data.get("author_name", ""),
+            screenshot_data=data.get("screenshot_data", ""),
+            admin_key=data.get("admin_key", ""),
         )
-
         return {
             "success": success,
-            "comment_id": res_str if success else "",
-            "comment": comment_record,
-            "message": "Comment posted successfully!" if success else res_str
+            "comment_id": result if success else "",
+            "comment": comment,
+            "message": "Comment posted successfully!" if success else result,
         }
 
     def delete_report_comment(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Delete a comment from an issue report with admin authorization."""
-        report_id = data.get("report_id", "")
-        comment_id = data.get("comment_id", "")
-        admin_pin = data.get("admin_pin", "")
-
-        success, msg = community.delete_report_comment(
-            report_id=report_id,
-            comment_id=comment_id,
-            admin_pin=admin_pin
+        success, message = issues.delete_comment(
+            data.get("report_id", ""), data.get("comment_id", ""), data.get("admin_key", "")
         )
+        return {"success": success, "message": message}
 
-        return {
-            "success": success,
-            "message": msg
-        }
-
-    def report_client_crash(self, message_or_data: Any, stack_trace: str = "") -> Dict[str, Any]:
-        """Log unhandled frontend or client crash to Firebase RTDB. Supports dict or (msg, stack) positional."""
-        settings = self.get_settings()
-        if settings.get("auto_crash_reporting") is False:
-            return {"success": True, "status": "opted_out"}
-
-        if isinstance(message_or_data, dict):
-            error_type = message_or_data.get("error_type", "ClientError")
-            error_message = message_or_data.get("error_message", "")
-            traceback_str = message_or_data.get("traceback", "")
-            context = message_or_data.get("context", "frontend_runtime")
-        else:
-            error_type = "ClientError"
-            error_message = str(message_or_data)
-            traceback_str = str(stack_trace)
-            context = "frontend_runtime"
-
-        success, res_id = community.report_crash_log(
-            error_type=error_type,
-            error_message=error_message,
-            traceback_str=traceback_str,
-            context=context,
-            telemetry={"client": "WebView2_Svelte"}
+    def report_client_crash(self, message: Any, stack_trace: str = "") -> Dict[str, Any]:
+        """Forward a frontend error to crash reporting, which applies the opt-out and cleaning."""
+        success, crash_id = telemetry.report_crash_log(
+            "ClientError", str(message), str(stack_trace), context="frontend_runtime", extra={"client": "WebView2_Svelte"}
         )
-        return {"success": success, "crash_id": res_id}
-
+        return {"success": success, "crash_id": crash_id}

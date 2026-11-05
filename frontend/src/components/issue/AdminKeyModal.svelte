@@ -6,50 +6,50 @@
   export let onClose: () => void = () => {};
   export let onSuccess: (pin: string) => void = () => {};
 
-  let pinInput: string = '';
-  let pinError: string = '';
+  let keyInput: string = '';
+  let keyError: string = '';
   let isVerifying: boolean = false;
 
-  function focusPinInput(el: HTMLElement) {
+  function focusKeyInput(el: HTMLElement) {
     setTimeout(() => el.focus(), 60);
   }
 
-  async function verifyAdminPin() {
-    const candidate = pinInput.trim();
+  async function verifyAdminKey() {
+    const candidate = keyInput.trim();
     if (!candidate) {
-      pinError = 'Please enter the admin passkey.';
+      keyError = 'Please paste the admin key.';
       return;
     }
 
     isVerifying = true;
-    pinError = '';
+    keyError = '';
 
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.verify_admin_pin) {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.verify_admin_key) {
       try {
-        const res = await (window as any).pywebview.api.verify_admin_pin(candidate);
+        const res = await (window as any).pywebview.api.verify_admin_key(candidate);
         if (res && res.success) {
           playSuccessChime();
-          pinError = '';
-          pinInput = '';
+          keyError = '';
+          keyInput = '';
           onSuccess(candidate);
         } else {
-          pinError = res?.message || 'Invalid admin passkey.';
+          keyError = res?.message || 'The database did not accept this key.';
         }
       } catch (err) {
-        pinError = 'Authentication service unavailable.';
+        keyError = 'Authentication service unavailable.';
       } finally {
         isVerifying = false;
       }
     } else {
       // Standalone browser preview mode without pywebview bridge
-      pinError = 'Admin authorization requires running inside the Link Extractor application.';
+      keyError = 'Admin authorization requires running inside the Link Extractor application.';
       isVerifying = false;
     }
   }
 
   $: if (!isOpen) {
-    pinInput = '';
-    pinError = '';
+    keyInput = '';
+    keyError = '';
     isVerifying = false;
   }
 </script>
@@ -61,7 +61,7 @@
     on:keydown={(e) => { if (e.key === 'Escape') onClose(); }}
     role="dialog"
     aria-modal="true"
-    aria-label="Admin PIN Dialog"
+    aria-label="Admin Key Dialog"
     tabindex="-1"
   >
     <div 
@@ -71,20 +71,19 @@
         <Icon name="lock" size={20} color="var(--accent-primary)" />
         <h3 id="admin-pin-title">ADMIN MODE UNLOCK</h3>
       </div>
-      <p class="pin-subtext">Enter administrator passkey to update ticket statuses and write official remarks.</p>
+      <p class="pin-subtext">Paste the Firebase database secret. The database itself checks it on every change, and it is kept only until you lock Admin Mode or close the app.</p>
 
-      <form on:submit|preventDefault={verifyAdminPin}>
+      <form on:submit|preventDefault={verifyAdminKey}>
         <input 
-          use:focusPinInput
+          use:focusKeyInput
           type="password" 
           class="glass-input pin-input" 
-          placeholder="Enter Admin PIN..." 
-          bind:value={pinInput}
-          maxlength="20"
+          placeholder="Paste admin key..."
+          bind:value={keyInput}
         />
 
-        {#if pinError}
-          <div class="pin-error">{pinError}</div>
+        {#if keyError}
+          <div class="pin-error">{keyError}</div>
         {/if}
 
         <div class="pin-actions">

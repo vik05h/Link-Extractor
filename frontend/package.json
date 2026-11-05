@@ -9,7 +9,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "sync": "astro sync",
-    "prepare": "astro sync"
+    "prepare": "astro sync",
+    "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@astrojs/svelte": "^7.0.4",
@@ -22,6 +23,8 @@
   },
   "devDependencies": {
     "png-to-ico": "^3.0.2",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.4",
+    "svelte-check": "^4.7.8",
+    "typescript": "^5.9.3"
   }
 }

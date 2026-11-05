@@ -8,11 +8,7 @@
   export let onSelectFresh: () => void = () => {};
   export let onClose: () => void = () => {};
 
-  $: isExpired = !!(
-    record?.is_expired || 
-    record?.freshness === 'expired' || 
-    (typeof record?.age_str === 'string' && (record.age_str.includes('day') || record.age_str.includes('week') || record.age_str.includes('month')))
-  );
+  $: isExpired = !!(record?.is_expired || record?.freshness === 'expired');
 
   function handleInstant() {
     playClickSound();
@@ -101,7 +97,7 @@
         {#if isExpired}
           The database contains cached links from <strong>{record.age_str || '2+ days ago'}</strong>. Because file hosters typically expire download mirrors after 24 hours, running a fresh extraction pass to update the database is strongly recommended:
         {:else}
-          This title is already indexed in the database. Choose whether to load the pre-verified links instantly or run a fresh multi-tab resolution pass:
+          This title is already indexed in the database. Choose whether to load the saved links instantly or run a fresh multi-tab resolution pass:
         {/if}
       </p>
 
@@ -124,7 +120,7 @@
           <p class="card-desc">
             {isExpired 
               ? 'Attempt loading older mirrors into the extraction stage. Note: files may return HTTP 404 in JDownloader.' 
-              : 'Load previously resolved and pre-verified download mirrors directly into the extraction stage with zero wait time.'}
+              : 'Load previously resolved and download mirrors directly into the extraction stage with zero wait time.'}
           </p>
 
           <ul class="perk-list">

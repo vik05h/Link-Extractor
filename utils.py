@@ -4,7 +4,11 @@ import json
 import time
 import threading
 import subprocess
+import logging
+import logging.handlers
 from typing import Dict, Any
+
+log = logging.getLogger(__name__)
 
 
 def get_app_data_dir() -> str:
@@ -56,52 +60,68 @@ def open_folder_cross_platform(folder_path: str):
             subprocess.run(["open", folder_path], check=False)
         else:
             subprocess.run(["xdg-open", folder_path], check=False)
-    except Exception:
-        pass
+    except OSError as error:
+        log.warning("Could not open folder %s: %s", folder_path, error)
 
 
 def load_settings() -> Dict[str, Any]:
     """Load user settings from persistent JSON file with defaults."""
-    default_settings = {
+    settings: Dict[str, Any] = {
         "concurrency": 3,
         "auto_validate": True,
         "jd_port": 9666,
-        "theme_seed": "Deep Violet",
-        "theme_mode": "Dark",
-        "logo_style": "Minimalist Cyber Link",
-        "animation_style": "Fast Subtle Fade",
-        "fps_mode": "120 FPS",
-        "community_view_mode": "grid",
-        "headless": False,
-        "check_updates_on_startup": True,
-        "last_seen_version": None,
-        "has_seen_tutorial": False,
-        "community_auto_share": True,
-        "community_firebase_url": "https://link-extractor-8cbca-default-rtdb.asia-southeast1.firebasedatabase.app"
+        "community_auto_upload": True,
+        "clipboard_sentinel_enabled": True,
+        "auto_crash_reporting": True,
     }
     settings_file = os.path.join(get_app_data_dir(), "settings.json")
-    if os.path.exists(settings_file):
-        try:
-            with open(settings_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                default_settings.update(data)
-        except Exception:
-            pass
-    return default_settings
+    try:
+        with open(settings_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            settings.update(data)
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError) as error:
+        log.warning("Ignoring unreadable settings file: %s", error)
+    return settings
+
+
+def setup_logging() -> None:
+    """Log to a small rotating file in the app data folder, since a windowed exe has no console."""
+    log_dir = os.path.join(get_app_data_dir(), "logs")
+    handlers: list = []
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        handlers.append(logging.handlers.RotatingFileHandler(
+            os.path.join(log_dir, "app.log"), maxBytes=1024 * 1024, backupCount=3, encoding="utf-8"
+        ))
+    except OSError as error:
+        print(f"File logging unavailable: {error}", file=sys.stderr)
+    if sys.stderr is not None:
+        handlers.append(logging.StreamHandler())
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s", handlers=handlers)
+
+
+def write_json_atomic(path: str, data: Any) -> None:
+    """Write JSON so a crash mid-write can never leave a half-written file behind."""
+    temp_path = f"{path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    os.replace(temp_path, path)
 
 
 def save_settings(settings: Dict[str, Any]):
     """Persist user settings to JSON file."""
     settings_file = os.path.join(get_app_data_dir(), "settings.json")
     try:
-        with open(settings_file, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=2)
-    except Exception:
-        pass
+        write_json_atomic(settings_file, settings)
+    except OSError:
+        log.exception("Could not save settings")
 
 
 def apply_windows_native_icon(ico_path="app_icon.ico"):
-    """Bind native window and taskbar icon on Windows to avoid Flutter default icon."""
+    """Bind the native window and taskbar icon on Windows."""
     if sys.platform != "win32":
         return
     import ctypes
@@ -141,7 +161,7 @@ def apply_windows_native_icon(ico_path="app_icon.ico"):
                         buf = ctypes.create_unicode_buffer(length + 1)
                         user32.GetWindowTextW(hwnd, buf, length + 1)
                         if "link extractor" in buf.value.lower():
-                            found.append(hwnd)
+                            found.append(hwnd)  # noqa: B023 (called immediately by EnumWindows below)
                     return True
 
                 user32.EnumWindows(enum_cb, 0)
@@ -155,8 +175,8 @@ def apply_windows_native_icon(ico_path="app_icon.ico"):
                         else:
                             user32.SetClassLongW(hwnd, GCLP_HICON, h_icon)
                             user32.SetClassLongW(hwnd, GCLP_HICONSM, h_icon)
-                    except Exception:
-                        pass
+                    except (OSError, ctypes.ArgumentError) as error:
+                        log.debug("Could not set the window class icon: %s", error)
                 if found:
                     time.sleep(1.0)
                     for hwnd in found:
@@ -165,5 +185,5 @@ def apply_windows_native_icon(ico_path="app_icon.ico"):
                     break
 
         threading.Thread(target=_apply_loop, daemon=True).start()
-    except Exception:
-        pass
+    except (OSError, AttributeError, ctypes.ArgumentError) as error:
+        log.info("Could not set the window icon: %s", error)

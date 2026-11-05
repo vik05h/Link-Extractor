@@ -71,8 +71,8 @@
 
   function getActiveUrls(): string[] {
     return parts
-      .filter(p => !p.excluded && (p.direct_url || p.url))
-      .map(p => p.direct_url || p.url);
+      .filter(p => !p.excluded && p.status === 'resolved' && p.direct_url)
+      .map(p => p.direct_url as string);
   }
 
   function handlePushJd2() {
@@ -105,6 +105,8 @@
   $: resolvedPartsCount = parts.filter(p => p.status === 'resolved').length;
   $: activePartsCount = parts.filter(p => !p.excluded).length;
   $: hasParts = parts.length > 0;
+  $: hasUsableLinks = parts.some(p => !p.excluded && p.status === 'resolved' && p.direct_url);
+  $: showSourceLink = /^https?:\/\/(www\.)?fitgirl-repacks\.site\/\S+$/.test(sourceUrl);
 </script>
 
 <div class="game-stage-container" id="tour-game-stage">
@@ -149,7 +151,7 @@
           <Icon name="hard-drive" size={13} color="var(--accent-primary)" />
           <span>Total Size: <strong>{totalSizeStr}</strong></span>
         </span>
-        {#if sourceUrl}
+        {#if showSourceLink}
           <a href={sourceUrl} target="_blank" rel="noreferrer" class="meta-pill source-pill" title="Open source FitGirl repack page">
             <Icon name="external-link" size={12} color="var(--accent-primary)" />
             <span>FitGirl Page</span>
@@ -211,7 +213,7 @@
         <button 
           type="button" 
           class="btn-primary" 
-          disabled={!hasParts}
+          disabled={!hasUsableLinks}
           on:click={handlePushJd2}
         >
           <Icon name="bolt" size={15} color="#ffffff" strokeWidth={2.5} />
@@ -221,7 +223,7 @@
         <button 
           type="button" 
           class="btn-secondary" 
-          disabled={!hasParts}
+          disabled={!hasUsableLinks}
           on:click={handleCopyAll}
         >
           <Icon name="copy" size={14} />
@@ -233,7 +235,7 @@
             type="button" 
             class="btn-icon" 
             title="Export Direct URLs"
-            disabled={!hasParts}
+            disabled={!hasUsableLinks}
             on:click={() => exportMenuOpen = !exportMenuOpen}
           >
             <Icon name="download" size={16} />

@@ -4,6 +4,7 @@
   import { playClickSound, toggleAudioMute, isAudioMuted } from '../utils/audio';
   import { waitForBridge } from '../utils/bridgeReady';
   import type { AppSettings } from '../types';
+  import { APP_VERSION } from '../version';
 
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
@@ -11,7 +12,7 @@
   export let onCheckUpdates: () => void = () => {};
   export let onOpenTour: () => void = () => {};
   export let onOpenIssueCenter: () => void = () => {};
-  export let currentVersion: string = 'v3.8.1';
+  export let currentVersion: string = APP_VERSION;
 
   let currentTheme = 'cyber';
   let isCheckingUpdates = false;

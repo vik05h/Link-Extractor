@@ -7,10 +7,10 @@
   export let comments: IssueComment[] = [];
   export let isAdminMode: boolean = false;
   export let isReporter: boolean = false;
-  export let sessionAdminPin: string = '';
+  export let sessionAdminKey: string = '';
   export let engineLogs: string[] = [];
   export let onPreviewImage: (url: string) => void = () => {};
-  export let onAddComment: (payload: any) => Promise<void> | void = () => {};
+  export let onAddComment: (payload: any) => Promise<boolean> | boolean = () => false;
   export let onDeleteComment: (reportId: string, commentId: string) => Promise<void> | void = () => {};
   export let onShowToast: (msg: string) => void = () => {};
 
@@ -19,6 +19,24 @@
   let isPosting: boolean = false;
   let isDeletingId: string = '';
   let fileInputEl: HTMLInputElement;
+  let loadedScreenshots: Record<string, string> = {};
+  let loadingScreenshotId: string = '';
+
+  // Screenshots are stored apart from the report list and fetched only when someone asks.
+  async function viewStoredScreenshot(commentId: string) {
+    playClickSound();
+    if (!loadedScreenshots[commentId]) {
+      loadingScreenshotId = commentId;
+      const res = await (window as any).pywebview.api.get_report_screenshot(reportId, commentId);
+      loadingScreenshotId = '';
+      if (!res?.success) {
+        onShowToast('Could not load the screenshot.');
+        return;
+      }
+      loadedScreenshots = { ...loadedScreenshots, [commentId]: res.screenshot_data };
+    }
+    onPreviewImage(loadedScreenshots[commentId]);
+  }
 
   function formatDate(isoStr?: string): string {
     if (!isoStr) return 'Recently';
@@ -117,17 +135,20 @@
     isPosting = true;
     try {
       const authorType = isAdminMode ? 'admin' : (isReporter ? 'reporter' : 'gamer');
-      await onAddComment({
+      const posted = await onAddComment({
         report_id: reportId,
         text: cleanText,
         author_type: authorType,
         author_name: isAdminMode ? 'Official Admin' : (isReporter ? 'Original Reporter' : 'Community Gamer'),
         screenshot_data: replyScreenshot,
-        admin_pin: isAdminMode ? sessionAdminPin : undefined
+        admin_key: isAdminMode ? sessionAdminKey : undefined
       });
-      replyText = '';
-      replyScreenshot = '';
-      playSuccessChime();
+      // Keep what the user typed if the post failed, so they can try again.
+      if (posted) {
+        replyText = '';
+        replyScreenshot = '';
+        playSuccessChime();
+      }
     } finally {
       isPosting = false;
     }
@@ -235,6 +256,16 @@
                 </span>
               </button>
             </div>
+          {:else if comment.has_screenshot}
+            <button
+              type="button"
+              class="btn-sm-tool"
+              disabled={loadingScreenshotId === comment.id}
+              on:click={() => viewStoredScreenshot(comment.id)}
+            >
+              <Icon name="image" size={11} />
+              <span>{loadingScreenshotId === comment.id ? 'Loading...' : 'View Screenshot'}</span>
+            </button>
           {/if}
         </div>
       {/each}

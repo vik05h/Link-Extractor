@@ -8,9 +8,11 @@
 
   export let games: GameRecord[] = [];
   export let isLoading: boolean = false;
+  export let isOffline: boolean = false;
   export let onLoadRecord: (rec: GameRecord) => void = () => {};
   export let onReextract: (rec: GameRecord) => void = () => {};
   export let onPushJd2: (slug: string, title: string) => void = () => {};
+  export let onGrab: (rec: GameRecord) => boolean = () => false;
   export let onRefresh: () => void = () => {};
 
   let searchQuery = '';
@@ -159,19 +161,22 @@
 
   function handleCardPreview(rec: GameRecord) {
     playClickSound();
-    // Preview/load game into Stage without incrementing grab count
+    // Looking at a game is not a grab.
     onLoadRecord(rec);
+  }
+
+  function showGrab(rec: GameRecord) {
+    if (onGrab(rec)) {
+      rec.used_count = (rec.used_count || 0) + 1;
+      totalGrabs += 1;
+      games = [...games];
+    }
   }
 
   function handleInstantLoad(rec: GameRecord, e?: MouseEvent) {
     if (e) e.stopPropagation();
     playClickSound();
-    rec.used_count = (rec.used_count || 0) + 1;
-    totalGrabs += 1;
-    games = [...games];
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.track_game_usage) {
-      (window as any).pywebview.api.track_game_usage(rec.slug).catch(() => {});
-    }
+    showGrab(rec);
     onLoadRecord(rec);
   }
 
@@ -188,44 +193,17 @@
       onReextract(rec);
       return;
     }
-    rec.used_count = (rec.used_count || 0) + 1;
-    totalGrabs += 1;
-    games = [...games];
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.track_game_usage) {
-      (window as any).pywebview.api.track_game_usage(rec.slug).catch(() => {});
-    }
+    showGrab(rec);
     onPushJd2(rec.slug, rec.title);
   }
 
   let filteredGames: GameRecord[] = [];
 
-  // Filtered games with client-side canonical deduplication to prevent ghost duplicates
-  $: {
-    const rawList = games.filter(g => {
-      const matchesSearch = !searchQuery || g.title.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesFilter = selectedFilter === 'all' || (g.freshness || 'fresh') === selectedFilter;
-      return matchesSearch && matchesFilter;
-    });
-
-    const seen = new Map<string, GameRecord>();
-    for (const g of rawList) {
-      const norm = g.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '')
-        .replace(/(deluxeedition|completeedition|ultimateedition|bonusost|bonuscontent|repack|repak|v\d+.*)/g, '')
-        .slice(0, 24);
-      const key = norm.length > 5 ? `t:${norm}` : `s:${g.slug}`;
-      if (!seen.has(key)) {
-        seen.set(key, g);
-      } else {
-        const prev = seen.get(key)!;
-        if ((g.timestamp_utc || '') > (prev.timestamp_utc || '')) {
-          seen.set(key, g);
-        }
-      }
-    }
-    filteredGames = Array.from(seen.values());
-  }
+  $: filteredGames = games.filter(g => {
+    const matchesSearch = !searchQuery || g.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = selectedFilter === 'all' || (g.freshness || 'fresh') === selectedFilter;
+    return matchesSearch && matchesFilter;
+  });
 </script>
 
 <div class="discovery-hub-container">
@@ -302,6 +280,13 @@
     </div>
   </div>
 
+  {#if isOffline}
+    <div class="hub-offline-banner glass-panel" role="status">
+      <Icon name="alert-triangle" size={14} color="var(--status-aging)" />
+      <span>Could not reach the community database. {games.length > 0 ? 'Showing the last saved list.' : ''}</span>
+    </div>
+  {/if}
+
   <!-- Cards Poster Grid -->
   {#if isLoading}
     <div class="hub-loading glass-panel">
@@ -314,7 +299,15 @@
     </div>
   {:else if filteredGames.length === 0}
     <div class="hub-empty glass-panel">
-      <span class="empty-msg">No community repacks found matching your search.</span>
+      <span class="empty-msg">
+        {#if games.length > 0}
+          No community repacks found matching your search.
+        {:else if isOffline}
+          The community list is not available right now.
+        {:else}
+          No community repacks yet.
+        {/if}
+      </span>
       <button 
         type="button" 
         class="btn-retry-fetch" 
@@ -868,6 +861,15 @@
   .hub-loading {
     padding: 40px;
     text-align: center;
+    color: var(--text-secondary);
+  }
+
+  .hub-offline-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 0.8rem;
     color: var(--text-secondary);
   }
 

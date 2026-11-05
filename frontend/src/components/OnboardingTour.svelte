@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { FIRST_RUN_KEY } from '../version';
   import { onMount, tick } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../utils/audio';
@@ -166,7 +167,7 @@
     playSuccessChime();
     if (typeof window !== 'undefined') {
       localStorage.setItem('le_tour_completed', 'true');
-      localStorage.setItem('le_first_run_v3.8.1', 'true');
+      localStorage.setItem(FIRST_RUN_KEY, 'true');
     }
     onClose();
   }
@@ -179,7 +180,7 @@
     playClickSound();
     if (typeof window !== 'undefined') {
       localStorage.setItem('le_tour_completed', 'true');
-      localStorage.setItem('le_first_run_v3.8.1', 'true');
+      localStorage.setItem(FIRST_RUN_KEY, 'true');
     }
     onClose();
   }

@@ -1,13 +1,14 @@
 import os
-import sys
-import re
 import time
 import asyncio
+import logging
 import random
 import threading
 import subprocess
 from dataclasses import dataclass
-from typing import List, Optional, Callable, Dict, Any, Tuple, Union
+from typing import List, Optional, Callable, Tuple, Union
+
+import links
 
 # Set Playwright global cache
 os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(
@@ -15,8 +16,10 @@ os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(
     "ms-playwright"
 )
 
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import async_playwright, Browser, Error as PlaywrightError, Page
 from playwright._impl._driver import compute_driver_executable
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -86,13 +89,14 @@ class ResolutionEngine:
                     channel=channel,
                     args=launch_args
                 )
-            except Exception:
-                pass
+            except PlaywrightError as error:
+                log.info("Could not launch %s, falling back to Chromium: %s", channel, error)
 
         # Fallback to default chromium
         try:
             return await p.chromium.launch(headless=self.headless, args=launch_args)
-        except Exception:
+        except PlaywrightError as error:
+            log.info("Chromium is not available, trying to install it: %s", error)
             try:
                 res = compute_driver_executable()
                 if isinstance(res, tuple) and len(res) == 2:
@@ -102,8 +106,8 @@ class ResolutionEngine:
                         capture_output=True,
                         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
                     )
-            except Exception:
-                pass
+            except (OSError, subprocess.SubprocessError) as install_error:
+                log.warning("Could not install Chromium: %s", install_error)
             return await p.chromium.launch(headless=self.headless, channel=channel)
 
     async def _resolve_single_link(self, page: Page, ff_url: str, cancel_event: Optional[Union[threading.Event, asyncio.Event]]) -> Tuple[Optional[str], float]:
@@ -140,8 +144,8 @@ class ResolutionEngine:
                     cleared = await page.evaluate("() => window.dlCleared || false")
                     if token or cleared:
                         break
-                except Exception:
-                    pass
+                except PlaywrightError as error:
+                    log.debug("Page not ready yet: %s", error)
                 await asyncio.sleep(0.1)
 
             # If token not present, try clicking the Cloudflare turnstile checkbox frame
@@ -150,8 +154,8 @@ class ResolutionEngine:
                     if "turnstile" in frame.url or "cloudflare" in frame.url:
                         try:
                             await frame.click("body", timeout=1200)
-                        except Exception:
-                            pass
+                        except PlaywrightError as error:
+                            log.debug("Frame click failed: %s", error)
                 for _ in range(35):
                     if cancel_event and cancel_event.is_set():
                         return None, time.time() - t0
@@ -159,8 +163,8 @@ class ResolutionEngine:
                         token = await page.evaluate("() => window.turnstileToken || ''")
                         if token:
                             break
-                    except Exception:
-                        pass
+                    except PlaywrightError as error:
+                        log.debug("Page not ready yet: %s", error)
                     await asyncio.sleep(0.1)
 
             if cancel_event and cancel_event.is_set():
@@ -185,11 +189,14 @@ class ResolutionEngine:
                 res = await page.evaluate(js_script)
                 if res:
                     direct_url = res
-            except Exception:
-                pass
+            except PlaywrightError as error:
+                log.debug("Direct link request failed: %s", error)
 
+        except PlaywrightError as error:
+            log.info("Could not open %s: %s", links.part_name(ff_url), error)
         except Exception:
-            pass
+            # A malformed link must not stop the other parts in this worker's queue.
+            log.exception("Unexpected error resolving %s", links.part_name(ff_url))
         finally:
             page.remove_listener("response", on_response)
 
@@ -241,8 +248,7 @@ class ResolutionEngine:
         total_count = len(urls)
         results: List[ResolvedLink] = []
         for i, u in enumerate(urls):
-            part_name = u.split("#")[-1] if "#" in u else u.split("/")[-1]
-            results.append(ResolvedLink(index=i, original_url=u, part_name=part_name))
+            results.append(ResolvedLink(index=i, original_url=u, part_name=links.part_name(u)))
 
         def log(msg: str):
             if on_log:
@@ -271,8 +277,8 @@ class ResolutionEngine:
                 if pop not in known_pages:
                     try:
                         await pop.close()
-                    except Exception:
-                        pass
+                    except PlaywrightError as error:
+                        log.debug("Could not close a popup: %s", error)
 
             context.on("page", lambda pop: asyncio.create_task(on_new_page(pop)))
 
@@ -286,7 +292,7 @@ class ResolutionEngine:
                     break
 
                 if current_attempt > 1:
-                    log(f"🔁 Auto-Retry Pass {current_attempt}/{self.max_retries + 1}: Retrying {len(pending_indices)} failed links...")
+                    log(f"Auto-Retry Pass {current_attempt}/{self.max_retries + 1}: Retrying {len(pending_indices)} failed links...")
                     if on_retry_pass:
                         on_retry_pass(len(pending_indices), current_attempt, self.max_retries + 1)
                     await asyncio.sleep(random.uniform(1.0, 2.0))
@@ -311,10 +317,7 @@ class ResolutionEngine:
                         item.status = "resolving"
 
                         if on_start_part:
-                            try:
-                                on_start_part(item.part_name, worker_id)
-                            except Exception:
-                                pass
+                            on_start_part(item.part_name, worker_id)
 
                         direct_url, elapsed = await self._resolve_single_link(page, item.original_url, cancel_event)
                         item.elapsed_sec = elapsed
@@ -327,10 +330,10 @@ class ResolutionEngine:
                             item.direct_url = direct_url
                             item.status = "resolved"
                             completed_durations.append(elapsed)
-                            log(f"⚡ [Tab {worker_id}] Resolved {item.part_name} in {elapsed:.1f}s")
+                            log(f"[Tab {worker_id}] Resolved {item.part_name} in {elapsed:.1f}s")
                         else:
                             item.status = "failed"
-                            log(f"⚠️ [Tab {worker_id}] Failed {item.part_name} ({elapsed:.1f}s)")
+                            log(f"[Tab {worker_id}] Failed {item.part_name} ({elapsed:.1f}s)")
 
                         resolved_so_far = sum(1 for r in results if r.status == "resolved")
                         avg_speed = (sum(completed_durations) / len(completed_durations)) if completed_durations else 4.0
@@ -369,9 +372,9 @@ class ResolutionEngine:
         resolved_count = sum(1 for r in results if r.status == "resolved")
         avg_per_link = total_elapsed / resolved_count if resolved_count > 0 else 0
         if not (cancel_event and cancel_event.is_set()):
-            log(f"🚀 Speed Pipeline Finished: {resolved_count}/{total_count} resolved in {total_elapsed:.1f}s (Avg {avg_per_link:.1f}s/part)!")
+            log(f"Speed Pipeline Finished: {resolved_count}/{total_count} resolved in {total_elapsed:.1f}s (Avg {avg_per_link:.1f}s/part)!")
         else:
-            log(f"🛑 Pipeline Cancelled: {resolved_count}/{total_count} resolved before cancellation.")
+            log(f"Pipeline Cancelled: {resolved_count}/{total_count} resolved before cancellation.")
 
         return results
 

@@ -99,7 +99,11 @@
                 >
                   <div class="history-title">{r.game_title}</div>
                   <div class="history-meta">
-                    <span>{r.parts_count} Parts</span>
+                    {#if r.is_partial}
+                      <span class="meta-partial">{r.resolved_count} of {r.parts_count} Parts (incomplete)</span>
+                    {:else}
+                      <span>{r.parts_count} Parts</span>
+                    {/if}
                     <span>•</span>
                     <span class="meta-size">{r.total_size || '0 B'}</span>
                     <span>•</span>
@@ -135,6 +139,11 @@
 {/if}
 
 <style>
+  .meta-partial {
+    color: var(--status-aging);
+    font-weight: 600;
+  }
+
   .modal-backdrop {
     position: fixed;
     inset: 0;

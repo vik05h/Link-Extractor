@@ -12,12 +12,11 @@ This document tracks current milestones, active implementation status, and upcom
 | **Phase 2** | **Material 3 UI/UX & Advanced Integrations** | **Completed** | `v3.1.0` |
 | **Phase 3** | **Community Cloud Cache & Shared Link Hub (Firebase)** | **Completed** | `v3.2.0` |
 | **Phase 3.5** | **Live In-App Tour, Spotlight Highlighting & Rebranding** | **Completed** | `v3.5.0` |
-| **Phase 4.0** | **Next-Gen Gaming Hub UI/UX Overhaul (Astro + pywebview)** | **Completed** | `v4.0.0` |
-| **Phase 4.5** | **Multi-Hoster & Universal Automation** | Planned | `v4.5.0` |
+| **Phase 4.0** | **Next-Gen Gaming Hub UI/UX Overhaul (Astro + pywebview)** | **Completed** | `v3.8.0` |
 
 ---
 
-## Phase 4.0: Next-Gen Gaming Hub UI/UX Overhaul (v4.0.0) — COMPLETED
+## Phase 4.0: Next-Gen Gaming Hub UI/UX Overhaul (v3.8.0) — COMPLETED
 
 **Goal:** Transform Link Extractor into a hardware-accelerated gaming companion powered by Astro, Svelte, and pywebview (Windows WebView2), introducing dynamic ambient backlighting, an interactive defrag mosaic, and intelligent bandwidth-saving selective filters.
 
@@ -34,7 +33,7 @@ This document tracks current milestones, active implementation status, and upcom
   - [x] Floating HUD tooltip on hover with exact filename, part size, and 1-click URL copy.
 - [x] **4.4 Selective Repack Filter & Bandwidth Saver**
   - [x] Automated regex classification of optional voiceover language packs and bonus/4K media.
-  - [x] Real-time total repack download size recalibration and selective push to JDownloader 2.
+  - [x] Selective push, copy, and export of the chosen parts to JDownloader 2. Every part is still resolved.
 - [x] **4.5 Smart Ingestion & Gaming Audio Haptics**
   - [x] Background clipboard sentinel auto-detecting copied FitGirl links with floating desktop toast.
   - [x] Pure Web Audio API synthesized sound cues for Turnstile bypass, validation, and completion with master mute switch.
@@ -42,16 +41,4 @@ This document tracks current milestones, active implementation status, and upcom
   - [x] Cyber-Dark Neon Emerald, Steam Slate Obsidian, and Dynamic Adaptive Theming selectable in Settings.
 
 ---
-
-## Phase 4.5: Multi-Hoster & Universal Automation (v4.5.0)
-
-**Goal:** Universal repack link extraction across all mirror providers.
-
-- [ ] **4.5.1 Multi-Hoster Support**
-  - [ ] DataNodes mirror extraction.
-  - [ ] FileKeeper mirror extraction.
-- [ ] **4.5.2 CLI Mode**
-  - [ ] Headless command-line interface for scripting and server environments (`python main.py --cli --url ...`).
-
----
-*Last Updated: 2026-09-04*
+*Last Updated: 2026-11-05*
