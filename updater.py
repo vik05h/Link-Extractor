@@ -40,6 +40,28 @@ class UpdateCancelled(Exception):
     """The user cancelled the download."""
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
+    "v3.9.0": {
+        "title": "Liquid Glass Interface, Glass Bubble Navigation, New Logo & Guided Tour Rework",
+        "highlights": [
+            "Liquid Glass surfaces with real refraction across the sidebar, top bars, game cards, Stage panels, dialogs and toasts, with a Settings switch for plain frosted glass and an automatic fallback on slower PCs.",
+            "Glass bubble navigation on the sidebar and the Stage tab bar: it springs between items, can be dragged like the iOS tab bar while it magnifies what is under it, and follows the arrow keys.",
+            "The Stage tab row stays pinned under the URL bar, so long part lists scroll beneath it with Push to JD2 always in reach.",
+            "New Bolt Tray logo across the app, splash, window, taskbar and .exe icon. Inside the app it takes the active theme's colors.",
+            "Glass startup splash that loads the community games and first covers with real progress, then morphs into the app.",
+            "Seven-step guided tour on a sample game, with hands-on Stage and filter steps. New installs start with the tour; updates open What's New, and the ? button replays the tour anytime.",
+            "GenZ wording by default in the tour, splash, pop-ups and empty screens, with a Classic Wording switch in Settings. Buttons, errors and update messages stay plain."
+        ],
+        "bug_fixes": [
+            "Links are judged by exact hostname, and shared records with any off-host link or out-of-scope source are rejected.",
+            "Updates install only after their source, size, SHA-256 and file type check out, and the swap keeps a backup that is restored on failure.",
+            "Admin rights are judged by the database; a local file no longer grants anything, and clients no longer delete shared game records.",
+            "Cancelled runs keep nothing, only complete verified runs are published, and Verified 100% appears only when it is true.",
+            "Dead links are told apart from links that could not be checked, and games are matched exactly instead of by substring.",
+            "The crash report opt-out now covers Python crashes, and reports no longer include user names or secrets.",
+            "The Hub heartbeat no longer downloads the whole feed, and report screenshots load only when asked.",
+            "Fixed multi-link paste, history overwrites, empty usage records, and the clipboard watcher reacting to the app's own copies."
+        ]
+    },
     "v3.8.1": {
         "title": "Community Discussion Threads, Release Update Auto-Popup & Cyber Concurrency Slider",
         "highlights": [
