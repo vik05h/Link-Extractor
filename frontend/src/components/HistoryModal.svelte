@@ -3,6 +3,7 @@
   import Icon from './icons/Icon.svelte';
   import { playClickSound } from '../utils/audio';
   import type { HistoryRecord } from '../types';
+  import { say } from '../utils/voice';
 
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
@@ -85,9 +86,9 @@
 
       <div class="modal-body">
         {#if isLoading}
-          <div class="loading-state">Loading history...</div>
+          <div class="loading-state">{$say('vault.loading')}</div>
         {:else if filteredRecords.length === 0}
-          <div class="empty-state">No saved extractions found in database.</div>
+          <div class="empty-state">{$say('vault.empty')}</div>
         {:else}
           <div class="records-list">
             {#each filteredRecords as r (r.id)}

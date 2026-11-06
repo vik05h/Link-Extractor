@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { APP_VERSION } from '../version';
+  import { splashLine, voice } from '../utils/voice';
+  import BrandLogo from './BrandLogo.svelte';
 
   export let progress: number = 0;
   export let status: string = 'Starting up';
@@ -96,7 +98,7 @@
     <div class="splash-content" bind:this={content}>
       <div class="splash-logo-slot" aria-hidden="true"></div>
       <div class="splash-title">LINK EXTRACTOR</div>
-      <div class="splash-status">{status}</div>
+      <div class="splash-status">{splashLine($voice, status)}</div>
       <div class="splash-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}>
         <div class="splash-fill" style="width: {percent}%"></div>
       </div>
@@ -106,7 +108,7 @@
 
   <div class="splash-logo" bind:this={logo}>
     <span class="splash-ring" class:hidden={exiting} aria-hidden="true"></span>
-    <img src="/favicon.svg" alt="" class="splash-logo-img" />
+    <div class="splash-logo-img"><BrandLogo /></div>
   </div>
 </div>
 
@@ -276,11 +278,7 @@
     display: block;
     width: 100%;
     height: 100%;
-    border-radius: 17px;
-    object-fit: cover;
-    box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, 0.4),
-      0 0 26px var(--accent-glow);
+    filter: drop-shadow(0 0 14px var(--accent-glow));
     animation: splashBreathe 1.8s ease-in-out infinite alternate;
   }
 

@@ -11,6 +11,7 @@
   import ReportIssueModal from './ReportIssueModal.svelte';
   import ClipboardSentinel from './ClipboardSentinel.svelte';
   import SplashLoader from './SplashLoader.svelte';
+  import BrandLogo from './BrandLogo.svelte';
   import Icon from './icons/Icon.svelte';
   import type { PartItem, GameRecord } from '../types';
   import { playClickSound, playSuccessChime, toggleAudioMute, isAudioMuted } from '../utils/audio';
@@ -18,6 +19,10 @@
   import { APP_VERSION, FIRST_RUN_KEY } from '../version';
   import { runBoot } from '../utils/boot';
   import { initLiquidGlass, liquidGlass, watchGlassPerformance } from '../utils/liquidGlass';
+  import { glassBubble } from '../utils/glassBubble';
+  import { say, sayNow } from '../utils/voice';
+  import { chooseLaunchScreen } from '../utils/launch';
+  import { advanceSample, createSampleGame, type SampleGame } from '../utils/sampleGame';
 
   // Startup: the splash shows while loading, then plays into the app, then the rest settles.
   const REVEAL_SETTLE_MS = 620;
@@ -71,8 +76,17 @@
   let isFrozenApp = false;
   let appCurrentVersion = APP_VERSION;
   let hasUpdateAvailable = false;
-  let isFirstRunPendingTour = false;
+  /** What's New is showing because this version just arrived. */
+  let isFirstRunOfVersion = false;
 
+  function markVersionSeen() {
+    isFirstRunOfVersion = false;
+    try {
+      localStorage.setItem(FIRST_RUN_KEY, 'true');
+    } catch {}
+  }
+
+  // After an update, What's New is the whole welcome; the tour stays on its button.
   function handleCloseUpdateModal() {
     updateModalOpen = false;
     if (typeof window !== 'undefined' && updateReleaseInfo?.latest_version) {
@@ -80,26 +94,62 @@
         sessionStorage.setItem('le_dismissed_update_' + updateReleaseInfo.latest_version, 'true');
       } catch {}
     }
-    if (isFirstRunPendingTour) {
-      isFirstRunPendingTour = false;
-      try {
-        localStorage.setItem(FIRST_RUN_KEY, 'true');
-      } catch {}
-      setTimeout(() => {
-        tourOpen = true;
-      }, 350);
-    }
+    if (isFirstRunOfVersion) markVersionSeen();
   }
 
   function handleStartTourFromUpdate() {
     updateModalOpen = false;
-    isFirstRunPendingTour = false;
+    markVersionSeen();
+    setTimeout(startTour, 350);
+  }
+
+  // The tour: while it is open the Stage shows a made-up sample game, and the real game,
+  // including a running extraction, carries on untouched underneath until it closes.
+  const SAMPLE_TICK_MS = 650;
+  const FILTER_CHOICE_KEY = 'le_selective_filter';
+  let tourSample: SampleGame | null = null;
+  let sampleTimer: ReturnType<typeof setInterval> | null = null;
+  let viewBeforeTour: 'community' | 'stage' = 'community';
+  let filterChoiceBeforeTour: string | null = null;
+
+  function startTour() {
+    if (tourOpen) return;
+    viewBeforeTour = currentView;
+    historyOpen = false;
+    settingsOpen = false;
+    updateModalOpen = false;
+    reportModalOpen = false;
     try {
-      localStorage.setItem(FIRST_RUN_KEY, 'true');
+      filterChoiceBeforeTour = localStorage.getItem(FILTER_CHOICE_KEY);
     } catch {}
-    setTimeout(() => {
-      tourOpen = true;
-    }, 350);
+    tourSample = createSampleGame();
+    sampleTimer = setInterval(() => {
+      if (tourSample) tourSample = { ...tourSample, parts: advanceSample(tourSample.parts) };
+    }, SAMPLE_TICK_MS);
+    tourOpen = true;
+  }
+
+  function endTour() {
+    tourOpen = false;
+    if (sampleTimer) clearInterval(sampleTimer);
+    sampleTimer = null;
+    tourSample = null;
+    currentView = viewBeforeTour;
+    // Trying the filter chips on the sample game must not change the user's saved choice.
+    try {
+      if (filterChoiceBeforeTour === null) localStorage.removeItem(FILTER_CHOICE_KEY);
+      else localStorage.setItem(FILTER_CHOICE_KEY, filterChoiceBeforeTour);
+    } catch {}
+  }
+
+  function selectNav(index: number) {
+    playClickSound();
+    if (index === 2) {
+      historyOpen = true;
+      return;
+    }
+    historyOpen = false;
+    currentView = index === 1 ? 'stage' : 'community';
   }
 
   // URL Input
@@ -258,7 +308,7 @@
       });
 
       logs = [`[Database] Loaded ${rec.urls.length} cached direct links for ${gameTitle} with 0s wait!`];
-      showToast(`Loaded ${rec.urls.length} parts for ${gameTitle} with 0s wait!`);
+      showToast(sayNow('toast.loadedParts', { count: rec.urls.length, title: gameTitle }));
       return;
     }
 
@@ -310,7 +360,7 @@
           }
 
           logs = [`[Community] Loaded ${urls.length} cached direct links for ${gameTitle}`];
-          showToast(`Loaded ${urls.length} parts for ${gameTitle} with 0s wait!`);
+          showToast(sayNow('toast.loadedParts', { count: urls.length, title: gameTitle }));
         } else {
           showToast(`No links cached for ${rec.title}. Try live extraction.`);
         }
@@ -352,7 +402,7 @@
     logs = [`[Archive] Loaded ${rec.resolved_links.length} links for ${rec.game_title}`];
     showToast(rec.is_partial
       ? `Loaded ${rec.game_title}. This record is incomplete: ${rec.resolved_count} of ${rec.parts_count} parts.`
-      : `Loaded ${rec.game_title} from History!`);
+      : sayNow('toast.loadedFromVault', { title: rec.game_title }));
   }
 
   let activeGameSlug = '';
@@ -375,7 +425,7 @@
     }
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.push_to_jd2(urls, title, sourceUrl).then((res: any) => {
-        showToast(res?.message || 'Pushed to JDownloader 2!');
+        showToast(res?.message || sayNow('toast.pushed'));
       }).catch(() => {
         showToast('Error communicating with JDownloader 2');
       });
@@ -408,7 +458,7 @@
     countGrab(activeGameSlug);
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.export_urls(format, urls, title, totalSizeStr).then((res: any) => {
-        showToast(res.message || 'Export complete!');
+        showToast(res.message || sayNow('toast.exported'));
       });
     }
   }
@@ -418,7 +468,7 @@
     countGrab(activeGameSlug);
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.copy_to_clipboard(urls.join('\n')).then(() => {
-        showToast(`Copied all ${urls.length} direct links to clipboard!`);
+        showToast(sayNow('toast.copiedAll', { count: urls.length }));
       });
     }
   }
@@ -515,6 +565,8 @@
 
   // Global Keyboard Shortcuts
   function handleGlobalKeydown(e: KeyboardEvent) {
+    // The tour owns the keyboard while it is open, and moving views under it would lose its place.
+    if (tourOpen) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
       if (e.key === 'Escape') {
         settingsOpen = false;
@@ -561,7 +613,7 @@
     if (d.verified) {
       return {
         status: `Verified 100% of parts (${size})! Direct links ready.`,
-        toast: `100% Verified! ${d.parts_count} parts ready (${size})`
+        toast: sayNow('toast.verified', { count: d.parts_count, size })
       };
     }
     if (!d.validated) {
@@ -733,17 +785,17 @@
         }
       });
 
-      // First launch of this version: show What's New first, then the interactive Tutorial.
-      const hasSeenFirstRun = localStorage.getItem(FIRST_RUN_KEY);
-
-      if (!hasSeenFirstRun) {
-        isFirstRunPendingTour = true;
+      // A new install gets the tour. After an update, What's New opens once instead.
+      const launch = chooseLaunchScreen({
+        tourCompleted: !!localStorage.getItem('le_tour_completed'),
+        seenThisVersion: !!localStorage.getItem(FIRST_RUN_KEY),
+      });
+      if (launch === 'tour') {
+        whenBooted(startTour);
+      } else if (launch === 'whats-new') {
+        isFirstRunOfVersion = true;
         whenBooted(() => {
           updateModalOpen = true;
-        });
-      } else if (!localStorage.getItem('le_tour_completed')) {
-        whenBooted(() => {
-          tourOpen = true;
         });
       }
 
@@ -785,65 +837,68 @@
   <!-- Living Canvas Ambient Color Bleed Background -->
   <LivingCanvas {coverUrl} theme={currentTheme} activeView={currentView} />
 
-  <!-- Left Apple Liquid Glass Sidebar -->
-  <aside class="left-sidebar liquid-glass">
+  <!-- Sidebar: Liquid Glass, with a glass bubble over the selected item -->
+  <aside class="left-sidebar glass-panel" use:liquidGlass>
     <!-- Brand Logo -->
-    <button 
-      type="button" 
-      class="sidebar-logo-btn" 
+    <button
+      type="button"
+      class="sidebar-logo-btn"
       title="Link Extractor {APP_VERSION}"
+      aria-label="Link Extractor {APP_VERSION}"
       on:click={() => { currentView = 'community'; historyOpen = false; playClickSound(); }}
     >
       <div class="logo-mark">
-        <img src="/favicon.svg" alt="Link Extractor" class="brand-logo-img" />
+        <BrandLogo />
       </div>
     </button>
 
-    <!-- Navigation Icon Group with Liquid Glass Magnifying Lens -->
-    <nav class="sidebar-nav" style="--tab-offset: {activeNavIndex * 64}px">
-      <!-- Sliding Liquid Glass Lens Magnifier (kube.io liquid glass effect) -->
-      <div class="liquid-glass-lens" aria-hidden="true">
-        <div class="lens-specular-lip"></div>
-        <div class="lens-caustic-glare"></div>
-      </div>
-
-      <button 
+    <!-- Click, drag or use the arrow keys; utils/glassBubble.ts moves the bubble -->
+    <nav
+      class="sidebar-nav"
+      aria-label="Main"
+      use:glassBubble={{ axis: 'y', selected: activeNavIndex, onSelect: selectNav, host: '.app-layout-root', variant: 'glass-bubble--nav', size: 58 }}
+    >
+      <button
         type="button"
-        class="sidebar-item" 
-        class:active={currentView === 'community' && !historyOpen}
+        class="sidebar-item"
+        class:active={activeNavIndex === 0}
+        aria-current={activeNavIndex === 0 ? 'page' : undefined}
+        data-bubble-item
         title="Community Hub (Ctrl+1)"
-        on:click={() => { currentView = 'community'; historyOpen = false; playClickSound(); }}
       >
-        <div class="tab-content-zoom">
+        <span class="tab-content-zoom">
           <Icon name="globe" size={20} />
           <span class="nav-label">Hub</span>
-        </div>
+        </span>
       </button>
 
-      <button 
+      <button
         type="button"
-        class="sidebar-item" 
-        class:active={currentView === 'stage' && !historyOpen}
+        class="sidebar-item"
+        class:active={activeNavIndex === 1}
+        aria-current={activeNavIndex === 1 ? 'page' : undefined}
+        data-bubble-item
         title="Active Game Stage (Ctrl+2)"
-        on:click={() => { currentView = 'stage'; historyOpen = false; playClickSound(); }}
       >
-        <div class="tab-content-zoom">
+        <span class="tab-content-zoom">
           <Icon name="gamepad" size={20} />
           <span class="nav-label">Stage</span>
-        </div>
+        </span>
       </button>
 
-      <button 
+      <button
         type="button"
-        class="sidebar-item" 
-        class:active={historyOpen}
+        class="sidebar-item"
+        class:active={activeNavIndex === 2}
+        aria-current={activeNavIndex === 2 ? 'page' : undefined}
+        id="tour-nav-vault"
+        data-bubble-item
         title="Extraction Vault / History (Ctrl+3)"
-        on:click={() => { historyOpen = true; playClickSound(); }}
       >
-        <div class="tab-content-zoom">
+        <span class="tab-content-zoom">
           <Icon name="history" size={20} />
           <span class="nav-label">Vault</span>
-        </div>
+        </span>
       </button>
     </nav>
 
@@ -853,7 +908,8 @@
         type="button" 
         class="sidebar-icon-btn tour-trigger-btn" 
         title="Interactive Guided Tour"
-        on:click={() => { playClickSound(); tourOpen = true; }}
+        aria-label="Interactive Guided Tour"
+        on:click={() => { playClickSound(); startTour(); }}
       >
         <Icon name="help-circle" size={18} />
       </button>
@@ -941,20 +997,35 @@
     <!-- Active Screen Body -->
     <main class="active-screen-body">
       {#if currentView === 'stage'}
-        <GameStage 
-          {gameTitle}
-          {coverUrl}
-          {sourceUrl}
-          {totalSizeStr}
-          {isRunning}
-          {statusMessage}
-          {parts}
-          {logs}
-          onPushJd2={handlePushToJd2}
-          onExport={handleExport}
-          onCopyAll={handleCopyAll}
-          onCancel={handleCancelExtraction}
-        />
+        <!-- Rebuilt when the tour starts or ends, so the sample never mixes with the real game. -->
+        {#key !!tourSample}
+          {#if tourSample}
+            <GameStage
+              demo
+              gameTitle={tourSample.title}
+              coverUrl={tourSample.coverUrl}
+              totalSizeStr={tourSample.totalSizeStr}
+              statusMessage={$say('tour.sampleStatus')}
+              parts={tourSample.parts}
+              logs={tourSample.logs}
+            />
+          {:else}
+            <GameStage
+              {gameTitle}
+              {coverUrl}
+              {sourceUrl}
+              {totalSizeStr}
+              {isRunning}
+              {statusMessage}
+              {parts}
+              {logs}
+              onPushJd2={handlePushToJd2}
+              onExport={handleExport}
+              onCopyAll={handleCopyAll}
+              onCancel={handleCancelExtraction}
+            />
+          {/if}
+        {/key}
       {:else}
         <DiscoveryHub 
           games={communityGames}
@@ -1002,7 +1073,7 @@
     onClose={() => settingsOpen = false}
     onThemeChange={(t) => currentTheme = t}
     onCheckUpdates={handleManualCheckUpdates}
-    onOpenTour={() => { tourOpen = true; }}
+    onOpenTour={startTour}
     onOpenIssueCenter={() => { reportModalOpen = true; }}
     currentVersion={appCurrentVersion}
   />
@@ -1012,7 +1083,7 @@
     releaseInfo={updateReleaseInfo}
     isFrozen={isFrozenApp}
     currentVersion={appCurrentVersion}
-    isFirstRun={isFirstRunPendingTour}
+    isFirstRun={isFirstRunOfVersion}
     onClose={handleCloseUpdateModal}
     onStartTour={handleStartTourFromUpdate}
     onShowToast={showToast}
@@ -1020,7 +1091,8 @@
 
   <OnboardingTour
     isOpen={tourOpen}
-    onClose={() => { tourOpen = false; }}
+    onClose={endTour}
+    onView={(view) => { currentView = view; }}
   />
 
   <ReportIssueModal
@@ -1050,8 +1122,9 @@
     background: var(--bg-base);
   }
 
-  /* Apple Liquid Glass Navbar (Refraction + Specular Caustics) */
-  .left-sidebar.liquid-glass {
+  /* Sidebar: the shared Liquid Glass material from glass.css. The bubble over the selected
+     item comes from utils/glassBubble.ts and lives outside the sidebar so it can see through it. */
+  .left-sidebar {
     position: relative;
     z-index: 100;
     width: 72px;
@@ -1064,53 +1137,18 @@
     padding: 18px 0;
     border-radius: 24px;
     flex-shrink: 0;
-
-    background: var(--glass-sheen), var(--glass-tint);
-    backdrop-filter: var(--glass-backdrop);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow:
-      inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 0.55),
-      inset 0 0 20px 0 rgba(255, 255, 255, 0.05),
-      inset 0 -1px 1px 0 rgba(255, 255, 255, 0.12),
-      0 20px 40px -15px rgba(0, 0, 0, 0.8),
-      0 0 30px -8px var(--accent-glow);
-    overflow: hidden;
+    box-shadow: var(--glass-shadow), 0 0 30px -8px var(--accent-glow);
   }
 
-  /* Liquid Glass Curved Specular Lip (Upper Refractive Curve) */
-  .left-sidebar.liquid-glass::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 45%;
-    background: linear-gradient(
-      180deg, 
-      rgba(255, 255, 255, 0.16) 0%,
-      rgba(255, 255, 255, 0.04) 50%, 
-      rgba(255, 255, 255, 0) 100%
-    );
-    border-top-left-radius: 24px;
-    border-top-right-radius: 24px;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  /* Liquid Glass Caustic Radial Sheen */
-  .left-sidebar.liquid-glass::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 24px;
-    background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.15), transparent 70%);
-    pointer-events: none;
-    z-index: 1;
+  /* Above the glass's rim and pointer highlight. */
+  .sidebar-logo-btn,
+  .sidebar-nav,
+  .sidebar-footer {
+    position: relative;
+    z-index: 4;
   }
 
   .sidebar-logo-btn {
-    position: relative;
-    z-index: 2;
     background: transparent;
     border: none;
     cursor: pointer;
@@ -1120,88 +1158,24 @@
   .logo-mark {
     width: 40px;
     height: 40px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    box-shadow: 
-      inset 0 1px 1px rgba(255, 255, 255, 0.4),
-      0 0 20px var(--accent-glow);
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
-  }
-
-  .brand-logo-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+    filter: drop-shadow(0 0 10px var(--accent-glow));
+    transition: transform 0.35s var(--glass-spring), filter 0.2s ease;
   }
 
   .sidebar-logo-btn:hover .logo-mark {
-    transform: scale(1.1);
-    filter: brightness(1.18);
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 14px var(--accent-glow)) brightness(1.12);
   }
 
   .sidebar-nav {
-    position: relative;
-    z-index: 2;
     display: flex;
     flex-direction: column;
     gap: 16px;
     align-items: center;
-  }
-
-  /* Kube.io Liquid Glass Magnifying Lens */
-  .liquid-glass-lens {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-    pointer-events: none;
-    z-index: 0;
-    transform: translateY(var(--tab-offset));
-    transition: transform 0.44s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.6s ease;
-    background: 
-      radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.38) 0%, transparent 60%),
-      linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(0, 0, 0, 0.3) 100%),
-      var(--accent-gradient);
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    box-shadow: 
-      inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.8),
-      inset 0 -1.5px 2px 0 rgba(0, 0, 0, 0.5),
-      0 8px 24px -6px rgba(0, 0, 0, 0.6),
-      0 0 24px var(--accent-glow);
-    overflow: hidden;
-  }
-
-  .lens-specular-lip {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 40%;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, transparent 100%);
-    border-radius: 14px 14px 50% 50%;
-    pointer-events: none;
-  }
-
-  .lens-caustic-glare {
-    position: absolute;
-    bottom: -10px;
-    left: 20%;
-    right: 20%;
-    height: 18px;
-    background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-    filter: blur(4px);
-    pointer-events: none;
+    touch-action: none;
   }
 
   .sidebar-item {
-    position: relative;
-    z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1210,7 +1184,7 @@
     height: 48px;
     border-radius: 14px;
     background: transparent;
-    border: 1px solid transparent;
+    border: none;
     color: var(--text-muted);
     cursor: pointer;
     transition: color 0.25s ease;
@@ -1218,8 +1192,6 @@
 
   .sidebar-item:hover:not(.active) {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
   }
 
   .tab-content-zoom {
@@ -1228,16 +1200,15 @@
     align-items: center;
     justify-content: center;
     gap: 3px;
-    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .sidebar-item.active {
     color: #ffffff;
   }
 
+  /* Keeps the label crisp over the bubble's tint. */
   .sidebar-item.active .tab-content-zoom {
-    transform: scale(1.15);
-    filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.5));
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
   }
 
   .nav-label {
@@ -1249,8 +1220,6 @@
   }
 
   .sidebar-footer {
-    position: relative;
-    z-index: 2;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1260,7 +1229,7 @@
   .sidebar-icon-btn {
     width: 38px;
     height: 38px;
-    border-radius: 10px;
+    border-radius: 12px;
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-muted);
@@ -1268,13 +1237,15 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
+  /* A small piece of glass catches the light under the pointer. */
   .sidebar-icon-btn:hover {
     color: var(--text-primary);
-    background: var(--bg-surface-hover);
-    border-color: var(--border-hover);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: var(--glass-chip-highlight);
   }
 
   .sidebar-icon-btn.update-btn {

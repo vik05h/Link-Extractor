@@ -42,6 +42,11 @@ This document tracks current milestones, active implementation status, and upcom
 - [x] **4.7 Liquid Glass & Startup Splash**
   - [x] Refractive glass surfaces with content scrolling beneath floating bars, and a switch in Settings.
   - [x] Glass startup card that preloads community games and covers, then morphs into the app.
+- [x] **4.8 Glass Bars, New Logo & Tour Rework**
+  - [x] Glass bubble on the sidebar and Stage tab bar: springs between items, drags like iOS and magnifies while dragged. The Stage tab row pins under the URL bar.
+  - [x] "Bolt Tray" logo everywhere, rendered from one SVG by `frontend/generate-icons.mjs`. In the app it follows the theme.
+  - [x] Seven-step tour over a sample game, with hands-on Stage and filter steps. It plays on new installs; updates open What's New.
+  - [x] GenZ wording by default, with a Classic Wording switch in Settings.
 
 ---
-*Last Updated: 2026-11-05*
+*Last Updated: 2026-11-06*

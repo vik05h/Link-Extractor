@@ -5,6 +5,7 @@
   import { playClickSound, toggleAudioMute, isAudioMuted } from '../utils/audio';
   import { waitForBridge } from '../utils/bridgeReady';
   import { isRefractionOn, setRefractionChoice } from '../utils/liquidGlass';
+  import { setVoice, voice } from '../utils/voice';
   import type { AppSettings } from '../types';
   import { APP_VERSION } from '../version';
 
@@ -84,6 +85,13 @@
     playClickSound();
     glassRefraction = !glassRefraction;
     setRefractionChoice(glassRefraction);
+  }
+
+  $: classicWording = $voice === 'classic';
+
+  function handleWordingToggle() {
+    playClickSound();
+    setVoice(classicWording ? 'genz' : 'classic');
   }
 
   function handleConcurrencySelect(step: number) {
@@ -381,6 +389,31 @@
                 </div>
               </div>
               <div class="cyber-switch" class:checked={glassRefraction}>
+                <div class="switch-track">
+                  <div class="switch-thumb"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Classic Wording -->
+            <div
+              class="toggle-card glass-panel"
+              on:click={handleWordingToggle}
+              role="switch"
+              aria-checked={classicWording}
+              tabindex="0"
+              on:keydown={(e) => (e.key === ' ' || e.key === 'Enter') && handleWordingToggle()}
+            >
+              <div class="toggle-card-left">
+                <div class="toggle-icon-wrap" class:active={classicWording}>
+                  <Icon name="message-square" size={16} color={classicWording ? 'var(--accent-primary)' : 'var(--text-muted)'} />
+                </div>
+                <div class="toggle-content">
+                  <div class="toggle-title">Classic Wording</div>
+                  <div class="setting-subtext">Plain wording instead of the GenZ lines in the tour, pop-ups and empty screens. Buttons and errors are always plain</div>
+                </div>
+              </div>
+              <div class="cyber-switch" class:checked={classicWording}>
                 <div class="switch-track">
                   <div class="switch-thumb"></div>
                 </div>

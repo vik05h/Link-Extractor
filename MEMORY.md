@@ -95,6 +95,14 @@ graph TD
 * **Slow PCs**: `watchGlassPerformance()` drops to frosted glass for the session if frames run slow. A choice in Settings overrides it.
 * **The splash always ends**: `utils/boot.ts` has a hard time limit, and a slow image host or crash only shortens what gets preloaded. The HTTP cache is disabled in `main.py`, so preloaded covers are kept referenced until the Hub shows them.
 * **Measure before the reveal**: `.is-booting` hides things with opacity alone, because the splash measures the URL bar and sidebar logo to morph into them. A transform there would make it land in the wrong place.
+* **A bar's bubble lives beside the bar**: The bar's own `backdrop-filter` makes it a Backdrop Root, so a bubble inside it could only see the bar. `utils/glassBubble.ts` appends the bubble to a host element (the app root, or the sticky tab row) and positions it over the selected item. That is also why the sidebar's bubble has its own `.is-booting` and reveal rules.
+* **A short bubble needs a gentle rim**: On a 30 px capsule, a full rim bend pulls copies of the label to its edges. `liquidGlass.ts` caps the bend at a share of the height for the bubble and for its lens.
+* **The tour's sample game**: While the tour is open, MainApp shows `utils/sampleGame.ts` on the Stage with `demo` set, so Push, Copy and Export do nothing, and the real game and any running extraction carry on underneath. The tour restores the saved filter choice when it ends.
+
+### Wording and frontend tests
+
+* **Two voices**: GenZ by default, classic from Settings. Lines in the tour, splash, success pop-ups, empty screens, the clipboard pop-up and the top of What's New go through `utils/voice.ts`, and `tests/voice.test.ts` keeps both voices complete with matching placeholders. Errors, warnings, update, safety and delete messages, dialogs that ask for a choice, buttons, Settings and the Issue Center stay plain.
+* **Node runs the frontend tests by stripping types**: modules under `frontend/src/utils/` that tests import cannot use TypeScript-only syntax such as constructor parameter properties or enums.
 
 ### Names that drift
 

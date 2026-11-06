@@ -1,1001 +1,512 @@
 <script lang="ts">
+  /**
+   * The onboarding tour: seven short steps that walk through the real app. It opens the views
+   * it talks about (MainApp shows a sample game on the Stage meanwhile), spotlights the part
+   * it describes, and on the Stage and filter steps lets clicks through to try them.
+   * Steps and card placement live in utils/tourPlan.ts, the wording in utils/voice.ts.
+   */
+  import { onDestroy, onMount, tick } from 'svelte';
   import { liquidGlass } from '../utils/liquidGlass';
   import { FIRST_RUN_KEY } from '../version';
-  import { onMount, tick } from 'svelte';
-  import Icon from './icons/Icon.svelte';
+  import { TOUR_STEPS, placeCard, unionRect, type Rect, type TourStep } from '../utils/tourPlan';
+  import { say, type CopyKey } from '../utils/voice';
   import { playClickSound, playSuccessChime } from '../utils/audio';
+  import Icon from './icons/Icon.svelte';
+  import BrandLogo from './BrandLogo.svelte';
 
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
+  /** Asks MainApp to open the view a step talks about. */
+  export let onView: (view: 'community' | 'stage') => void = () => {};
 
-  interface TourStep {
-    targetId: string;
-    title: string;
-    subtitle: string;
-    description: string;
-    position: 'bottom' | 'top' | 'right' | 'left';
-    badge: string;
-  }
+  /** Room between the spotlight's edge and what it frames. */
+  const SPOT_PAD = 10;
+  /** Layout can shift under the tour, like Hub cards arriving, so it is measured again this often. */
+  const REMEASURE_MS = 500;
 
-  const STEPS: TourStep[] = [
-    {
-      targetId: 'tour-url-bar',
-      badge: 'Step 1 of 5',
-      title: 'Direct Link Resolver Cockpit',
-      subtitle: 'Paste any FitGirl game page URL, Pastebin, or direct mirror',
-      description: 'Paste your game URL here and click "Extract & Resolve". The multi-tab worker pool bypasses Cloudflare Turnstile captchas across all parts in parallel (~1.8s per part).',
-      position: 'bottom'
-    },
-    {
-      targetId: 'tour-discovery-hub',
-      badge: 'Step 2 of 5',
-      title: 'Pre-Fetched Community Vault',
-      subtitle: 'Instant 0-second direct downloads shared by gamers',
-      description: 'Browse popular games already verified and cached in the community cloud. Click "Instant Load (0s)" to populate all direct links without any waiting.',
-      position: 'bottom'
-    },
-    {
-      targetId: 'tour-game-stage',
-      badge: 'Step 3 of 5',
-      title: 'Defrag Matrix & Decryption Stage',
-      subtitle: 'Real-time multi-part visualizer replacing static tables',
-      description: 'Watch all archive parts decrypt in real time. Switch between the 8-bit Defrag Matrix, raw direct URLs table, and live telemetry terminal.',
-      position: 'top'
-    },
-    {
-      targetId: 'tour-quick-actions',
-      badge: 'Step 4 of 5',
-      title: 'One-Click Exporters & JD2 Push',
-      subtitle: 'Direct link grabber and multi-format file exporters',
-      description: 'Push all direct links straight into JDownloader 2 LinkGrabber with zero deep analysis prompts, or export as .txt, .json, and .crawljob files.',
-      position: 'top'
-    },
-    {
-      targetId: 'tour-sidebar-footer',
-      badge: 'Step 5 of 5',
-      title: 'Command Hub, Issues & Updates',
-      subtitle: 'Themes, auto-updater, audio haptics & public issue center',
-      description: 'Switch between 8 dynamic OLED themes, toggle synthesized gaming audio haptics, check updates, and report issues or view known bug fixes.',
-      position: 'right'
-    }
-  ];
-
-  let currentStepIndex: number = 0;
-  let spotlightRect = { top: 0, left: 0, width: 0, height: 0, visible: false };
-  let tooltipStyle = '';
+  let index = 0;
+  let spot: Rect | null = null;
+  let cardTop = 0;
+  let cardLeft = 0;
+  let card: HTMLElement | undefined;
+  let primaryButton: HTMLButtonElement | undefined;
   let windowWidth = 1180;
   let windowHeight = 840;
+  let remeasureTimer: ReturnType<typeof setInterval> | null = null;
+  let layoutToken = 0;
 
-  $: currentStep = STEPS[currentStepIndex];
+  $: step = TOUR_STEPS[index];
+  $: isLast = index === TOUR_STEPS.length - 1;
 
-  async function updateSpotlight() {
-    if (!isOpen) return;
-    const step = STEPS[currentStepIndex];
-    if (!step) return;
+  function wordingFor(current: TourStep, part: 'title' | 'body'): CopyKey {
+    return `tour.${current.id}.${part}` as CopyKey;
+  }
+
+  const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+  function visible(selectors: string[] = []): HTMLElement[] {
+    return selectors
+      .map((selector) => document.querySelector<HTMLElement>(selector))
+      .filter((el): el is HTMLElement => !!el && el.getClientRects().length > 0);
+  }
+
+  function padded(rect: Rect): Rect {
+    const top = Math.max(4, rect.top - SPOT_PAD);
+    const left = Math.max(4, rect.left - SPOT_PAD);
+    const bottom = Math.min(windowHeight - 4, rect.top + rect.height + SPOT_PAD);
+    const right = Math.min(windowWidth - 4, rect.left + rect.width + SPOT_PAD);
+    return { top, left, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+  }
+
+  const same = (a: Rect | null, b: Rect | null) =>
+    a === b || (!!a && !!b && Math.abs(a.top - b.top) < 1 && Math.abs(a.left - b.left) < 1 && Math.abs(a.width - b.width) < 1 && Math.abs(a.height - b.height) < 1);
+
+  /** Spotlights this step's targets and places the card beside them. Scrolls them into view only when asked. */
+  async function layout(scrollIntoView: boolean) {
+    const token = ++layoutToken;
     await tick();
+    await nextFrame();
+    await nextFrame();
+    if (!isOpen || token !== layoutToken) return;
 
-    const tooltipWidth = (currentStepIndex === 2 || currentStepIndex === 3) ? 440 : 380;
-    const tooltipHeight = (currentStepIndex === 2 || currentStepIndex === 3) ? 410 : 240;
+    let targets = visible(step.targets);
+    if (targets.length === 0) targets = visible(step.fallback);
+    if (scrollIntoView && targets[0]) targets[0].scrollIntoView({ block: 'nearest', inline: 'nearest' });
 
-    const targetEl = document.getElementById(step.targetId);
-    if (!targetEl) {
-      spotlightRect = {
-        top: Math.floor(windowHeight / 2 - 100),
-        left: Math.floor(windowWidth / 2 - (tooltipWidth / 2)),
-        width: tooltipWidth,
-        height: 200,
-        visible: false
-      };
-      tooltipStyle = `top: ${Math.max(20, Math.floor(windowHeight / 2 - (tooltipHeight / 2)))}px; left: ${Math.max(20, Math.floor(windowWidth / 2 - (tooltipWidth / 2)))}px;`;
-      return;
-    }
+    const union = unionRect(targets.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { top: r.top, left: r.left, width: r.width, height: r.height };
+    }));
+    const nextSpot = union ? padded(union) : null;
+    if (!same(nextSpot, spot)) spot = nextSpot;
 
-    targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-
-    const rect = targetEl.getBoundingClientRect();
-    const pad = 10;
-
-    spotlightRect = {
-      top: Math.max(0, rect.top - pad),
-      left: Math.max(0, rect.left - pad),
-      width: rect.width + pad * 2,
-      height: rect.height + pad * 2,
-      visible: true
-    };
-
-    let top = 0;
-    let left = 0;
-
-    if (step.position === 'bottom') {
-      top = spotlightRect.top + spotlightRect.height + 16;
-      left = spotlightRect.left + (spotlightRect.width / 2) - (tooltipWidth / 2);
-    } else if (step.position === 'top') {
-      top = spotlightRect.top - tooltipHeight - 16;
-      left = spotlightRect.left + (spotlightRect.width / 2) - (tooltipWidth / 2);
-    } else if (step.position === 'right') {
-      top = spotlightRect.top + (spotlightRect.height / 2) - (tooltipHeight / 2);
-      left = spotlightRect.left + spotlightRect.width + 18;
-    } else {
-      top = spotlightRect.top + (spotlightRect.height / 2) - (tooltipHeight / 2);
-      left = spotlightRect.left - tooltipWidth - 18;
-    }
-
-    left = Math.max(16, Math.min(windowWidth - tooltipWidth - 20, left));
-    top = Math.max(16, Math.min(windowHeight - tooltipHeight - 20, top));
-
-    tooltipStyle = `top: ${top}px; left: ${left}px;`;
+    const size = { width: card?.offsetWidth || 380, height: card?.offsetHeight || 230 };
+    const place = placeCard(spot, size, { width: windowWidth, height: windowHeight }, step.side);
+    if (place.top !== cardTop) cardTop = place.top;
+    if (place.left !== cardLeft) cardLeft = place.left;
   }
 
-  function goToStep(idx: number) {
-    if (idx >= 0 && idx < STEPS.length) {
-      playClickSound();
-      currentStepIndex = idx;
-      updateSpotlight();
-    }
+  async function goTo(next: number) {
+    if (next < 0 || next >= TOUR_STEPS.length) return;
+    index = next;
+    const view = TOUR_STEPS[next].view;
+    if (view) onView(view);
+    await layout(true);
+    primaryButton?.focus({ preventScroll: true });
   }
 
-  function handleNext(e?: MouseEvent | KeyboardEvent) {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
+  function handleNext() {
     playClickSound();
-    if (currentStepIndex < STEPS.length - 1) {
-      currentStepIndex += 1;
-      updateSpotlight();
-    } else {
-      handleFinish();
-    }
+    if (isLast) finish(true);
+    else goTo(index + 1);
   }
 
-  function handlePrev(e?: MouseEvent | KeyboardEvent) {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
+  function handleBack() {
     playClickSound();
-    if (currentStepIndex > 0) {
-      currentStepIndex -= 1;
-      updateSpotlight();
-    }
+    goTo(index - 1);
   }
 
-  function handleFinish(e?: MouseEvent) {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    playSuccessChime();
-    if (typeof window !== 'undefined') {
+  function finish(completed: boolean) {
+    if (completed) playSuccessChime();
+    else playClickSound();
+    try {
       localStorage.setItem('le_tour_completed', 'true');
       localStorage.setItem(FIRST_RUN_KEY, 'true');
-    }
+    } catch {}
     onClose();
   }
 
-  function handleSkip(e?: MouseEvent | KeyboardEvent) {
-    if (e) {
-      e.stopPropagation();
+  /** Keeps Tab inside the card, so the keyboard cannot wander into the app behind the dim. */
+  function trapFocus(e: KeyboardEvent) {
+    if (!card) return;
+    const focusable = [...card.querySelectorAll<HTMLElement>('button:not([disabled])')];
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const inside = card.contains(document.activeElement);
+    if (e.shiftKey && (document.activeElement === first || !inside)) {
       e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+      e.preventDefault();
+      first.focus();
     }
-    playClickSound();
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('le_tour_completed', 'true');
-      localStorage.setItem(FIRST_RUN_KEY, 'true');
-    }
-    onClose();
   }
 
   function handleKeydown(e: KeyboardEvent) {
     if (!isOpen) return;
-    if (e.key === 'ArrowRight' || e.key === 'Enter') {
+    const target = e.target as HTMLElement | null;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+    if (e.key === 'Escape') {
       e.preventDefault();
-      handleNext(e);
+      finish(false);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      handleNext();
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      handlePrev(e);
-    } else if (e.key === 'Escape') {
+      if (index > 0) handleBack();
+    } else if (e.key === 'Enter' && !(target instanceof HTMLButtonElement)) {
       e.preventDefault();
-      handleSkip(e);
+      handleNext();
+    } else if (e.key === 'Tab') {
+      trapFocus(e);
     }
   }
 
-  let prevIsOpen = false;
-  $: if (isOpen && !prevIsOpen) {
-    prevIsOpen = true;
-    currentStepIndex = 0;
-    updateSpotlight();
-  } else if (!isOpen && prevIsOpen) {
-    prevIsOpen = false;
+  let wasOpen = false;
+  $: if (isOpen && !wasOpen) {
+    wasOpen = true;
+    spot = null;
+    goTo(0);
+    remeasureTimer = setInterval(() => layout(false), REMEASURE_MS);
+  } else if (!isOpen && wasOpen) {
+    wasOpen = false;
+    if (remeasureTimer) clearInterval(remeasureTimer);
+    remeasureTimer = null;
+  }
+
+  function handleResize() {
+    if (isOpen) layout(false);
   }
 
   onMount(() => {
-    window.addEventListener('resize', updateSpotlight);
-    return () => {
-      window.removeEventListener('resize', updateSpotlight);
-    };
+    window.addEventListener('resize', handleResize);
   });
+
+  onDestroy(() => {
+    if (typeof window === 'undefined') return;
+    window.removeEventListener('resize', handleResize);
+    if (remeasureTimer) clearInterval(remeasureTimer);
+  });
+
+  $: holeStyle = spot
+    ? `top: ${spot.top}px; left: ${spot.left}px; width: ${spot.width}px; height: ${spot.height}px;`
+    : `top: ${windowHeight / 2}px; left: ${windowWidth / 2}px; width: 0px; height: 0px;`;
 </script>
 
 <svelte:window on:keydown={handleKeydown} bind:innerWidth={windowWidth} bind:innerHeight={windowHeight} />
 
 {#if isOpen}
-  <!-- Full-Screen Transparent Input Shield (absorbs any clicks outside the card so they never hit background app UI) -->
-  <div 
-    class="tour-shield" 
-    on:click|stopPropagation={() => {}} 
-    aria-hidden="true"
-  ></div>
-
-  <!-- 4-Quadrant Deep 18px Gaussian Blurred Backdrop (Physical Cutout - Zero Blur Over Target) -->
-  {#if spotlightRect.visible}
-    <!-- Top Curtain -->
-    <div 
-      class="tour-quad-dim" 
-      style="top: 0; left: 0; width: 100%; height: {Math.max(0, spotlightRect.top)}px;"
-      aria-hidden="true"
-    ></div>
-    <!-- Bottom Curtain -->
-    <div 
-      class="tour-quad-dim" 
-      style="top: {spotlightRect.top + spotlightRect.height}px; left: 0; width: 100%; height: {Math.max(0, windowHeight - (spotlightRect.top + spotlightRect.height))}px;"
-      aria-hidden="true"
-    ></div>
-    <!-- Left Curtain -->
-    <div 
-      class="tour-quad-dim" 
-      style="top: {spotlightRect.top}px; left: 0; width: {Math.max(0, spotlightRect.left)}px; height: {spotlightRect.height}px;"
-      aria-hidden="true"
-    ></div>
-    <!-- Right Curtain -->
-    <div 
-      class="tour-quad-dim" 
-      style="top: {spotlightRect.top}px; left: {spotlightRect.left + spotlightRect.width}px; width: {Math.max(0, windowWidth - (spotlightRect.left + spotlightRect.width))}px; height: {spotlightRect.height}px;"
-      aria-hidden="true"
-    ></div>
+  <!-- Catches clicks behind the tour. On hands-on steps it leaves a hole over the spotlight. -->
+  {#if spot && step.interactive}
+    <div class="tour-block" style="top: 0; left: 0; right: 0; height: {spot.top}px;" aria-hidden="true"></div>
+    <div class="tour-block" style="top: {spot.top + spot.height}px; left: 0; right: 0; bottom: 0;" aria-hidden="true"></div>
+    <div class="tour-block" style="top: {spot.top}px; left: 0; width: {spot.left}px; height: {spot.height}px;" aria-hidden="true"></div>
+    <div class="tour-block" style="top: {spot.top}px; left: {spot.left + spot.width}px; right: 0; height: {spot.height}px;" aria-hidden="true"></div>
   {:else}
-    <!-- Full Screen Dim when no target element is present -->
-    <div 
-      class="tour-quad-dim" 
-      style="top: 0; left: 0; width: 100%; height: 100%;"
-      aria-hidden="true"
-    ></div>
+    <div class="tour-block" style="inset: 0;" aria-hidden="true"></div>
   {/if}
 
-  {#if spotlightRect.visible}
-    <div 
-      class="spotlight-box"
-      style="
-        top: {spotlightRect.top}px; 
-        left: {spotlightRect.left}px; 
-        width: {spotlightRect.width}px; 
-        height: {spotlightRect.height}px;
-      "
-      aria-hidden="true"
-    >
-      <div class="spotlight-beacon-corner top-left"></div>
-      <div class="spotlight-beacon-corner top-right"></div>
-      <div class="spotlight-beacon-corner bottom-left"></div>
-      <div class="spotlight-beacon-corner bottom-right"></div>
-    </div>
-  {/if}
+  <!-- The dim around the spotlight is one huge shadow, so the hole can glide between steps. -->
+  <div class="tour-spot" class:is-empty={!spot} class:is-hands-on={step.interactive} style={holeStyle} aria-hidden="true"></div>
 
-  <!-- Interactive Tour Card Tooltip (Fixed Top-Level Element with Independent DirectComposition Hit-Testing) -->
-  <div 
-    class="tour-card glass-panel" use:liquidGlass={{ style: 'thick' }} 
-    class:wide-card={currentStepIndex === 2 || currentStepIndex === 3}
-    style={tooltipStyle} 
+  <div
+    class="tour-card glass-panel glass-thick"
+    class:is-welcome={step.id === 'welcome'}
+    bind:this={card}
+    use:liquidGlass={{ style: 'thick' }}
+    style="top: {cardTop}px; left: {cardLeft}px;"
     role="dialog"
     aria-modal="true"
-    aria-label="Onboarding Tour"
-    tabindex="-1"
-    on:click|stopPropagation={() => {}}
-    on:keydown|stopPropagation={() => {}}
+    aria-labelledby="tour-title"
+    aria-describedby="tour-body"
   >
+    {#if step.id === 'welcome'}
+      <div class="tour-logo"><BrandLogo /></div>
+    {/if}
+
     <div class="tour-card-header">
-      <div class="tour-step-badge">
-        <Icon name="sparkles" size={13} color="var(--accent-primary)" />
-        <span>{currentStep.badge}</span>
-      </div>
-      <button type="button" class="btn-skip-icon" on:click|stopPropagation={handleSkip} title="Skip Tour (Esc)" aria-label="Skip tour">
+      <span class="tour-step-badge">
+        <Icon name="sparkles" size={12} color="var(--accent-primary)" />
+        <span>{$say('tour.step', { n: index + 1, total: TOUR_STEPS.length })}</span>
+      </span>
+      <button type="button" class="tour-close" title="{$say('tour.skip')} (Esc)" aria-label={$say('tour.skip')} on:click={() => finish(false)}>
         <Icon name="close" size={14} />
       </button>
     </div>
 
-      <div class="tour-card-body">
-        <h3 class="tour-title">{currentStep.title}</h3>
-        <p class="tour-subtitle">{currentStep.subtitle}</p>
-        <p class="tour-desc">{currentStep.description}</p>
-
-        <!-- Step 3 Interactive Mini Screen: Defrag Matrix Visualizer -->
-        {#if currentStepIndex === 2}
-          <div class="mini-hud-screen mini-screen-defrag">
-            <div class="mini-hud-top">
-              <div class="mini-hud-title-col">
-                <div class="mini-hud-pulse-tag">
-                  <span class="pulse-radar"></span>
-                  <span>PARALLEL WORKER POOL</span>
-                </div>
-                <span class="mini-hud-game-name">Ghost of Tsushima: Director's Cut (Part 4/14)</span>
-              </div>
-              <div class="mini-hud-speed-badge font-mono">~1.8s/part</div>
-            </div>
-
-            <!-- Mini 14-Block Defrag Grid -->
-            <div class="mini-defrag-grid">
-              {#each Array(14) as _, i}
-                <div 
-                  class="mini-defrag-block"
-                  class:done={i < 8}
-                  class:decrypting={i === 8}
-                  class:queued={i > 8}
-                  title="Part {i + 1}"
-                >
-                  <span class="mini-block-num">{i + 1}</span>
-                  {#if i < 8}
-                    <span class="block-check">✓</span>
-                  {:else if i === 8}
-                    <span class="block-pulse-dot"></span>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-
-            <!-- Mini Telemetry Footer -->
-            <div class="mini-hud-footer">
-              <div class="mini-hud-stat">
-                <Icon name="check-circle" size={12} color="#00f0a0" />
-                <span>8/14 Resolved</span>
-              </div>
-              <div class="mini-hud-stat font-mono">
-                <Icon name="shield-check" size={12} color="#38bdf8" />
-                <span>Turnstile Token OK</span>
-              </div>
-              <div class="mini-hud-stat font-mono">
-                <span>61.2 GB</span>
-              </div>
-            </div>
-          </div>
-        {/if}
-
-        <!-- Step 4 Interactive Mini Screen: One-Click Exporters & JD2 Push HUD -->
-        {#if currentStepIndex === 3}
-          <div class="mini-hud-screen mini-screen-exporters">
-            <div class="mini-hud-top">
-              <div class="mini-hud-pulse-tag">
-                <Icon name="zap" size={12} color="#00f0a0" />
-                <span>INSTANT EXPORT LAUNCHPAD</span>
-              </div>
-              <div class="mini-jd2-status">
-                <span class="jd2-dot online"></span>
-                <span>Port 9666 • JD2 Connected</span>
-              </div>
-            </div>
-
-            <!-- Mock JD2 1-Click Push Button -->
-            <div class="mini-jd2-push-banner">
-              <div class="mini-jd2-btn">
-                <div class="mini-jd2-icon-halo">
-                  <Icon name="bolt" size={16} color="#ffffff" strokeWidth={2.5} />
-                </div>
-                <div class="mini-jd2-btn-text">
-                  <span class="mini-btn-primary-title">Push 14 Parts to JDownloader 2</span>
-                  <span class="mini-btn-sub">Direct FlashGot LinkGrabber</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Export Format Pills -->
-            <div class="mini-export-pills-row">
-              <div class="mini-format-pill pill-crawljob">
-                <Icon name="package" size={11} />
-                <span>.crawljob</span>
-              </div>
-              <div class="mini-format-pill">
-                <Icon name="table" size={11} />
-                <span>.txt Links</span>
-              </div>
-              <div class="mini-format-pill">
-                <Icon name="grid" size={11} />
-                <span>.json Data</span>
-              </div>
-              <div class="mini-format-pill pill-copy">
-                <Icon name="copy" size={11} />
-                <span>Copy All</span>
-              </div>
-            </div>
-
-            <!-- Fragment Callout -->
-            <div class="mini-fragment-notice">
-              <Icon name="shield-check" size={11} color="#00f0a0" />
-              <span>Appends <code>#filename.rar</code> to bypass JD2 Deep Link Analysis</span>
-            </div>
-          </div>
+    {#key index}
+      <div class="tour-copy">
+        <h3 id="tour-title" class="tour-title">{$say(wordingFor(step, 'title'))}</h3>
+        <p id="tour-body" class="tour-body">{$say(wordingFor(step, 'body'))}</p>
+        {#if step.interactive}
+          <p class="tour-try">
+            <Icon name="zap" size={12} color="var(--accent-primary)" />
+            <span>{$say('tour.tryIt')}</span>
+          </p>
         {/if}
       </div>
+    {/key}
 
-      <div class="tour-card-footer">
-        <div class="tour-dots-indicator">
-          {#each STEPS as _, idx}
-            <button 
-              type="button" 
-              class="dot" 
-              class:active={idx === currentStepIndex}
-              class:completed={idx < currentStepIndex}
-              on:click|stopPropagation={() => goToStep(idx)}
-              title="Step {idx + 1}"
-              aria-label="Step {idx + 1}"
-            ></button>
-          {/each}
-        </div>
+    <div class="tour-card-footer">
+      <div class="tour-dots">
+        {#each TOUR_STEPS as s, i (s.id)}
+          <button
+            type="button"
+            class="tour-dot"
+            class:is-current={i === index}
+            class:is-done={i < index}
+            aria-label="Step {i + 1}"
+            aria-current={i === index ? 'step' : undefined}
+            on:click={() => { if (i !== index) { playClickSound(); goTo(i); } }}
+          ></button>
+        {/each}
+      </div>
 
-        <div class="tour-buttons-row">
-          <button 
-            type="button" 
-            class="btn-secondary btn-sm btn-tour-prev"
-            disabled={currentStepIndex === 0}
-            on:click|stopPropagation={handlePrev}
-            aria-label="Previous step"
-          >
-            <Icon name="arrow-left" size={12} />
-            <span>Back</span>
+      <div class="tour-buttons">
+        {#if index === 0}
+          <button type="button" class="btn-secondary btn-sm" on:click={() => finish(false)}>
+            <span>{$say('tour.skip')}</span>
           </button>
-
-          {#if currentStepIndex < STEPS.length - 1}
-            <button 
-              type="button" 
-              class="btn-primary btn-sm btn-tour-next"
-              on:click|stopPropagation={handleNext}
-              aria-label="Next step"
-            >
-              <span>Next</span>
-              <Icon name="arrow-right" size={12} color="#ffffff" />
-            </button>
+        {:else}
+          <button type="button" class="btn-secondary btn-sm" on:click={handleBack}>
+            <Icon name="arrow-left" size={12} />
+            <span>{$say('tour.back')}</span>
+          </button>
+        {/if}
+        <button type="button" class="btn-primary btn-sm tour-next" bind:this={primaryButton} on:click={handleNext}>
+          {#if isLast}
+            <Icon name="check" size={13} color="#ffffff" strokeWidth={2.5} />
+            <span>{$say('tour.finish')}</span>
           {:else}
-            <button 
-              type="button" 
-              class="btn-primary btn-sm btn-finish"
-              on:click|stopPropagation={handleFinish}
-              aria-label="Complete tour and get started"
-            >
-              <Icon name="check" size={13} color="#ffffff" strokeWidth={2.5} />
-              <span>Get Started</span>
-            </button>
+            <span>{$say('tour.next')}</span>
+            <Icon name="arrow-right" size={12} color="#ffffff" />
           {/if}
-        </div>
+        </button>
       </div>
     </div>
+  </div>
 {/if}
 
 <style>
-  /* Full-Screen Input Shield to absorb clicks outside the card so they never hit the app underneath */
-  .tour-shield {
+  .tour-block {
     position: fixed;
-    inset: 0;
     z-index: 10000;
-    background: rgba(0, 0, 0, 0.001);
-    pointer-events: auto;
+    background: transparent;
     cursor: default;
   }
 
-  .tour-quad-dim {
+  /* A lighter dim than before, so the app stays visible around the part being explained. */
+  .tour-spot {
     position: fixed;
-    border: none;
-    padding: 0;
-    margin: 0;
-    background: rgba(3, 6, 12, 0.84);
-    backdrop-filter: blur(18px) saturate(180%);
-    -webkit-backdrop-filter: blur(18px) saturate(180%);
-    pointer-events: auto;
-    cursor: default;
     z-index: 10001;
-    transition: 
-      top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes tourFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-
-  /* Glowing ambient focus aura around spotlight box */
-  .spotlight-box {
-    position: fixed;
-    pointer-events: auto;
-    cursor: default;
-    border-radius: 12px;
-    border: 2px solid var(--accent-primary);
-    box-shadow: 
-      0 0 35px rgba(0, 240, 160, 0.5),
-      0 0 12px rgba(0, 240, 160, 0.8),
-      inset 0 0 16px rgba(0, 240, 160, 0.3);
-    filter: drop-shadow(0 0 10px rgba(0, 240, 160, 0.45));
-    transition: 
-      top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 10002;
-    animation: spotlightPulse 2s infinite ease-in-out;
-  }
-
-  @keyframes spotlightPulse {
-    0%, 100% {
-      border-color: var(--accent-primary);
-      box-shadow: 
-        0 0 30px rgba(0, 240, 160, 0.45),
-        0 0 10px rgba(0, 240, 160, 0.7),
-        inset 0 0 16px rgba(0, 240, 160, 0.25);
-    }
-    50% {
-      border-color: var(--accent-secondary);
-      box-shadow: 
-        0 0 45px rgba(6, 182, 212, 0.55),
-        0 0 16px rgba(6, 182, 212, 0.85),
-        inset 0 0 22px rgba(6, 182, 212, 0.35);
-    }
-  }
-
-  .spotlight-beacon-corner {
-    position: absolute;
-    width: 8px;
-    height: 8px;
-    border-color: #ffffff;
-    border-style: solid;
-  }
-  .spotlight-beacon-corner.top-left {
-    top: -2px; left: -2px;
-    border-width: 2px 0 0 2px;
-    border-top-left-radius: 4px;
-  }
-  .spotlight-beacon-corner.top-right {
-    top: -2px; right: -2px;
-    border-width: 2px 2px 0 0;
-    border-top-right-radius: 4px;
-  }
-  .spotlight-beacon-corner.bottom-left {
-    bottom: -2px; left: -2px;
-    border-width: 0 0 2px 2px;
-    border-bottom-left-radius: 4px;
-  }
-  .spotlight-beacon-corner.bottom-right {
-    bottom: -2px; right: -2px;
-    border-width: 0 2px 2px 0;
-    border-bottom-right-radius: 4px;
-  }
-
-  /* Frosted acrylic blur box */
-  .tour-card {
-    position: fixed !important;
-    pointer-events: auto !important;
-    width: 390px;
-    padding: 20px;
+    pointer-events: none;
     border-radius: 18px;
-    z-index: 10010 !important;
-    cursor: default;
-    isolation: isolate;
-    transition: 
-      top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-      width 0.3s ease;
-    animation: cardPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    background: var(--glass-sheen), var(--glass-tint-thick) !important;
-    backdrop-filter: var(--glass-backdrop-thick);
-    box-shadow: var(--glass-shadow-lg);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--accent-primary) 85%, #ffffff),
+      0 0 26px 4px var(--accent-glow),
+      0 0 0 200vmax rgba(3, 6, 12, 0.62);
+    transition:
+      top 0.45s var(--glass-settle),
+      left 0.45s var(--glass-settle),
+      width 0.45s var(--glass-settle),
+      height 0.45s var(--glass-settle),
+      box-shadow 0.3s ease;
+    animation: tourSpotIn 0.3s ease-out both;
   }
 
-  .tour-card.wide-card {
-    width: 440px;
+  .tour-spot.is-empty {
+    box-shadow: 0 0 0 200vmax rgba(3, 6, 12, 0.66);
   }
 
-  @keyframes cardPopIn {
+  .tour-spot.is-hands-on {
+    animation: tourSpotIn 0.3s ease-out both, tourHandsOn 2.2s ease-in-out 0.3s infinite;
+  }
+
+  @keyframes tourSpotIn {
     from {
       opacity: 0;
-      transform: scale(0.92) translateY(8px);
     }
-    to {
-      opacity: 1;
-      transform: scale(1) translateY(0);
+  }
+
+  /* A slow breathing glow says "you can click in here". */
+  @keyframes tourHandsOn {
+    50% {
+      box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--accent-secondary) 85%, #ffffff),
+        0 0 38px 8px var(--accent-glow),
+        0 0 0 200vmax rgba(3, 6, 12, 0.62);
     }
+  }
+
+  .tour-card {
+    position: fixed;
+    z-index: 10010;
+    width: 380px;
+    padding: 18px 20px 16px;
+    border-radius: 20px;
+    transition:
+      top 0.45s var(--glass-settle),
+      left 0.45s var(--glass-settle);
+    animation: tourCardIn 0.36s var(--glass-spring) both;
+  }
+
+  .tour-card.is-welcome {
+    width: 400px;
+  }
+
+  @keyframes tourCardIn {
+    from {
+      opacity: 0;
+      transform: scale(0.94) translateY(8px);
+    }
+  }
+
+  .tour-logo {
+    width: 52px;
+    height: 52px;
+    margin: 2px 0 12px;
+    filter: drop-shadow(0 0 14px var(--accent-glow));
   }
 
   .tour-card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
 
   .tour-step-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 3px 9px;
-    border-radius: 20px;
-    background: rgba(0, 240, 160, 0.12);
-    border: 1px solid rgba(0, 240, 160, 0.3);
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 34%, transparent);
     color: var(--accent-primary);
     font-family: var(--font-display);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
-  .btn-skip-icon {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer !important;
-    pointer-events: auto !important;
-    padding: 4px;
-    border-radius: 6px;
+  .tour-close {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.15s, background 0.15s;
+    padding: 5px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
   }
-  .btn-skip-icon:hover {
+
+  .tour-close:hover {
     color: #ffffff;
     background: rgba(255, 255, 255, 0.08);
   }
 
+  .tour-copy {
+    animation: tourCopyIn 0.32s var(--glass-settle) both;
+  }
+
+  @keyframes tourCopyIn {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+  }
+
   .tour-title {
-    margin: 0 0 4px 0;
+    margin: 0 0 6px;
     font-family: var(--font-display);
-    font-size: 1.08rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: #ffffff;
-    letter-spacing: 0.015em;
+    letter-spacing: 0.01em;
   }
 
-  .tour-subtitle {
-    margin: 0 0 10px 0;
+  .tour-body {
+    margin: 0 0 12px;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+  }
+
+  .tour-try {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -2px 0 12px;
     font-size: 0.78rem;
+    font-weight: 600;
     color: var(--accent-primary);
-    font-weight: 500;
   }
 
-  .tour-desc {
-    margin: 0 0 14px 0;
-    font-size: 0.84rem;
-    line-height: 1.5;
-    color: var(--text-secondary);
-  }
-
-  /* Mini Preview HUD Screens */
-  .mini-hud-screen {
-    margin-bottom: 16px;
-    padding: 12px 14px;
-    border-radius: 12px;
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4);
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .mini-hud-top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .mini-hud-title-col {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  .mini-hud-pulse-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    color: #00f0a0;
-  }
-
-  .pulse-radar {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: #00f0a0;
-    box-shadow: 0 0 8px #00f0a0;
-    animation: radarPulse 1.4s ease-in-out infinite;
-  }
-
-  @keyframes radarPulse {
-    0%, 100% { transform: scale(0.9); opacity: 0.7; }
-    50% { transform: scale(1.3); opacity: 1; }
-  }
-
-  .mini-hud-game-name {
-    font-size: 0.76rem;
-    color: #ffffff;
-    font-weight: 600;
-  }
-
-  .mini-hud-speed-badge {
-    font-size: 0.7rem;
-    padding: 2px 7px;
-    border-radius: 6px;
-    background: rgba(0, 240, 160, 0.12);
-    border: 1px solid rgba(0, 240, 160, 0.3);
-    color: #00f0a0;
-    white-space: nowrap;
-  }
-
-  /* Mini Defrag Grid */
-  .mini-defrag-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 5px;
-  }
-
-  .mini-defrag-block {
-    position: relative;
-    height: 28px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    transition: all 0.2s ease;
-  }
-
-  .mini-defrag-block.done {
-    background: rgba(0, 240, 160, 0.18);
-    border-color: rgba(0, 240, 160, 0.45);
-    color: #00f0a0;
-    box-shadow: 0 0 10px rgba(0, 240, 160, 0.2);
-  }
-
-  .block-check {
-    font-size: 0.65rem;
-    margin-left: 2px;
-    color: #00f0a0;
-  }
-
-  .mini-defrag-block.decrypting {
-    background: rgba(245, 158, 11, 0.2);
-    border-color: rgba(245, 158, 11, 0.6);
-    color: #f59e0b;
-    box-shadow: 0 0 12px rgba(245, 158, 11, 0.35);
-    animation: decryptPulse 1.2s ease-in-out infinite;
-  }
-
-  @keyframes decryptPulse {
-    0%, 100% { border-color: rgba(245, 158, 11, 0.6); }
-    50% { border-color: #00f0a0; box-shadow: 0 0 14px rgba(0, 240, 160, 0.4); color: #00f0a0; }
-  }
-
-  .block-pulse-dot {
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: #f59e0b;
-    margin-left: 2px;
-  }
-
-  .mini-hud-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    padding-top: 4px;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-  }
-
-  .mini-hud-stat {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  /* Exporters Launchpad HUD */
-  .mini-jd2-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.7rem;
-    color: #38bdf8;
-  }
-
-  .jd2-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #38bdf8;
-    box-shadow: 0 0 6px #38bdf8;
-  }
-
-  .mini-jd2-push-banner {
-    padding: 2px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba(0, 240, 160, 0.3), rgba(56, 189, 248, 0.2));
-  }
-
-  .mini-jd2-btn {
-    padding: 8px 12px;
-    border-radius: 8px;
-    background: rgba(13, 17, 26, 0.94);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .mini-jd2-icon-halo {
-    width: 28px;
-    height: 28px;
-    border-radius: 7px;
-    background: rgba(0, 240, 160, 0.15);
-    border: 1px solid rgba(0, 240, 160, 0.35);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .mini-jd2-btn-text {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .mini-btn-primary-title {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: #ffffff;
-  }
-
-  .mini-btn-sub {
-    font-size: 0.68rem;
-    color: #00f0a0;
-  }
-
-  .mini-export-pills-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .mini-format-pill {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 5px 6px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    font-size: 0.7rem;
-    color: var(--text-secondary);
-    font-weight: 600;
-  }
-
-  .mini-format-pill.pill-crawljob {
-    background: rgba(0, 240, 160, 0.1);
-    border-color: rgba(0, 240, 160, 0.25);
-    color: #00f0a0;
-  }
-
-  .mini-format-pill.pill-copy {
-    color: #ffffff;
-  }
-
-  .mini-fragment-notice {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.7rem;
-    color: var(--text-muted);
-  }
-
-  .mini-fragment-notice code {
-    font-family: monospace;
-    color: #00f0a0;
-    background: rgba(0, 240, 160, 0.1);
-    padding: 1px 4px;
-    border-radius: 4px;
-  }
-
-  /* Footer controls */
   .tour-card-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-top: 14px;
+    gap: 12px;
+    padding-top: 12px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
   }
 
-  .tour-dots-indicator {
+  .tour-dots {
     display: flex;
     align-items: center;
     gap: 6px;
   }
 
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
+  .tour-dot {
+    width: 7px;
+    height: 7px;
     padding: 0;
-    margin: 0;
-    cursor: pointer !important;
-    pointer-events: auto !important;
-    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    border: none;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    transition: width 0.3s var(--glass-spring), background 0.2s ease;
   }
 
-  .dot:hover {
-    background: rgba(255, 255, 255, 0.5);
-    transform: scale(1.2);
+  .tour-dot:hover {
+    background: rgba(255, 255, 255, 0.45);
   }
 
-  .dot.active {
-    width: 22px;
-    border-radius: 4px;
+  .tour-dot.is-done {
+    background: color-mix(in srgb, var(--accent-primary) 65%, transparent);
+  }
+
+  .tour-dot.is-current {
+    width: 20px;
     background: var(--accent-primary);
     box-shadow: 0 0 8px var(--accent-primary);
-    cursor: default !important;
-    transform: none;
+    cursor: default;
   }
 
-  .dot.completed {
-    background: rgba(0, 240, 160, 0.6);
-  }
-
-  .tour-buttons-row {
+  .tour-buttons {
     display: flex;
     align-items: center;
     gap: 8px;
   }
 
-  .tour-buttons-row button {
-    position: relative;
-    pointer-events: auto !important;
-    cursor: pointer !important;
-    user-select: none;
-    transition: all 0.15s ease;
+  .tour-buttons button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
-  .tour-buttons-row button * {
-    pointer-events: none;
+  .tour-next {
+    min-width: 88px;
+    justify-content: center;
   }
 
-  .tour-buttons-row button:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-    pointer-events: none;
-    transform: none !important;
-    filter: none !important;
-    box-shadow: none !important;
-  }
+  @media (prefers-reduced-motion: reduce) {
+    .tour-spot,
+    .tour-card {
+      transition: none;
+    }
 
-  .btn-tour-next {
-    min-width: 84px;
-  }
-
-  .btn-tour-prev {
-    min-width: 76px;
-  }
-
-  .btn-finish {
-    background: linear-gradient(135deg, #00f0a0, #00b875);
-    border: none;
-    box-shadow: 0 0 14px rgba(0, 240, 160, 0.4);
-    min-width: 110px;
+    .tour-spot,
+    .tour-spot.is-hands-on,
+    .tour-card,
+    .tour-copy {
+      animation: none;
+    }
   }
 </style>

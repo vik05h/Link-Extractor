@@ -85,3 +85,41 @@ export function buildDisplacementPixels({ width, height, radius, bezel }: GlassM
   }
   return data;
 }
+
+export interface LensMap {
+  pixels: Uint8ClampedArray;
+  /** The feDisplacementMap scale that turns this map back into pixel shifts. */
+  scale: number;
+}
+
+/**
+ * The map for a glass lens, which is what the bubble becomes while it is dragged.
+ * Its rim bends `rim` pixels like any glass, and everything inside is magnified by `zoom`.
+ * The middle needs bigger shifts than plain glass, so the map carries its own scale.
+ */
+export function buildLensPixels(shape: GlassMapShape, rim: number, zoom: number): LensMap {
+  const w = Math.round(shape.width);
+  const h = Math.round(shape.height);
+  const edges = buildDisplacementPixels(shape);
+  if (edges.length === 0) return { pixels: edges, scale: 1 };
+
+  const pull = 1 - 1 / Math.max(zoom, 1);
+  const halfW = w / 2;
+  const halfH = h / 2;
+  // Twice the largest shift, plus a pixel, so nothing clips at the extremes.
+  const scale = (rim + Math.max(halfW, halfH) * pull) * 2 + 2;
+
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const shiftX = ((edges[i] - NEUTRAL) / RANGE) * rim - (x + 0.5 - halfW) * pull;
+      const shiftY = ((edges[i + 1] - NEUTRAL) / RANGE) * rim - (y + 0.5 - halfH) * pull;
+      data[i] = 127.5 + (shiftX / scale) * 255;
+      data[i + 1] = 127.5 + (shiftY / scale) * 255;
+      data[i + 2] = NEUTRAL;
+      data[i + 3] = 255;
+    }
+  }
+  return { pixels: data, scale };
+}

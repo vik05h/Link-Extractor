@@ -4,6 +4,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { playBypassSound, playClickSound } from '../utils/audio';
   import type { DetectedClip } from '../types';
+  import { say } from '../utils/voice';
 
   export let onResolveUrl: (url: string) => void = () => {};
 
@@ -51,7 +52,7 @@
       <Icon name="bolt" size={20} color="var(--accent-primary)" strokeWidth={2.5} />
     </div>
     <div class="toast-content">
-      <div class="toast-title">FitGirl Repack Link Detected in Clipboard!</div>
+      <div class="toast-title">{$say('clipboard.title')}</div>
       <div class="toast-url" title={detectedItem.url}>{detectedItem.url}</div>
     </div>
     <div class="toast-actions">

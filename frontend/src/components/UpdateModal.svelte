@@ -5,6 +5,7 @@
   import { playClickSound, playSuccessChime } from '../utils/audio';
   import { waitForBridge } from '../utils/bridgeReady';
   import { APP_VERSION } from '../version';
+  import { say } from '../utils/voice';
 
   export let isOpen: boolean = false;
   export let releaseInfo: any = null;
@@ -272,12 +273,10 @@
           </div>
           <div>
             <div class="modal-title">
-              {isFirstRun ? `WELCOME TO LINK EXTRACTOR ${currentVersion}` : "WHAT'S NEW & UPDATES"}
+              {isFirstRun ? $say('whatsNew.firstRunTitle', { version: currentVersion }) : $say('whatsNew.title')}
             </div>
             <div class="modal-subtitle">
-              {isFirstRun 
-                ? "Explore new features, highlights & quick interactive tutorial" 
-                : "Version comparison, release highlights & auto-updater"}
+              {isFirstRun ? $say('whatsNew.firstRunIntro') : $say('whatsNew.intro')}
             </div>
           </div>
         </div>

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { liquidGlass } from '../utils/liquidGlass';
+  import { glassBubble } from '../utils/glassBubble';
+  import { say } from '../utils/voice';
   import DefragMosaic from './DefragMosaic.svelte';
   import type { PartItem } from '../types';
   import SelectiveFilter from './SelectiveFilter.svelte';
@@ -20,14 +22,24 @@
   export let onExport: (format: 'txt' | 'json' | 'crawljob', urls: string[], title: string) => void = () => {};
   export let onCopyAll: (urls: string[]) => void = () => {};
   export let onCancel: () => void = () => {};
+  /** The tour's sample game: everything can be clicked, but nothing is pushed, copied or exported. */
+  export let demo: boolean = false;
 
+  const VIEWS = ['mosaic', 'table', 'log'] as const;
   let activeView: 'mosaic' | 'table' | 'log' = 'mosaic';
+  $: viewIndex = VIEWS.indexOf(activeView);
+
+  function selectView(index: number) {
+    activeView = VIEWS[index];
+    playClickSound();
+  }
   let exportMenuOpen = false;
   let logsCopied = false;
   let copyTimeout: any = null;
 
   function handleCopyLogs() {
     playClickSound();
+    if (demo) return;
     const text = logs.join('\n');
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.copy_to_clipboard(text);
@@ -78,6 +90,7 @@
 
   function handlePushJd2() {
     playClickSound();
+    if (demo) return;
     const urls = getActiveUrls();
     onPushJd2(urls, gameTitle);
   }
@@ -85,17 +98,20 @@
   function handleExport(format: 'txt' | 'json' | 'crawljob') {
     playClickSound();
     exportMenuOpen = false;
+    if (demo) return;
     const urls = getActiveUrls();
     onExport(format, urls, gameTitle);
   }
 
   function handleCopyAll() {
     playClickSound();
+    if (demo) return;
     const urls = getActiveUrls();
     onCopyAll(urls);
   }
 
   function handleCopySinglePart(url: string, index: number) {
+    if (demo) return;
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.copy_to_clipboard(url);
     } else {
@@ -171,32 +187,46 @@
     on:filterChange={(e) => { parts = e.detail.parts; }} 
   />
 
-  <!-- View Switcher Tabs -->
+  <!-- View tabs, pinned under the URL bar so the parts scroll beneath the glass.
+       Click, drag or use the arrow keys; utils/glassBubble.ts moves the bubble. -->
   <div class="stage-tabs-row">
-    <div class="segmented-tabs glass-panel">
-      <button 
+    <div
+      class="segmented-tabs glass-panel"
+      id="tour-stage-tabs"
+      role="tablist"
+      aria-label="Stage views"
+      use:liquidGlass={{ bezel: 14, strength: 18 }}
+      use:glassBubble={{ axis: 'x', selected: viewIndex, onSelect: selectView, host: '.stage-tabs-row', variant: 'glass-bubble--tabs', pad: 6 }}
+    >
+      <button
         type="button"
-        class="tab-btn" 
+        class="tab-btn"
         class:active={activeView === 'mosaic'}
-        on:click={() => { activeView = 'mosaic'; playClickSound(); }}
+        role="tab"
+        aria-selected={activeView === 'mosaic'}
+        data-bubble-item
       >
         <Icon name="grid" size={14} />
         <span>Defrag Matrix</span>
       </button>
-      <button 
+      <button
         type="button"
-        class="tab-btn" 
+        class="tab-btn"
         class:active={activeView === 'table'}
-        on:click={() => { activeView = 'table'; playClickSound(); }}
+        role="tab"
+        aria-selected={activeView === 'table'}
+        data-bubble-item
       >
         <Icon name="table" size={14} />
         <span>Direct URLs Table ({activePartsCount})</span>
       </button>
-      <button 
+      <button
         type="button"
-        class="tab-btn" 
+        class="tab-btn"
         class:active={activeView === 'log'}
-        on:click={() => { activeView = 'log'; playClickSound(); }}
+        role="tab"
+        aria-selected={activeView === 'log'}
+        data-bubble-item
       >
         <Icon name="terminal" size={14} />
         <span>Telemetry & Terminal ({logs.length})</span>
@@ -261,15 +291,15 @@
   </div>
 
   <!-- Tab Contents -->
-  <div class="stage-view-body">
+  <div class="stage-view-body" id="tour-stage-view">
     {#if !hasParts && !isRunning}
       <!-- Empty Stage Placeholder -->
       <div class="empty-stage-cockpit glass-panel">
         <div class="cockpit-icon-halo">
           <Icon name="gamepad" size={42} color="var(--accent-primary)" strokeWidth={1.5} />
         </div>
-        <h3>Cockpit Ready</h3>
-        <p>Paste a FitGirl game URL in the bar above or choose a pre-fetched game from the Community Hub.</p>
+        <h3>{$say('stage.emptyTitle')}</h3>
+        <p>{$say('stage.emptyBody')}</p>
       </div>
     {:else if activeView === 'mosaic'}
       <DefragMosaic {parts} onCopyUrl={handleCopySinglePart} />
@@ -359,7 +389,7 @@
   }
 
   .stage-view-body {
-    flex: 1;
+    flex: 1 0 auto;
     display: flex;
     flex-direction: column;
     min-height: 440px;
@@ -476,8 +506,11 @@
     color: var(--text-muted);
   }
 
-  /* Segmented View Row */
+  /* View row: pinned just under the floating URL bar, so the parts scroll beneath its glass. */
   .stage-tabs-row {
+    position: sticky;
+    top: calc(var(--deck-offset) - 4px);
+    z-index: 25;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -490,10 +523,14 @@
     align-items: center;
     padding: 3px;
     gap: 2px;
-    border-radius: 14px;
+    border-radius: 999px;
+    touch-action: none;
   }
 
+  /* The bubble is drawn by utils/glassBubble.ts; the tabs only change color. */
   .tab-btn {
+    position: relative;
+    z-index: 4;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -507,18 +544,17 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    transition: all 0.15s ease;
-    border-radius: 11px;
+    transition: color 0.25s ease;
+    border-radius: 999px;
+    white-space: nowrap;
   }
 
-  .tab-btn:hover {
+  .tab-btn:hover:not(.active) {
     color: var(--text-primary);
   }
 
   .tab-btn.active {
     color: #ffffff;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.04) 50%), var(--accent-gradient);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 6px 16px -6px var(--accent-primary);
   }
 
   /* Action Buttons */
@@ -623,12 +659,10 @@
     max-width: 440px;
   }
 
-  /* Table View */
+  /* Table View: it grows with the page, so long games scroll beneath the pinned tab row. */
   .urls-table-container {
-    flex: 1;
+    flex: 1 0 auto;
     min-height: 420px;
-    max-height: 580px;
-    overflow-y: auto;
   }
 
   .urls-table {

@@ -5,6 +5,7 @@
   import { waitForBridge } from '../utils/bridgeReady';
   import type { GameRecord } from '../types';
   import { liquidGlass } from '../utils/liquidGlass';
+  import { say } from '../utils/voice';
 
   export let games: GameRecord[] = [];
   export let isLoading: boolean = false;
@@ -289,7 +290,7 @@
   {#if isOffline}
     <div class="hub-offline-banner glass-panel" role="status" use:liquidGlass>
       <Icon name="alert-triangle" size={14} color="var(--status-aging)" />
-      <span>Could not reach the community database. {games.length > 0 ? 'Showing the last saved list.' : ''}</span>
+      <span>{$say('hub.offline')} {games.length > 0 ? $say('hub.offlineSaved') : ''}</span>
     </div>
   {/if}
   </div>
@@ -301,18 +302,18 @@
         <span class="loading-spin">
           <Icon name="refresh" size={18} color="var(--accent-primary)" />
         </span>
-        <span>QUERYING COMMUNITY CLOUD CACHE...</span>
+        <span>{$say('hub.loading')}</span>
       </div>
     </div>
   {:else if filteredGames.length === 0}
     <div class="hub-empty glass-panel">
       <span class="empty-msg">
         {#if games.length > 0}
-          No community repacks found matching your search.
+          {$say('hub.noMatch')}
         {:else if isOffline}
-          The community list is not available right now.
+          {$say('hub.offlineEmpty')}
         {:else}
-          No community repacks yet.
+          {$say('hub.empty')}
         {/if}
       </span>
       <button 
@@ -327,7 +328,7 @@
   {:else}
     <div class="games-poster-grid">
       {#each filteredGames as rec, index (rec.slug)}
-        <div class="game-poster-card" style="--card-index: {Math.min(index, 11)}">
+        <div class="game-poster-card" id={index === 0 ? 'tour-hub-card' : undefined} style="--card-index: {Math.min(index, 11)}">
           <!-- Poster Image -->
           <div class="card-cover-container">
             <button 

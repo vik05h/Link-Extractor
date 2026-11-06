@@ -10,16 +10,21 @@
  * inside that ancestor, so glass nested in glass gets no refraction.
  */
 
-import { buildDisplacementPixels, mapCacheKey, type GlassMapShape } from './glassMap';
+import { buildDisplacementPixels, buildLensPixels, mapCacheKey, type GlassMapShape } from './glassMap';
 
-export type GlassStyle = 'regular' | 'clear' | 'thick';
+export type GlassStyle = 'regular' | 'clear' | 'thick' | 'bubble';
 
 export interface LiquidGlassOptions {
-  /** regular reads well over anything, clear shows more of what is behind, thick is for long text. */
+  /**
+   * regular reads well over anything, clear shows more of what is behind, thick is for long text,
+   * and bubble is the see-through lens over a bar's selected item.
+   */
   style?: GlassStyle;
   bezel?: number;
   /** Largest bend at the rim, in pixels. */
   strength?: number;
+  /** Above 1, the glass becomes a lens that magnifies what is behind it by this much. */
+  magnify?: number;
 }
 
 interface SharedFilter {
@@ -36,7 +41,15 @@ const STYLE_DEFAULTS: Record<GlassStyle, { bezel: number; strength: number; back
   regular: { bezel: 20, strength: 26, backdrop: '--glass-backdrop' },
   clear: { bezel: 16, strength: 22, backdrop: '--glass-backdrop-clear' },
   thick: { bezel: 26, strength: 30, backdrop: '--glass-backdrop-thick' },
+  bubble: { bezel: 12, strength: 11, backdrop: '--glass-backdrop-bubble' },
 };
+
+/**
+ * A short bubble sits right over its own label, so its rim bends less, or the edges pull in
+ * copies of the text. These cap the bend at a share of the bubble's height.
+ */
+const BUBBLE_RIM_PER_HEIGHT = 0.18;
+const LENS_RIM_PER_HEIGHT = 0.12;
 
 const filters = new Map<string, SharedFilter>();
 const surfaces = new Set<() => void>();
@@ -58,23 +71,23 @@ function filterDefs(): SVGDefsElement {
   return defs;
 }
 
-function renderMap(shape: GlassMapShape): string {
+function renderMap(shape: GlassMapShape, pixels: Uint8ClampedArray): string {
   const canvas = document.createElement('canvas');
   canvas.width = shape.width;
   canvas.height = shape.height;
-  const pixels = buildDisplacementPixels(shape);
   canvas.getContext('2d')?.putImageData(new ImageData(pixels as Uint8ClampedArray<ArrayBuffer>, shape.width, shape.height), 0, 0);
   return canvas.toDataURL('image/png');
 }
 
 /** Surfaces of the same shape share one filter, so hundreds of game cards cost one map. */
-function acquireFilter(key: string, shape: GlassMapShape, strength: number): SharedFilter {
+function acquireFilter(key: string, shape: GlassMapShape, build: () => { pixels: Uint8ClampedArray; scale: number }): SharedFilter {
   const existing = filters.get(key);
   if (existing) {
     existing.uses += 1;
     return existing;
   }
 
+  const { pixels, scale } = build();
   const id = `liquid-glass-${++nextId}`;
   const element = document.createElementNS(SVG_NS, 'filter');
   element.setAttribute('id', id);
@@ -85,7 +98,7 @@ function acquireFilter(key: string, shape: GlassMapShape, strength: number): Sha
   element.setAttribute('height', '100%');
 
   const image = document.createElementNS(SVG_NS, 'feImage');
-  image.setAttribute('href', renderMap(shape));
+  image.setAttribute('href', renderMap(shape, pixels));
   image.setAttribute('x', '0');
   image.setAttribute('y', '0');
   image.setAttribute('width', String(shape.width));
@@ -96,8 +109,7 @@ function acquireFilter(key: string, shape: GlassMapShape, strength: number): Sha
   const displace = document.createElementNS(SVG_NS, 'feDisplacementMap');
   displace.setAttribute('in', 'SourceGraphic');
   displace.setAttribute('in2', 'map');
-  // The filter moves pixels by scale * (channel - 0.5), so the full bend needs twice the strength.
-  displace.setAttribute('scale', String(strength * 2));
+  displace.setAttribute('scale', scale.toFixed(2));
   displace.setAttribute('xChannelSelector', 'R');
   displace.setAttribute('yChannelSelector', 'G');
 
@@ -141,18 +153,28 @@ export function liquidGlass(node: HTMLElement, options: LiquidGlassOptions = {})
       return;
     }
 
-    const defaults = STYLE_DEFAULTS[current.style || 'regular'];
-    const strength = current.strength ?? defaults.strength;
+    const style = current.style || 'regular';
+    const defaults = STYLE_DEFAULTS[style];
+    const isBubble = style === 'bubble';
+    const strength = Math.min(current.strength ?? defaults.strength, isBubble ? Math.round(height * BUBBLE_RIM_PER_HEIGHT) : Infinity);
     const shape: GlassMapShape = {
       width,
       height,
       radius: parseFloat(getComputedStyle(node).borderTopLeftRadius) || 0,
-      bezel: Math.min(current.bezel ?? defaults.bezel, Math.floor(Math.min(width, height) / 2)),
+      bezel: Math.min(current.bezel ?? defaults.bezel, Math.floor(Math.min(width, height) / (isBubble ? 3 : 2))),
     };
 
-    const key = mapCacheKey(shape, strength);
+    const zoom = (current.magnify ?? 1) > 1 ? (current.magnify as number) : 0;
+    const key = zoom ? `lens:${mapCacheKey(shape, strength)}:${zoom}` : mapCacheKey(shape, strength);
     if (key !== activeKey) {
-      const filter = acquireFilter(key, shape, strength);
+      const filter = acquireFilter(key, shape, () => {
+        if (!zoom) {
+          // The filter moves pixels by scale * (channel - 0.5), so the full bend needs twice the strength.
+          return { pixels: buildDisplacementPixels(shape), scale: strength * 2 };
+        }
+        const rim = Math.min(strength, Math.round(height * LENS_RIM_PER_HEIGHT));
+        return buildLensPixels({ ...shape, bezel: Math.min(shape.bezel, Math.floor(height / 3)) }, rim, zoom);
+      });
       if (activeKey) releaseFilter(activeKey);
       activeKey = key;
       filterId = filter.id;
@@ -164,6 +186,11 @@ export function liquidGlass(node: HTMLElement, options: LiquidGlassOptions = {})
     if (timer === null) timer = setTimeout(apply, RESIZE_SETTLE_MS);
   }
 
+  function applyNow(): void {
+    if (timer !== null) clearTimeout(timer);
+    apply();
+  }
+
   // The first callback arrives when the element is first laid out, which keeps
   // cards that are still far off screen from doing any work.
   const observer = new ResizeObserver(schedule);
@@ -171,9 +198,10 @@ export function liquidGlass(node: HTMLElement, options: LiquidGlassOptions = {})
   surfaces.add(apply);
 
   return {
+    // A deliberate change, like a bubble turning into a lens, shows at once.
     update(next: LiquidGlassOptions = {}) {
       current = next;
-      schedule();
+      applyNow();
     },
     destroy() {
       observer.disconnect();

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildDisplacementPixels, mapCacheKey } from '../src/utils/glassMap.ts';
+import { buildDisplacementPixels, buildLensPixels, mapCacheKey } from '../src/utils/glassMap.ts';
 
 const NEUTRAL = 128;
 
@@ -104,4 +104,53 @@ test('elements of the same shape share one cached map', () => {
   assert.equal(key, mapCacheKey({ width: 300, height: 150, radius: 14, bezel: 12 }, 20));
   assert.notEqual(key, mapCacheKey({ width: 301, height: 150, radius: 14, bezel: 12 }, 20));
   assert.notEqual(key, mapCacheKey({ width: 300, height: 150, radius: 14, bezel: 12 }, 24));
+});
+
+// ---------------------------------------------------------------- The lens a dragged bubble becomes
+
+/** How far, in pixels, a lens pixel samples from, once the map is turned back into shifts. */
+function lensShift(lens: { pixels: Uint8ClampedArray; scale: number }, width: number, x: number, y: number) {
+  const p = pixel(lens.pixels, width, x, y);
+  return { x: ((p.r - 127.5) / 255) * lens.scale, y: ((p.g - 127.5) / 255) * lens.scale };
+}
+
+const lensShape = { width: 120, height: 120, radius: 30, bezel: 10 };
+
+test('a lens leaves its exact center where it is', () => {
+  const lens = buildLensPixels(lensShape, 6, 1.25);
+  const center = lensShift(lens, 120, 60, 60);
+  assert.ok(Math.abs(center.x) < 0.6 && Math.abs(center.y) < 0.6);
+});
+
+test('a lens magnifies: points beside the center show what is closer to the middle', () => {
+  const lens = buildLensPixels(lensShape, 6, 1.25);
+  // A point 10.5 px right of center shows what sits 10.5 / 1.25 = 8.4 px right of it.
+  assert.ok(Math.abs(lensShift(lens, 120, 70, 60).x - -2.1) < 0.35);
+  assert.ok(Math.abs(lensShift(lens, 120, 49, 60).x - 2.1) < 0.35);
+  assert.ok(Math.abs(lensShift(lens, 120, 60, 70).y - -2.1) < 0.35);
+});
+
+test('the rim of a lens still bends toward the middle, on top of the magnification', () => {
+  const lens = buildLensPixels(lensShape, 6, 1.25);
+  // The edge pixel's center sits 0.5 px in, so it gets 6 * (1 - 0.5 / 10) ^ 2.2 = 5.4 px of rim bend,
+  // plus 59.5 * (1 - 1 / 1.25) = 11.9 px of magnification.
+  assert.ok(Math.abs(lensShift(lens, 120, 0, 60).x - 17.3) < 0.6);
+});
+
+test('a lens with no zoom bends only at its rim, like any glass', () => {
+  const lens = buildLensPixels(lensShape, 6, 1);
+  assert.ok(Math.abs(lensShift(lens, 120, 75, 60).x) < 0.6, 'flat inside');
+  assert.ok(lensShift(lens, 120, 0, 60).x > 5, 'left edge samples further right');
+});
+
+test('a lens map never clips, so its largest bend survives', () => {
+  for (const [shape, rim] of [
+    [{ width: 58, height: 58, radius: 19, bezel: 10 }, 7],
+    [{ width: 150, height: 30, radius: 15, bezel: 10 }, 4],
+  ] as const) {
+    const { pixels } = buildLensPixels(shape, rim, 1.22);
+    for (let i = 0; i < pixels.length; i += 4) {
+      assert.ok(pixels[i] >= 1 && pixels[i] <= 254 && pixels[i + 1] >= 1 && pixels[i + 1] <= 254);
+    }
+  }
 });

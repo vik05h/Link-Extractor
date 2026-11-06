@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import type { PartItem } from '../types';
+  import { classifyPart } from '../utils/partCategory';
 
   export let parts: PartItem[] = [];
   const dispatch = createEventDispatcher();
@@ -23,21 +24,6 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOnlyEnglish, excludeBonuses }));
     } catch {}
-  }
-
-  // Classify a filename
-  export function classifyPart(filename: string): 'core' | 'language' | 'optional' {
-    const fn = (filename || '').toLowerCase();
-    if (fn.includes('fg-selective-english') || fn.includes('selective-english')) {
-      return 'core'; // English is treated as core for English users
-    }
-    if (fn.includes('fg-selective-') || fn.includes('selective-')) {
-      return 'language';
-    }
-    if (fn.includes('fg-optional-') || fn.includes('optional-') || fn.includes('soundtrack') || fn.includes('bonus')) {
-      return 'optional';
-    }
-    return 'core';
   }
 
   function applyFilter() {
@@ -79,7 +65,7 @@
 </script>
 
 {#if hasFilterableParts}
-  <div class="selective-filter-bar glass-panel">
+  <div class="selective-filter-bar glass-panel" id="tour-filter">
     <div class="filter-heading">
       <Icon name="filter" size={14} color="var(--accent-primary)" />
       <span class="filter-label">BANDWIDTH SAVER & SELECTIVE DOWNLOAD:</span>
