@@ -86,6 +86,16 @@ graph TD
 * **Truncated downloads pass silently**: `http.client` returns short reads without raising, so `download_update()` compares the byte count itself, plus size, SHA-256 (from the `digest` field in the GitHub API), and the `MZ` header.
 * **A self-deleting batch file**: Plain `del "%~f0"` makes cmd report an error. Use `(goto) 2>nul & del "%~f0"`.
 
+### Liquid Glass and startup
+
+* **Real refraction**: Chromium runs SVG filters in `backdrop-filter`, so `use:liquidGlass` builds a displacement map per surface shape. Surfaces of the same shape share one filter, which is why hundreds of game cards cost one map.
+* **Glass needs something behind it**: The bars used to sit beside the content over a blurred gradient, so there was nothing to bend. Content now runs the full height and scrolls beneath them, which is why `--deck-offset` exists and views add it as top padding.
+* **Backdrop Root**: A `backdrop-filter`, `filter`, `mask`, or opacity below 1 on an ancestor limits what a surface can sample. This is why dialog scrims have no blur, fade their background color, and why cards themselves carry no `backdrop-filter`.
+* **Cost**: `content-visibility: auto` on cards keeps off-screen ones from doing work, and their ResizeObserver only fires once they are near the screen. Avoid `will-change` on cards, which would make a layer for each of hundreds.
+* **Slow PCs**: `watchGlassPerformance()` drops to frosted glass for the session if frames run slow. A choice in Settings overrides it.
+* **The splash always ends**: `utils/boot.ts` has a hard time limit, and a slow image host or crash only shortens what gets preloaded. The HTTP cache is disabled in `main.py`, so preloaded covers are kept referenced until the Hub shows them.
+* **Measure before the reveal**: `.is-booting` hides things with opacity alone, because the splash measures the URL bar and sidebar logo to morph into them. A transform there would make it land in the wrong place.
+
 ### Names that drift
 
 * **Wrong names hidden by broad excepts**: Several past bugs were a wrong function or attribute name swallowed by `except Exception`, such as `validate_single_link` and `total_size_bytes`. `ruff` (BLE rules) and `pyright` in CI catch this class, and `tests/test_contracts.py` checks bridge methods and events against the frontend. Catch specific exceptions, and log anything caught broadly.
@@ -123,4 +133,4 @@ Security checks run against real app code as part of `python -m pytest`, offline
 3. **Verify Build Correctness**: When modifying GUI or dependencies, re-verify with `pyinstaller LinkExtractor_Single.spec --noconfirm`. Add new modules to `hiddenimports` in the spec files.
 4. **Preserve Cancellation Integrity**: Aborted extractions must never be persisted to `history.db`.
 5. **No Emojis in Documentation or UI**: Maintain professional, clean typography across all documentation files and UI labels/buttons. Use SVG components (`<Icon />`) instead of Unicode emojis in frontend components.
-6. **Run the Checks**: `python -m pytest`, `ruff check .`, `pyright`, and `npm run check` in `frontend/`. After changing `firebase/database.rules.json`, also run the emulator tests described in `firebase/README.md`.
+6. **Run the Checks**: `python -m pytest`, `ruff check .`, `pyright`, and `npm run check` and `npm test` in `frontend/`. After changing `firebase/database.rules.json`, also run the emulator tests described in `firebase/README.md`.

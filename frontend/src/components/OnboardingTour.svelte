@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import { FIRST_RUN_KEY } from '../version';
   import { onMount, tick } from 'svelte';
   import Icon from './icons/Icon.svelte';
@@ -281,7 +282,7 @@
 
   <!-- Interactive Tour Card Tooltip (Fixed Top-Level Element with Independent DirectComposition Hit-Testing) -->
   <div 
-    class="tour-card glass-panel" 
+    class="tour-card glass-panel" use:liquidGlass={{ style: 'thick' }} 
     class:wide-card={currentStepIndex === 2 || currentStepIndex === 3}
     style={tooltipStyle} 
     role="dialog"
@@ -573,14 +574,6 @@
     width: 390px;
     padding: 20px;
     border-radius: 18px;
-    background: rgba(13, 17, 26, 0.96) !important;
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    box-shadow: 
-      0 28px 56px rgba(0, 0, 0, 0.9), 
-      0 0 32px rgba(0, 240, 160, 0.22),
-      inset 0 1px 0 rgba(255, 255, 255, 0.12);
     z-index: 10010 !important;
     cursor: default;
     isolation: isolate;
@@ -589,6 +582,9 @@
       left 0.35s cubic-bezier(0.16, 1, 0.3, 1),
       width 0.3s ease;
     animation: cardPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    background: var(--glass-sheen), var(--glass-tint-thick) !important;
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   .tour-card.wide-card {

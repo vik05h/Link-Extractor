@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import { onMount, onDestroy } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../utils/audio';
@@ -262,7 +263,7 @@
     on:click|self={onClose}
     on:keydown={(e) => e.key === 'Escape' && step !== 'downloading' && onClose()}
   >
-    <div class="modal-card glass-panel" role="document">
+    <div class="modal-card glass-panel" use:liquidGlass={{ style: 'thick' }} role="document">
       <!-- Modal Header -->
       <div class="modal-header">
         <div class="header-left">
@@ -560,27 +561,26 @@
     position: fixed;
     inset: 0;
     z-index: 10000;
-    background: rgba(4, 6, 10, 0.75);
-    backdrop-filter: blur(14px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: fadeIn 0.2s ease-out;
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .modal-card {
     width: 680px;
     max-width: 95vw;
     max-height: 88vh;
-    background: var(--bg-surface-elevated, #0c0f17);
-    border: 1px solid var(--border-hover, rgba(255, 255, 255, 0.14));
     border-radius: var(--radius-lg, 16px);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px var(--accent-glow, rgba(16, 185, 129, 0.25));
     display: flex;
     flex-direction: column;
     overflow: hidden;
     animation: scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   .modal-header {
@@ -1143,6 +1143,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 14px;
     padding: 14px 22px;
     border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     background: rgba(0, 0, 0, 0.2);
@@ -1156,7 +1157,12 @@
   .footer-btn-group {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     gap: 10px;
+  }
+
+  .footer-btn-group button {
+    white-space: nowrap;
   }
 
   .btn-primary {
@@ -1220,11 +1226,6 @@
   @keyframes pulseGlow {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.6; transform: scale(1.15); }
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
   }
 
   @keyframes scaleIn {

@@ -39,6 +39,9 @@ This document tracks current milestones, active implementation status, and upcom
   - [x] Pure Web Audio API synthesized sound cues for Turnstile bypass, validation, and completion with master mute switch.
 - [x] **4.6 Multi-Theme System**
   - [x] Cyber-Dark Neon Emerald, Steam Slate Obsidian, and Dynamic Adaptive Theming selectable in Settings.
+- [x] **4.7 Liquid Glass & Startup Splash**
+  - [x] Refractive glass surfaces with content scrolling beneath floating bars, and a switch in Settings.
+  - [x] Glass startup card that preloads community games and covers, then morphs into the app.
 
 ---
 *Last Updated: 2026-11-05*

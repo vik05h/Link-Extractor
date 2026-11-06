@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import DefragMosaic from './DefragMosaic.svelte';
   import type { PartItem } from '../types';
   import SelectiveFilter from './SelectiveFilter.svelte';
@@ -111,7 +112,7 @@
 
 <div class="game-stage-container" id="tour-game-stage">
   <!-- Top Hero Header -->
-  <div class="stage-hero glass-panel">
+  <div class="stage-hero glass-panel" use:liquidGlass>
     <div class="hero-cover-wrapper">
       {#if coverUrl}
         <img
@@ -172,7 +173,7 @@
 
   <!-- View Switcher Tabs -->
   <div class="stage-tabs-row">
-    <div class="segmented-tabs">
+    <div class="segmented-tabs glass-panel">
       <button 
         type="button"
         class="tab-btn" 
@@ -242,7 +243,7 @@
           </button>
 
           {#if exportMenuOpen}
-            <div class="export-menu glass-panel">
+            <div class="export-menu glass-panel" use:liquidGlass={{ style: 'thick' }}>
               <button type="button" class="export-item" on:click={() => handleExport('txt')}>
                 Export as .txt
               </button>
@@ -354,6 +355,7 @@
     width: 100%;
     min-height: 100%;
     flex: 1;
+    padding: var(--deck-offset) 6px 16px 0;
   }
 
   .stage-view-body {
@@ -369,7 +371,7 @@
     align-items: center;
     gap: 20px;
     padding: 16px 20px;
-    background: var(--bg-surface);
+    border-radius: 18px;
   }
 
   .hero-cover-wrapper {
@@ -437,12 +439,13 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    border-radius: 6px;
     font-family: var(--font-mono);
     font-size: 11.5px;
     font-variant-numeric: tabular-nums;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border-subtle);
+    border-radius: 9px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--glass-chip-highlight);
   }
 
   .meta-pill strong {
@@ -453,7 +456,18 @@
     color: var(--accent-secondary);
   }
 
+  .source-pill {
+    color: rgba(255, 255, 255, 0.86);
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+
+  .source-pill:hover {
+    color: #ffffff;
+  }
+
   .meta-status {
+    color: rgba(255, 255, 255, 0.74);
     font-family: var(--font-display);
     font-size: 11px;
     font-weight: 600;
@@ -474,11 +488,9 @@
   .segmented-tabs {
     display: flex;
     align-items: center;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
     padding: 3px;
     gap: 2px;
+    border-radius: 14px;
   }
 
   .tab-btn {
@@ -486,7 +498,6 @@
     align-items: center;
     gap: 6px;
     padding: 6px 14px;
-    border-radius: 6px;
     font-family: var(--font-display);
     font-size: 11.5px;
     font-weight: 700;
@@ -497,6 +508,7 @@
     border: none;
     cursor: pointer;
     transition: all 0.15s ease;
+    border-radius: 11px;
   }
 
   .tab-btn:hover {
@@ -505,8 +517,8 @@
 
   .tab-btn.active {
     color: #ffffff;
-    background: var(--accent-gradient);
-    box-shadow: 0 0 12px var(--accent-glow);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.04) 50%), var(--accent-gradient);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 6px 16px -6px var(--accent-primary);
   }
 
   /* Action Buttons */
@@ -540,14 +552,12 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 240, 160, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: var(--radius-sm);
-    background: rgba(13, 17, 26, 0.98);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
     transform-origin: top right;
     animation: dropdownSlideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   @keyframes dropdownSlideDown {
@@ -619,7 +629,6 @@
     min-height: 420px;
     max-height: 580px;
     overflow-y: auto;
-    background: var(--bg-surface);
   }
 
   .urls-table {
@@ -703,13 +712,12 @@
     min-height: 420px;
     max-height: 580px;
     padding: 14px 16px;
-    background: rgba(8, 10, 15, 0.94);
-    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-md);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.5);
+    background: var(--glass-sheen), rgba(5, 7, 11, 0.6);
   }
 
   .terminal-header {

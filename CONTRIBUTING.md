@@ -20,7 +20,7 @@ Thank you for your interest in contributing to **FitGirl Direct Link Extractor**
 
 ### Prerequisites
 - **Python 3.12+** (releases are built with Python 3.14)
-- **Node.js 18+**
+- **Node.js 18+** (22.18+ to run `npm test`, which uses Node's built-in TypeScript support)
 - **Git**
 - **Chromium / Google Chrome / Microsoft Edge**
 
@@ -96,6 +96,9 @@ Link-Extractor/
 |-- frontend/                  # Astro 5 + Svelte 5 + Web Audio frontend
 |   |-- src/components/        # LivingCanvas, DefragMosaic, DiscoveryHub, GameStage, UpdateModal
 |   |-- src/styles/global.css  # Dark cyberpunk & adaptive theming system
+|   |-- src/styles/glass.css   # The Liquid Glass material
+|   |-- src/utils/             # Startup, the glass action, bridge helpers
+|   |-- tests/                 # Logic tests (npm test)
 |-- LinkExtractor_Single.spec  # PyInstaller single-file build specification
 |-- file_version_info.txt      # Windows executable metadata and version definition
 |-- assets/                    # Application icons, logos, and branding graphics
@@ -131,6 +134,7 @@ Link-Extractor/
 - **Asynchronous IPC**: All UI interactions trigger asynchronous methods on `window.pywebview.api`. Never block the UI thread.
 - **Dynamic Asset Rebuilding**: Always execute `npm run build` inside `frontend/` after modifying Svelte components to synchronize `dist_web/`.
 - **Zero Emojis**: Maintain professional typography across all UI labels and notifications. Use SVG `<Icon />` components.
+- **Liquid Glass**: Surfaces use `.glass-panel` from `styles/glass.css`. Add `use:liquidGlass` to floating surfaces that have content moving behind them. An ancestor with `backdrop-filter`, `filter`, `mask`, or opacity below 1 stops a surface seeing the page, so dim a dialog's scrim with a background color and leave its opacity alone.
 
 ### Integration with JDownloader 2
 - When generating direct URLs for JDownloader 2 (via FlashGot API or `.crawljob`), always append `#filename.rar` anchors (e.g., `https://dl.fuckingfast.co/...#setup.rar`). This prevents JDownloader 2 from prompting the user with "Deep Link Analysis".
@@ -154,7 +158,7 @@ These run offline and never touch the live database. CI runs them on every push.
 python -m pytest
 ruff check .
 pyright
-cd frontend && npm run check
+cd frontend && npm run check && npm test
 ```
 
 ### 2. Manual Workflow Checklist

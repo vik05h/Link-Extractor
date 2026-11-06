@@ -21,6 +21,7 @@
 @import '@fontsource/jetbrains-mono/500.css';
 @import '@fontsource/jetbrains-mono/600.css';
 @import '@fontsource/jetbrains-mono/700.css';
+@import './glass.css';
 
 :root {
   /* Default: Cyber-Dark & Neon Emerald */
@@ -38,8 +39,8 @@
   --accent-gradient: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
   
   --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-secondary: #b8c3d1;
+  --text-muted: #8f9bad;
   
   --status-fresh: #10b981;
   --status-aging: #f59e0b;
@@ -113,37 +114,6 @@ html, body {
   overflow: hidden;
   user-select: none;
   -webkit-font-smoothing: antialiased;
-}
-
-/* Glassmorphic Panel Surfaces */
-.glass-panel {
-  background: var(--bg-surface);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.glass-panel:hover {
-  border-color: var(--border-hover);
-}
-
-.glass-card {
-  background: var(--bg-surface-elevated);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.glass-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--border-hover);
-  box-shadow: var(--shadow-md);
 }
 
 /* Buttons */
@@ -285,21 +255,21 @@ html, body {
 }
 
 .badge-fresh {
-  background: rgba(16, 185, 129, 0.15);
-  border-color: rgba(16, 185, 129, 0.4);
-  color: var(--status-fresh);
+  background: rgba(16, 185, 129, 0.26);
+  border-color: rgba(52, 211, 153, 0.5);
+  color: #5eead4;
 }
 
 .badge-aging {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: rgba(245, 158, 11, 0.4);
-  color: var(--status-aging);
+  background: rgba(245, 158, 11, 0.26);
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fcd34d;
 }
 
 .badge-expired {
-  background: rgba(244, 63, 94, 0.15);
-  border-color: rgba(244, 63, 94, 0.4);
-  color: var(--status-expired);
+  background: rgba(244, 63, 94, 0.26);
+  border-color: rgba(251, 113, 133, 0.5);
+  color: #fda4af;
 }
 
 /* Custom Scrollbar */
@@ -356,6 +326,7 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;

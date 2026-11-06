@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../../utils/liquidGlass';
   import Icon from '../icons/Icon.svelte';
   import { playSuccessChime } from '../../utils/audio';
 
@@ -65,7 +66,7 @@
     tabindex="-1"
   >
     <div 
-      class="modal-card pin-card glass-panel" 
+      class="modal-card pin-card glass-panel" use:liquidGlass={{ style: 'thick' }} 
     >
       <div class="pin-header">
         <Icon name="lock" size={20} color="var(--accent-primary)" />
@@ -104,18 +105,12 @@
     position: fixed;
     inset: 0;
     z-index: 8600;
-    background: rgba(4, 7, 13, 0.9);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: fadeIn 0.2s ease-out;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .pin-card {
@@ -126,10 +121,10 @@
     flex-direction: column;
     gap: 12px;
     border-radius: 18px;
-    background: rgba(13, 17, 26, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.8), 0 0 32px rgba(0, 240, 160, 0.15);
     animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   @keyframes popIn {

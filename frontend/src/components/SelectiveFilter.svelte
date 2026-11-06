@@ -133,10 +133,8 @@
     flex-wrap: wrap;
     gap: 10px;
     padding: 10px 16px;
-    background: rgba(16, 22, 34, 0.7);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    border-radius: var(--radius-sm);
     margin-bottom: 12px;
+    border-radius: 14px;
   }
 
   .filter-heading {
@@ -164,11 +162,12 @@
     border-radius: 20px;
     font-size: 11px;
     font-weight: 600;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border-subtle);
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--glass-chip-highlight);
   }
 
   .filter-chip:hover {
@@ -178,9 +177,9 @@
   }
 
   .filter-chip.active {
-    background: rgba(16, 185, 129, 0.18);
     border-color: var(--accent-primary);
     color: var(--accent-primary);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 55%), color-mix(in srgb, var(--accent-primary) 24%, transparent);
   }
 
   .chip-status {

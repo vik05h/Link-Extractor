@@ -10,11 +10,29 @@
   import OnboardingTour from './OnboardingTour.svelte';
   import ReportIssueModal from './ReportIssueModal.svelte';
   import ClipboardSentinel from './ClipboardSentinel.svelte';
+  import SplashLoader from './SplashLoader.svelte';
   import Icon from './icons/Icon.svelte';
   import type { PartItem, GameRecord } from '../types';
   import { playClickSound, playSuccessChime, toggleAudioMute, isAudioMuted } from '../utils/audio';
   import { waitForBridge } from '../utils/bridgeReady';
   import { APP_VERSION, FIRST_RUN_KEY } from '../version';
+  import { runBoot } from '../utils/boot';
+  import { initLiquidGlass, liquidGlass, watchGlassPerformance } from '../utils/liquidGlass';
+
+  // Startup: the splash shows while loading, then plays into the app, then the rest settles.
+  const REVEAL_SETTLE_MS = 620;
+  let bootPhase: 'loading' | 'exiting' | 'settling' | 'done' = 'loading';
+  let bootProgress = 0.05;
+  let bootStatus = 'Starting up';
+  const afterBoot: (() => void)[] = [];
+
+  // Held so the browser keeps these decoded until the Hub shows them.
+  const preloadedCovers: HTMLImageElement[] = [];
+
+  let resolveFirstSync: (feed: any) => void = () => {};
+  const firstSyncEnded = new Promise<any>((resolve) => {
+    resolveFirstSync = resolve;
+  });
 
   // Navigation View: 'community' or 'stage'
   let currentView: 'community' | 'stage' = 'community';
@@ -407,24 +425,65 @@
 
   // Load the community list. A forced refresh, or a list that is too old, downloads a new one
   // in the background, and community:feed_updated calls this again when that ends.
-  function refreshCommunity(force: boolean = false) {
-    waitForBridge('get_community_feed', 7000).then((ready) => {
-      if (!ready) {
-        isCommunityLoading = false;
-        return;
+  async function refreshCommunity(force: boolean = false): Promise<any> {
+    const ready = await waitForBridge('get_community_feed', 7000);
+    if (!ready) {
+      isCommunityLoading = false;
+      return null;
+    }
+    try {
+      const feed = await (window as any).pywebview.api.get_community_feed(force);
+      communityGames = feed?.games || [];
+      isCommunityOffline = !!feed?.offline;
+      // Keep the loader up only while there is nothing to show and a download is running.
+      isCommunityLoading = communityGames.length === 0 && !!feed?.syncing;
+      return feed;
+    } catch (err) {
+      console.error('[Community] API error:', err);
+      isCommunityLoading = false;
+      return null;
+    }
+  }
+
+  function preloadCover(url: string): Promise<void> {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    preloadedCovers.push(image);
+    return image.decode();
+  }
+
+  async function bootApp() {
+    await runBoot(
+      {
+        waitForBridge: () => waitForBridge('get_community_feed', 7000),
+        loadFeed: () => refreshCommunity(),
+        waitForSync: () => firstSyncEnded,
+        preloadImage: preloadCover,
+      },
+      (progress, status) => {
+        bootProgress = progress;
+        bootStatus = status;
       }
-      (window as any).pywebview.api.get_community_feed(force)
-        .then((feed: any) => {
-          communityGames = feed?.games || [];
-          isCommunityOffline = !!feed?.offline;
-          // Keep the loader up only while there is nothing to show and a download is running.
-          isCommunityLoading = communityGames.length === 0 && !!feed?.syncing;
-        })
-        .catch((err: any) => {
-          console.error('[Community] API error:', err);
-          isCommunityLoading = false;
-        });
-    });
+    );
+    // Let the bar visibly reach the end before the card starts moving.
+    setTimeout(() => {
+      bootPhase = 'exiting';
+    }, 260);
+  }
+
+  function handleSplashFinished() {
+    bootPhase = 'settling';
+    setTimeout(() => {
+      bootPhase = 'done';
+      afterBoot.splice(0).forEach((run) => run());
+      watchGlassPerformance();
+    }, REVEAL_SETTLE_MS);
+  }
+
+  function whenBooted(run: () => void) {
+    if (bootPhase === 'done') run();
+    else afterBoot.push(run);
   }
 
   // Manual check for updates triggered from Settings
@@ -612,7 +671,7 @@
     });
 
     window.addEventListener('community:feed_updated' as any, () => {
-      refreshCommunity(false);
+      refreshCommunity(false).then(resolveFirstSync);
     });
 
     window.addEventListener('updater:available' as any, (e: CustomEvent) => {
@@ -627,8 +686,10 @@
         const version = d.release_info.latest_version || '';
         const dismissed = typeof window !== 'undefined' && sessionStorage.getItem('le_dismissed_update_' + version);
         if (!dismissed) {
-          updateModalOpen = true;
-          showToast(`A new update (${version || 'v' + d.release_info.version}) is available!`);
+          whenBooted(() => {
+            updateModalOpen = true;
+            showToast(`A new update (${version || 'v' + d.release_info.version}) is available!`);
+          });
         }
       }
     });
@@ -653,10 +714,11 @@
       document.documentElement.setAttribute('data-theme', currentTheme);
       audioMuted = isAudioMuted();
 
+      initLiquidGlass();
       setupEventListeners();
       window.addEventListener('keydown', handleGlobalKeydown);
 
-      refreshCommunity();
+      bootApp();
       // The loader must never hang, even if the sync's end event is somehow lost.
       setTimeout(() => { isCommunityLoading = false; }, 20000);
 
@@ -676,13 +738,13 @@
 
       if (!hasSeenFirstRun) {
         isFirstRunPendingTour = true;
-        setTimeout(() => {
+        whenBooted(() => {
           updateModalOpen = true;
-        }, 600);
+        });
       } else if (!localStorage.getItem('le_tour_completed')) {
-        setTimeout(() => {
+        whenBooted(() => {
           tourOpen = true;
-        }, 700);
+        });
       }
 
       // Global Client-Side Crash Diagnostic Listener
@@ -715,21 +777,13 @@
   });
 </script>
 
-<div class="app-layout-root">
+<div
+  class="app-layout-root"
+  class:is-booting={bootPhase === 'loading'}
+  class:is-revealing={bootPhase === 'exiting' || bootPhase === 'settling'}
+>
   <!-- Living Canvas Ambient Color Bleed Background -->
   <LivingCanvas {coverUrl} theme={currentTheme} activeView={currentView} />
-
-  <!-- Hidden SVG Filter for Apple Liquid Glass Refraction Effect -->
-  <svg style="position: absolute; width: 0; height: 0; pointer-events: none;" aria-hidden="true">
-    <defs>
-      <filter id="apple-liquid-glass" color-interpolation-filters="sRGB">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="0.4" result="blurred" />
-        <feTurbulence type="fractalNoise" baseFrequency="0.035 0.035" numOctaves="2" result="noise" />
-        <feDisplacementMap in="blurred" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G" result="displaced" />
-        <feBlend in="SourceGraphic" in2="displaced" mode="normal" />
-      </filter>
-    </defs>
-  </svg>
 
   <!-- Left Apple Liquid Glass Sidebar -->
   <aside class="left-sidebar liquid-glass">
@@ -849,7 +903,7 @@
   <!-- Main Viewport Area -->
   <div class="main-viewport">
     <!-- Top Command Deck (URL Input Bar) -->
-    <header class="top-command-deck glass-panel" id="tour-url-bar">
+    <header class="top-command-deck glass-panel" id="tour-url-bar" use:liquidGlass>
       <div class="input-field-container">
         <span class="input-leading-icon">
           <Icon name="link" size={16} color="var(--text-muted)" />
@@ -918,7 +972,7 @@
 
   <!-- Global Toast Notification -->
   {#if toastMessage}
-    <div class="app-toast glass-panel">
+    <div class="app-toast glass-panel" use:liquidGlass={{ style: 'clear', bezel: 12, strength: 14 }}>
       <Icon name="sparkles" size={16} color="var(--accent-primary)" />
       <span>{toastMessage}</span>
     </div>
@@ -975,6 +1029,15 @@
     onShowToast={showToast}
     engineLogs={logs}
   />
+
+  {#if bootPhase === 'loading' || bootPhase === 'exiting'}
+    <SplashLoader
+      progress={bootProgress}
+      status={bootStatus}
+      exiting={bootPhase === 'exiting'}
+      onFinished={handleSplashFinished}
+    />
+  {/if}
 </div>
 
 <style>
@@ -1002,24 +1065,15 @@
     border-radius: 24px;
     flex-shrink: 0;
 
-    /* Liquid Glass Core: Translucent multi-stop gradient + heavy blur */
-    background: linear-gradient(
-      140deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.03) 40%,
-      rgba(10, 14, 24, 0.55) 100%
-    );
-    backdrop-filter: blur(36px) saturate(220%) contrast(106%);
-    -webkit-backdrop-filter: blur(36px) saturate(220%) contrast(106%);
-    border: 1px solid rgba(255, 255, 255, 0.22);
-
-    /* Apple Specular Edge Highlights (Snell-Descartes Refraction Simulation) */
-    box-shadow: 
-      inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 0.65),
+    background: var(--glass-sheen), var(--glass-tint);
+    backdrop-filter: var(--glass-backdrop);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow:
+      inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 0.55),
       inset 0 0 20px 0 rgba(255, 255, 255, 0.05),
-      inset 0 -1.5px 1px 0 rgba(0, 0, 0, 0.5),
+      inset 0 -1px 1px 0 rgba(255, 255, 255, 0.12),
       0 20px 40px -15px rgba(0, 0, 0, 0.8),
-      0 0 30px -5px rgba(16, 185, 129, 0.2);
+      0 0 30px -8px var(--accent-glow);
     overflow: hidden;
   }
 
@@ -1033,8 +1087,8 @@
     height: 45%;
     background: linear-gradient(
       180deg, 
-      rgba(255, 255, 255, 0.25) 0%, 
-      rgba(255, 255, 255, 0.06) 50%, 
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.04) 50%, 
       rgba(255, 255, 255, 0) 100%
     );
     border-top-left-radius: 24px;
@@ -1114,8 +1168,6 @@
       radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.38) 0%, transparent 60%),
       linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(0, 0, 0, 0.3) 100%),
       var(--accent-gradient);
-    backdrop-filter: blur(28px) saturate(220%) contrast(110%);
-    -webkit-backdrop-filter: blur(28px) saturate(220%) contrast(110%);
     border: 1px solid rgba(255, 255, 255, 0.45);
     box-shadow: 
       inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.8),
@@ -1272,8 +1324,9 @@
     }
   }
 
-  /* Main Viewport */
+  /* Main Viewport: content runs the full height and scrolls beneath the floating bars. */
   .main-viewport {
+    --deck-offset: 86px;
     position: relative;
     z-index: 10;
     flex: 1;
@@ -1281,20 +1334,21 @@
     flex-direction: column;
     min-width: 0;
     height: 100vh;
-    padding: 12px 16px 16px 14px;
     overflow: hidden;
   }
 
   /* Top Command Deck */
   .top-command-deck {
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    right: 16px;
+    z-index: 30;
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 10px 14px;
-    background: var(--bg-surface);
-    border-radius: var(--radius-md);
-    margin-bottom: 12px;
-    flex-shrink: 0;
+    border-radius: 18px;
   }
 
   .input-field-container {
@@ -1302,10 +1356,11 @@
     flex: 1;
     display: flex;
     align-items: center;
-    background: rgba(10, 12, 18, 0.7);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
+    background: rgba(3, 5, 9, 0.34);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 11px;
     padding: 0 12px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
@@ -1416,18 +1471,7 @@
     overflow-y: auto;
     min-height: 0;
     display: flex;
-    animation: screenEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes screenEnter {
-    from {
-      opacity: 0;
-      transform: translate3d(0, 10px, 0);
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0);
-    }
+    padding: 0 10px 0 14px;
   }
 
   /* Toast */
@@ -1438,13 +1482,11 @@
     transform: translateX(-50%);
     z-index: 99999;
     padding: 10px 20px;
-    background: rgba(14, 18, 27, 0.95);
-    border: 1px solid var(--accent-primary);
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
     color: var(--text-primary);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 16px var(--accent-glow);
+    box-shadow: var(--glass-shadow-lg);
     display: flex;
     align-items: center;
     gap: 8px;

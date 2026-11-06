@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import Icon from './icons/Icon.svelte';
   import { playClickSound } from '../utils/audio';
 
@@ -48,7 +49,7 @@
     on:click={(e) => { if (e.target === e.currentTarget) handleDismiss(); }}
     on:keydown={(e) => e.key === 'Escape' && handleDismiss()}
   >
-    <div class="modal-card glass-panel" role="document">
+    <div class="modal-card glass-panel" use:liquidGlass={{ style: 'thick' }} role="document">
       <!-- Top Bar -->
       <div class="modal-header">
         <div class="modal-badge {isExpired ? 'badge-expired-warn' : ''}">
@@ -210,26 +211,18 @@
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.72);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
-    animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .modal-card {
     width: 100%;
     max-width: 680px;
-    background: linear-gradient(135deg, rgba(20, 24, 33, 0.94), rgba(12, 15, 22, 0.96));
-    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 16px;
-    box-shadow: 
-      0 24px 64px -12px rgba(0, 0, 0, 0.8),
-      0 0 40px rgba(16, 185, 129, 0.08),
-      inset 0 1px 0 rgba(255, 255, 255, 0.15);
     padding: 1.5rem 1.75rem;
     display: flex;
     flex-direction: column;
@@ -237,6 +230,9 @@
     animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative;
     overflow: hidden;
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   .modal-header {
@@ -575,11 +571,6 @@
 
   .btn-cancel:hover {
     color: #cbd5e1;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
   }
 
   @keyframes scaleUp {

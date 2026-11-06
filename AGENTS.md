@@ -35,7 +35,7 @@ This document defines repository standards, architectural boundaries, runtime co
 | [`issues.py`](file:///c:/Code/link/issues.py) | Community Issue Center: reports, votes, comments, moderation. | The server judges the admin key. Local reports are only an outbox. |
 | [`telemetry.py`](file:///c:/Code/link/telemetry.py) | Crash reports. | Everything goes through `report_crash_log`, which applies the opt-out and removes personal data. |
 | [`utils.py`](file:///c:/Code/link/utils.py) | Path resolution, settings I/O, logging, Win32 icon binding. | Never hardcode local paths or `%TEMP%` when frozen. |
-| [`frontend/`](file:///c:/Code/link/frontend/) | Astro + Svelte + Web Audio frontend. | Use `<Icon />` SVG components for icons, and build to `dist_web/`. |
+| [`frontend/`](file:///c:/Code/link/frontend/) | Astro + Svelte + Web Audio frontend. Liquid Glass lives in `styles/glass.css` and `utils/liquidGlass.ts`; startup in `utils/boot.ts`. | Use `<Icon />` SVG components for icons, and build to `dist_web/`. The splash must always end, so anything added to startup goes through `runBoot`. |
 | [`engine.py`](file:///c:/Code/link/engine.py) | Playwright multi-tab worker pool & Cloudflare Turnstile bypass. | Share a single browser context across concurrent tabs. Use detected browser channel (Chrome/Edge). |
 | [`scraper.py`](file:///c:/Code/link/scraper.py) | Parsing of FitGirl game pages and pastebins, cover art. | Regular expressions with defensive fallbacks for missing mirrors. |
 | [`validator.py`](file:///c:/Code/link/validator.py) | 1-byte HTTP Range link checks and repack size totals. | Keep the three verdicts apart: alive, dead, unknown. Sanitize filenames from `Content-Disposition`. |
@@ -57,7 +57,7 @@ python main.py
 python -m pytest
 ruff check .
 pyright
-cd frontend; npm run check
+cd frontend; npm run check; npm test
 ```
 Tests run offline against a local Firebase stand-in. After changing `firebase/database.rules.json`, also run the emulator tests in [`firebase/README.md`](file:///c:/Code/link/firebase/README.md), because those rules protect every installed copy.
 
@@ -88,6 +88,7 @@ pyinstaller LinkExtractor_Single.spec --noconfirm
 * **WebView2 RPC Bridge Reflection Recursion**: pywebview iterates over public attributes of the exposed API object when generating JavaScript bindings. Assigning the window instance directly as `self.window` triggered recursive COM interface inspection and crashed with `RecursionError` or thread deadlocks. Always store window references in private attributes (`self._window`).
 * **Off-Screen Headed Browser**: Launching visible browser instances (`headless=False`) causes Windows to steal foreground focus and throttle VSync frame delivery to the background application. Chromium/Edge must be launched with `--window-position=-3000,-3000` to maintain 100% Cloudflare Turnstile token resolution without stealing window focus.
 * **PyInstaller Single-File Web Assets**: PyInstaller single-file binaries unpack to `%TEMP%/_MEIxxxxxx`. The WebView2 frontend must be bundled via `('dist_web', 'dist_web')` in `LinkExtractor_Single.spec` and resolved at runtime via `utils.get_resource_path('dist_web')`.
+* **Glass Sees Only As Far As Its Backdrop Root**: An ancestor with `backdrop-filter`, `filter`, `mask`, or opacity below 1 stops a surface sampling the page. Glass inside glass gets no refraction, and a dialog's scrim must fade its background color instead of its opacity.
 * **The database has no login**: Anyone can call Firebase directly, so server protection lives only in `firebase/database.rules.json`. Client checks in `links.py` protect the client itself.
 
 ---

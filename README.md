@@ -46,6 +46,8 @@ graph LR
     E --> H[SQLite History Archive]
 ```
 
+- **Liquid Glass Interface**: The same material as Expo's `GlassView`, with real refraction on Windows. Game art bends at the edges of the floating bars as it scrolls beneath them, each game's cover sits behind its Stage, and dialogs show the page through them. A switch in Settings turns refraction off, and slower PCs drop to frosted glass automatically.
+- **Startup Splash**: A small glass card loads the community games and first-screen covers with real progress, then stretches into the URL bar as the app settles in, so the Hub is ready the moment it appears.
 - **Interactive Onboarding Guided Tour & What's New (v3.8.0)**: Sequential first-run onboarding displaying release highlights followed by a physical 4-curtain spotlight tour. The tour uses 4 independent backdrop planes surrounding the active element, ensuring zero blur and 100% interactive clickability on target elements without mouse event clipping.
 - **Cyberpunk Animated Glassmorphic Dropdowns (v3.8.0)**: Replaced default operating system dropdowns with custom SVG-driven glassmorphic select menus in the Issue Center and export dialogs, featuring category-specific color accents, rotating chevron indicators, and cubic-bezier transition animations.
 - **Bandwidth Saver & Selective Download Filter (v3.8.0)**: Automatic categorization of game parts lets you leave non-English audio dubs, optional 4K textures, soundtracks, and bonus packs out of what gets pushed, copied, or exported. Every part is still resolved, so you can change your mind without extracting again.

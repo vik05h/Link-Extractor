@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import { onMount } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../utils/audio';
@@ -354,7 +355,7 @@
     tabindex="-1"
   >
     <div 
-      class="modal-card glass-panel" 
+      class="modal-card glass-panel" use:liquidGlass={{ style: 'thick' }} 
     >
       <!-- Modal Header -->
       <div class="modal-header">
@@ -563,18 +564,12 @@
     position: fixed;
     inset: 0;
     z-index: 8500;
-    background: rgba(4, 7, 13, 0.82);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: fadeIn 0.2s ease-out;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .modal-card {
@@ -584,10 +579,10 @@
     display: flex;
     flex-direction: column;
     border-radius: 20px;
-    background: rgba(13, 17, 26, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.8), 0 0 32px rgba(0, 240, 160, 0.15);
     overflow: hidden;
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   .modal-header {
