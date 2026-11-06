@@ -41,3 +41,12 @@ npx firebase-tools --config firebase/firebase.json emulators:exec --only databas
 ```
 
 The CI workflow runs the same command on every push. You can also try individual requests in the **Rules Playground** on the console's Rules tab.
+
+## Writing patterns in the rules
+
+Firebase rule patterns support less than JavaScript or Python, and some mistakes load fine but match the wrong things. Only the emulator tests show that a pattern works.
+
+- `^` may appear only at the very start and `$` only at the very end. Put alternatives in one group, as in `^(a|b)?$`, where the trailing `?` also allows an empty string.
+- There is no `\s` or `\S`. Inside a character class, `\t`, `\n`, `\r`, `\f` and `\v` are read as the plain letters t, n, r, f and v, so a class built from them rejects ordinary URLs.
+- For "any character except whitespace", use `[!-�]`, written with the JSON escape `�` so Firebase receives the character itself. The range runs from `!` to U+FFFD, which leaves out spaces and every control character and allows accented and other non-ASCII text.
+- `tests/test_firebase_rules_static.py` reads each pattern back with Python's `re` and compares it with `links.py`, so a pattern must mean the same thing in both.

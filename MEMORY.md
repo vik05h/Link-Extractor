@@ -60,6 +60,7 @@ graph TD
 
 ### Trusting shared data
 
+* **Firebase rule patterns are not JavaScript regexes**: `^` and `$` work only at the ends, there is no `\s`, and `\t` inside a class silently becomes the letter t. A pattern can load and still reject good links, so only the emulator tests prove a rules change. See `firebase/README.md`.
 * **The database has no login**: Anyone can send requests to Firebase directly, so client checks protect only the client. Server protection lives in `firebase/database.rules.json`, and client checks in `links.py` and `game_records.clean_feed_record()`. Both must agree, which `tests/test_firebase_rules_static.py` checks.
 * **Substring host checks**: `"fuckingfast.co" in url` accepted `https://evil.example/fuckingfast.co/setup.exe`. Compare parsed hostnames through `links.py`.
 * **A clickable source_url is a script risk**: A `javascript:` link in `<a href>` runs with access to the bridge, even with no `{@html}` in the frontend. `clean_feed_record()` drops records whose source host is not allowed.
