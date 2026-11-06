@@ -12,6 +12,8 @@ export interface Spring {
 /** Stiff enough to feel quick, damped just under critical so it settles with a small wobble. */
 const STIFFNESS = 430;
 const DAMPING = 27;
+/** Critical damping: the quickest glide that never passes its target. Used with reduced motion. */
+const CALM_DAMPING = 2 * Math.sqrt(STIFFNESS);
 /** Long frames are split into short steps, so a slow PC cannot shake the spring loose. */
 const MAX_STEP_S = 1 / 240;
 
@@ -32,12 +34,14 @@ const RUBBER_GIVE = 0.3;
 /** A press has to travel this far along the bar before it counts as a drag. */
 export const DRAG_START_PX = 6;
 
-export function stepSpring(spring: Spring, target: number, dt: number): Spring {
+/** Moves the spring dt seconds toward target. `calm` glides there without the wobble. */
+export function stepSpring(spring: Spring, target: number, dt: number, calm = false): Spring {
   let { pos, vel } = spring;
+  const damping = calm ? CALM_DAMPING : DAMPING;
   const steps = Math.max(1, Math.ceil(dt / MAX_STEP_S));
   const h = dt / steps;
   for (let i = 0; i < steps; i++) {
-    vel += (-STIFFNESS * (pos - target) - DAMPING * vel) * h;
+    vel += (-STIFFNESS * (pos - target) - damping * vel) * h;
     pos += vel * h;
   }
   return { pos, vel };

@@ -4,7 +4,7 @@
  * Click an item and the bubble springs across, stretching as it goes. Press anywhere on the
  * bar and drag, and it follows the pointer, swells into a magnifying lens, and lands on the
  * nearest item when you let go. A press that does not travel DRAG_START_PX is a plain click.
- * Arrow keys move it too. With reduced motion, it moves without the spring and the stretch.
+ * Arrow keys move it too. With reduced motion, it glides without the wobble, the stretch or the swell.
  *
  * Items are the bar's descendants marked data-bubble-item, in order. The bubble lives in `host`,
  * not inside the bar: the bar's own backdrop-filter would stop it seeing anything past the bar.
@@ -108,7 +108,7 @@ export function glassBubble(bar: HTMLElement, initial: GlassBubbleOptions) {
   function tick(now: number): void {
     const dt = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
-    slide = stepSpring(slide, target, dt);
+    slide = stepSpring(slide, target, dt, reduceMotion);
     swell = stepSpring(swell, swellTarget, dt);
     if (isSettled(slide, target) && isSettled(swell, swellTarget)) {
       slide = { pos: target, vel: 0 };
@@ -122,12 +122,6 @@ export function glassBubble(bar: HTMLElement, initial: GlassBubbleOptions) {
   }
 
   function animate(): void {
-    if (reduceMotion) {
-      slide = { pos: target, vel: 0 };
-      swell = { pos: swellTarget, vel: 0 };
-      render();
-      return;
-    }
     if (frame) return;
     lastTime = performance.now();
     frame = requestAnimationFrame(tick);
@@ -155,17 +149,19 @@ export function glassBubble(bar: HTMLElement, initial: GlassBubbleOptions) {
       render();
       return;
     }
-    swellTarget = SWELL_FULL;
-    if (pulseTimer) clearTimeout(pulseTimer);
-    pulseTimer = setTimeout(() => {
-      if (!press) swellTarget = 0;
-      animate();
-    }, SWELL_PULSE_MS);
+    if (!reduceMotion) {
+      swellTarget = SWELL_FULL;
+      if (pulseTimer) clearTimeout(pulseTimer);
+      pulseTimer = setTimeout(() => {
+        if (!press) swellTarget = 0;
+        animate();
+      }, SWELL_PULSE_MS);
+    }
     animate();
   }
 
   function hold(on: boolean): void {
-    swellTarget = on ? SWELL_FULL : 0;
+    swellTarget = on && !reduceMotion ? SWELL_FULL : 0;
     animate();
   }
 
@@ -271,8 +267,9 @@ export function glassBubble(bar: HTMLElement, initial: GlassBubbleOptions) {
 
   bar.addEventListener('pointerdown', onPointerDown);
   bar.addEventListener('pointermove', onPointerMove);
-  bar.addEventListener('pointerup', onPointerUp);
-  bar.addEventListener('pointercancel', onPointerCancel);
+  // A press can end anywhere, even off the bar, and it must always let the bubble go.
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerCancel);
   bar.addEventListener('click', onClick);
   bar.addEventListener('keydown', onKeyDown);
 
@@ -287,8 +284,8 @@ export function glassBubble(bar: HTMLElement, initial: GlassBubbleOptions) {
       observer.disconnect();
       bar.removeEventListener('pointerdown', onPointerDown);
       bar.removeEventListener('pointermove', onPointerMove);
-      bar.removeEventListener('pointerup', onPointerUp);
-      bar.removeEventListener('pointercancel', onPointerCancel);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
       bar.removeEventListener('click', onClick);
       bar.removeEventListener('keydown', onKeyDown);
       glass.destroy();

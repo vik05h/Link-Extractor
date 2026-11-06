@@ -20,6 +20,7 @@ test('an unknown or unreadable saved value falls back to GenZ', () => {
 
 test('classic wording keeps what the app said before, with names and numbers filled in', () => {
   assert.equal(wording('classic', 'toast.copiedAll', { count: 14 }), 'Copied all 14 direct links to clipboard!');
+  assert.equal(wording('classic', 'toast.exported', { file: 'Neon_Drift.txt' }), 'Saved Neon_Drift.txt to Downloads!');
   assert.equal(wording('classic', 'vault.empty'), 'No saved extractions found in database.');
 });
 
@@ -28,13 +29,9 @@ test('the tour opens with the GenZ title that was agreed', () => {
   assert.equal(wording('genz', 'tour.done.title'), "You ate. Tour's over.");
 });
 
-test('tour buttons stay plain in both voices, except the last one', () => {
-  for (const voice of ['genz', 'classic'] as const) {
-    assert.equal(wording(voice, 'tour.next'), 'Next');
-    assert.equal(wording(voice, 'tour.back'), 'Back');
-    assert.equal(wording(voice, 'tour.skip'), 'Skip');
-  }
-  assert.equal(wording('genz', 'tour.finish'), "Let's go");
+test('a GenZ success pop-up still says what happened', () => {
+  assert.match(wording('genz', 'toast.pushed', { count: 14 }), /14/);
+  assert.match(wording('genz', 'toast.exported', { file: 'Neon_Drift.txt' }), /Neon_Drift\.txt/);
 });
 
 test('a placeholder with no value stays visible instead of disappearing', () => {

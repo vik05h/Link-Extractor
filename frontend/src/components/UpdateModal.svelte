@@ -272,11 +272,20 @@
             <Icon name="sparkles" size={18} color="var(--accent-primary)" />
           </div>
           <div>
+            <!-- With an update waiting this is the updater, which stays plain. -->
             <div class="modal-title">
-              {isFirstRun ? $say('whatsNew.firstRunTitle', { version: currentVersion }) : $say('whatsNew.title')}
+              {#if hasUpdate}
+                WHAT'S NEW & UPDATES
+              {:else}
+                {isFirstRun ? $say('whatsNew.firstRunTitle', { version: currentVersion }) : $say('whatsNew.title')}
+              {/if}
             </div>
             <div class="modal-subtitle">
-              {isFirstRun ? $say('whatsNew.firstRunIntro') : $say('whatsNew.intro')}
+              {#if hasUpdate}
+                Version comparison, release highlights & auto-updater
+              {:else}
+                {isFirstRun ? $say('whatsNew.firstRunIntro') : $say('whatsNew.intro')}
+              {/if}
             </div>
           </div>
         </div>

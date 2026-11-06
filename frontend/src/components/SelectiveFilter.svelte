@@ -5,6 +5,8 @@
   import { classifyPart } from '../utils/partCategory';
 
   export let parts: PartItem[] = [];
+  /** The tour's sample game: the chips work, but the user's saved choice is left alone. */
+  export let demo: boolean = false;
   const dispatch = createEventDispatcher();
 
   const STORAGE_KEY = 'le_selective_filter';
@@ -21,6 +23,7 @@
   }
 
   function saveChoices() {
+    if (demo) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOnlyEnglish, excludeBonuses }));
     } catch {}

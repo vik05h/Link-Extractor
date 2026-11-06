@@ -8,6 +8,8 @@
  */
 
 import { derived, get, writable } from 'svelte/store';
+// The extension lets Node's test runner load this module too.
+import { BOOT_STATUS } from './boot.ts';
 
 export type Voice = 'genz' | 'classic';
 
@@ -15,10 +17,6 @@ export const VOICE_KEY = 'le_voice';
 
 const GENZ = {
   'tour.step': '{n} / {total}',
-  'tour.next': 'Next',
-  'tour.back': 'Back',
-  'tour.skip': 'Skip',
-  'tour.finish': "Let's go",
   'tour.welcome.title': 'Welcome in, bestie',
   'tour.welcome.body': "Paste a FitGirl link, get direct downloads. Here's the 30-second tour.",
   'tour.paste.title': 'Paste it, we got you',
@@ -46,18 +44,14 @@ const GENZ = {
   'toast.loadedParts': 'Got {count} parts for {title}. Zero wait, big W.',
   'toast.loadedFromVault': '{title} is back from the Vault.',
   'toast.copiedAll': "Copied {count} links. You're set.",
-  'toast.pushed': 'Sent to JDownloader. Go off.',
-  'toast.exported': 'Exported. Clean.',
+  'toast.pushed': 'Sent {count} links to JDownloader. Go off.',
+  'toast.exported': 'Saved {file} to Downloads. Clean.',
   'toast.verified': 'All {count} parts verified ({size}). We cooked.',
 
-  'hub.loading': 'Checking what the squad dropped...',
   'hub.noMatch': 'Nothing matches that. Try another name.',
   'hub.offlineEmpty': 'The community list is offline rn. Try again in a bit.',
   'hub.empty': 'No games here yet. Be the first to drop one.',
-  'hub.offline': "Can't reach the community rn.",
-  'hub.offlineSaved': 'Showing the last list we saved.',
 
-  'vault.loading': 'Opening the Vault...',
   'vault.empty': "Vault's empty. Your extractions will live here.",
 
   'stage.emptyTitle': 'Nothing cooking yet',
@@ -75,10 +69,6 @@ export type CopyKey = keyof typeof GENZ;
 
 const CLASSIC: Record<CopyKey, string> = {
   'tour.step': 'Step {n} of {total}',
-  'tour.next': 'Next',
-  'tour.back': 'Back',
-  'tour.skip': 'Skip',
-  'tour.finish': 'Get Started',
   'tour.welcome.title': 'Welcome to Link Extractor',
   'tour.welcome.body': 'Paste a FitGirl link and get direct download links. This quick tour shows you around.',
   'tour.paste.title': 'Paste a link',
@@ -106,18 +96,14 @@ const CLASSIC: Record<CopyKey, string> = {
   'toast.loadedParts': 'Loaded {count} parts for {title} with 0s wait!',
   'toast.loadedFromVault': 'Loaded {title} from History!',
   'toast.copiedAll': 'Copied all {count} direct links to clipboard!',
-  'toast.pushed': 'Pushed to JDownloader 2!',
-  'toast.exported': 'Export complete!',
+  'toast.pushed': 'Pushed {count} links to JDownloader 2!',
+  'toast.exported': 'Saved {file} to Downloads!',
   'toast.verified': '100% Verified! {count} parts ready ({size})',
 
-  'hub.loading': 'QUERYING COMMUNITY CLOUD CACHE...',
   'hub.noMatch': 'No community repacks found matching your search.',
   'hub.offlineEmpty': 'The community list is not available right now.',
   'hub.empty': 'No community repacks yet.',
-  'hub.offline': 'Could not reach the community database.',
-  'hub.offlineSaved': 'Showing the last saved list.',
 
-  'vault.loading': 'Loading history...',
   'vault.empty': 'No saved extractions found in database.',
 
   'stage.emptyTitle': 'Cockpit Ready',
@@ -149,18 +135,20 @@ export function readVoice(storage: Pick<Storage, 'getItem'> | null): Voice {
   }
 }
 
-/** utils/boot.ts reports its steps in plain words. This says them in the chosen voice. */
+const SPLASH_STEPS: Record<string, CopyKey> = {
+  [BOOT_STATUS.starting]: 'splash.starting',
+  [BOOT_STATUS.connecting]: 'splash.connecting',
+  [BOOT_STATUS.games]: 'splash.games',
+  [BOOT_STATUS.covers]: 'splash.covers',
+  [BOOT_STATUS.ready]: 'splash.ready',
+};
+
+/** utils/boot.ts reports its steps in plain words from BOOT_STATUS. This says them in the chosen voice. */
 export function splashLine(voice: Voice, status: string): string {
-  const covers = /^Loading covers (\d+) of (\d+)$/.exec(status);
-  if (covers) return wording(voice, 'splash.coversCount', { done: covers[1], total: covers[2] });
-  const steps: Record<string, CopyKey> = {
-    'Starting up': 'splash.starting',
-    Connecting: 'splash.connecting',
-    'Loading community games': 'splash.games',
-    'Loading covers': 'splash.covers',
-    Ready: 'splash.ready',
-  };
-  return steps[status] ? wording(voice, steps[status]) : status;
+  const prefix = `${BOOT_STATUS.covers} `;
+  const count = status.startsWith(prefix) ? /^(\d+) of (\d+)$/.exec(status.slice(prefix.length)) : null;
+  if (count) return wording(voice, 'splash.coversCount', { done: count[1], total: count[2] });
+  return SPLASH_STEPS[status] ? wording(voice, SPLASH_STEPS[status]) : status;
 }
 
 function browserStorage(): Storage | null {

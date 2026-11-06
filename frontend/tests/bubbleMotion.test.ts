@@ -41,6 +41,19 @@ test('it still settles when a slow PC delivers long frames', () => {
   assert.ok(Math.abs(spring.pos - 64) < 0.05);
 });
 
+test('with reduced motion the bubble still glides, but never overshoots', () => {
+  let spring: Spring = { pos: 0, vel: 0 };
+  let highest = 0;
+  for (let t = 0; t < 2; t += 1 / 60) {
+    spring = stepSpring(spring, 100, 1 / 60, true);
+    highest = Math.max(highest, spring.pos);
+  }
+  assert.ok(highest <= 100, 'no wobble past the target');
+  assert.ok(Math.abs(spring.pos - 100) < 0.05, 'and it still arrives');
+  const firstFrame = stepSpring({ pos: 0, vel: 0 }, 100, 1 / 60, true);
+  assert.ok(firstFrame.pos > 0 && firstFrame.pos < 100, 'it moves rather than jumping');
+});
+
 test('a moving bubble is not yet settled', () => {
   assert.equal(isSettled({ pos: 64, vel: 300 }, 64), false);
   assert.equal(isSettled({ pos: 40, vel: 0 }, 64), false);

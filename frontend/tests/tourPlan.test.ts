@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { TOUR_STEPS, placeCard, unionRect } from '../src/utils/tourPlan.ts';
+import { COPY } from '../src/utils/voice.ts';
 
 const WINDOW = { width: 1200, height: 800 };
 const CARD = { width: 400, height: 200 };
@@ -10,6 +11,16 @@ test('the tour has the seven agreed steps, in order', () => {
     TOUR_STEPS.map((s) => s.id),
     ['welcome', 'paste', 'hub', 'stage', 'filter', 'send', 'done']
   );
+});
+
+test('every step has a title and a line in both voices', () => {
+  for (const step of TOUR_STEPS) {
+    for (const voice of ['genz', 'classic'] as const) {
+      const table = COPY[voice] as Record<string, string>;
+      assert.ok(table[`tour.${step.id}.title`], `${voice} title for ${step.id}`);
+      assert.ok(table[`tour.${step.id}.body`], `${voice} body for ${step.id}`);
+    }
+  }
 });
 
 test('only the Stage and filter steps let clicks through to the app', () => {

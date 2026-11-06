@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import LivingCanvas from './LivingCanvas.svelte';
   import GameStage from './GameStage.svelte';
   import DiscoveryHub from './DiscoveryHub.svelte';
@@ -106,27 +106,34 @@
   // The tour: while it is open the Stage shows a made-up sample game, and the real game,
   // including a running extraction, carries on untouched underneath until it closes.
   const SAMPLE_TICK_MS = 650;
-  const FILTER_CHOICE_KEY = 'le_selective_filter';
   let tourSample: SampleGame | null = null;
   let sampleTimer: ReturnType<typeof setInterval> | null = null;
   let viewBeforeTour: 'community' | 'stage' = 'community';
-  let filterChoiceBeforeTour: string | null = null;
+  let scrollBeforeTour = 0;
+  /** The real game's Stage tab, kept while the tour rebuilds the Stage for the sample. */
+  let realStageView: 'mosaic' | 'table' | 'log' = 'mosaic';
+  let screenBody: HTMLElement;
 
   function startTour() {
     if (tourOpen) return;
     viewBeforeTour = currentView;
+    scrollBeforeTour = screenBody?.scrollTop ?? 0;
     historyOpen = false;
     settingsOpen = false;
     updateModalOpen = false;
     reportModalOpen = false;
-    try {
-      filterChoiceBeforeTour = localStorage.getItem(FILTER_CHOICE_KEY);
-    } catch {}
     tourSample = createSampleGame();
-    sampleTimer = setInterval(() => {
-      if (tourSample) tourSample = { ...tourSample, parts: advanceSample(tourSample.parts) };
-    }, SAMPLE_TICK_MS);
     tourOpen = true;
+  }
+
+  // The sample starts resolving when the tour first shows the Stage, so its blocks are still lighting up.
+  function showTourView(view: 'community' | 'stage') {
+    currentView = view;
+    if (view === 'stage' && !sampleTimer) {
+      sampleTimer = setInterval(() => {
+        if (tourSample) tourSample = { ...tourSample, parts: advanceSample(tourSample.parts) };
+      }, SAMPLE_TICK_MS);
+    }
   }
 
   function endTour() {
@@ -135,21 +142,20 @@
     sampleTimer = null;
     tourSample = null;
     currentView = viewBeforeTour;
-    // Trying the filter chips on the sample game must not change the user's saved choice.
-    try {
-      if (filterChoiceBeforeTour === null) localStorage.removeItem(FILTER_CHOICE_KEY);
-      else localStorage.setItem(FILTER_CHOICE_KEY, filterChoiceBeforeTour);
-    } catch {}
+    tick().then(() => {
+      if (screenBody) screenBody.scrollTop = scrollBeforeTour;
+    });
   }
+
+  // One table, read both ways: which item is lit, and where a pick goes.
+  const NAV_TARGETS = ['community', 'stage', 'vault'] as const;
+  $: activeNavIndex = NAV_TARGETS.indexOf(historyOpen ? 'vault' : currentView);
 
   function selectNav(index: number) {
     playClickSound();
-    if (index === 2) {
-      historyOpen = true;
-      return;
-    }
-    historyOpen = false;
-    currentView = index === 1 ? 'stage' : 'community';
+    const target = NAV_TARGETS[index];
+    historyOpen = target === 'vault';
+    if (target !== 'vault') currentView = target;
   }
 
   // URL Input
@@ -425,7 +431,7 @@
     }
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.push_to_jd2(urls, title, sourceUrl).then((res: any) => {
-        showToast(res?.message || sayNow('toast.pushed'));
+        showToast(res?.success ? sayNow('toast.pushed', { count: urls.length }) : res?.message || 'Error communicating with JDownloader 2');
       }).catch(() => {
         showToast('Error communicating with JDownloader 2');
       });
@@ -458,7 +464,8 @@
     countGrab(activeGameSlug);
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.export_urls(format, urls, title, totalSizeStr).then((res: any) => {
-        showToast(res.message || sayNow('toast.exported'));
+        const file = String(res?.file_path || '').split(/[\\/]/).pop();
+        showToast(res?.success && file ? sayNow('toast.exported', { file }) : res?.message || 'Export failed.');
       });
     }
   }
@@ -758,7 +765,6 @@
     document.documentElement.setAttribute('data-theme', currentTheme);
   }
 
-  $: activeNavIndex = historyOpen ? 2 : (currentView === 'stage' ? 1 : 0);
 
   onMount(() => {
     if (typeof window !== 'undefined') {
@@ -785,12 +791,16 @@
         }
       });
 
-      // A new install gets the tour. After an update, What's New opens once instead.
+      // A new install gets the tour, once. After an update, What's New opens once instead.
       const launch = chooseLaunchScreen({
-        tourCompleted: !!localStorage.getItem('le_tour_completed'),
+        tourShown: !!localStorage.getItem('le_tour_completed'),
         seenThisVersion: !!localStorage.getItem(FIRST_RUN_KEY),
+        seenEarlierVersion: Object.keys(localStorage).some((key) => key.startsWith('le_first_run_') && key !== FIRST_RUN_KEY),
       });
       if (launch === 'tour') {
+        // Marked now, so closing the app halfway through does not replay it at the next launch.
+        localStorage.setItem('le_tour_completed', 'true');
+        localStorage.setItem(FIRST_RUN_KEY, 'true');
         whenBooted(startTour);
       } else if (launch === 'whats-new') {
         isFirstRunOfVersion = true;
@@ -837,8 +847,13 @@
   <!-- Living Canvas Ambient Color Bleed Background -->
   <LivingCanvas {coverUrl} theme={currentTheme} activeView={currentView} />
 
-  <!-- Sidebar: Liquid Glass, with a glass bubble over the selected item -->
-  <aside class="left-sidebar glass-panel" use:liquidGlass>
+  <!-- Sidebar: Liquid Glass, with a glass bubble over the selected item.
+       Click an item, drag from anywhere on the sidebar, or use the arrow keys (utils/glassBubble.ts). -->
+  <aside
+    class="left-sidebar glass-panel"
+    use:liquidGlass
+    use:glassBubble={{ axis: 'y', selected: activeNavIndex, onSelect: selectNav, host: '.app-layout-root', variant: 'glass-bubble--nav', size: 58 }}
+  >
     <!-- Brand Logo -->
     <button
       type="button"
@@ -852,12 +867,7 @@
       </div>
     </button>
 
-    <!-- Click, drag or use the arrow keys; utils/glassBubble.ts moves the bubble -->
-    <nav
-      class="sidebar-nav"
-      aria-label="Main"
-      use:glassBubble={{ axis: 'y', selected: activeNavIndex, onSelect: selectNav, host: '.app-layout-root', variant: 'glass-bubble--nav', size: 58 }}
-    >
+    <nav class="sidebar-nav" aria-label="Main">
       <button
         type="button"
         class="sidebar-item"
@@ -995,7 +1005,7 @@
     </header>
 
     <!-- Active Screen Body -->
-    <main class="active-screen-body">
+    <main class="active-screen-body" bind:this={screenBody}>
       {#if currentView === 'stage'}
         <!-- Rebuilt when the tour starts or ends, so the sample never mixes with the real game. -->
         {#key !!tourSample}
@@ -1011,6 +1021,7 @@
             />
           {:else}
             <GameStage
+              bind:activeView={realStageView}
               {gameTitle}
               {coverUrl}
               {sourceUrl}
@@ -1092,7 +1103,7 @@
   <OnboardingTour
     isOpen={tourOpen}
     onClose={endTour}
-    onView={(view) => { currentView = view; }}
+    onView={showTourView}
   />
 
   <ReportIssueModal
@@ -1127,6 +1138,7 @@
   .left-sidebar {
     position: relative;
     z-index: 100;
+    touch-action: none;
     width: 72px;
     height: calc(100vh - 24px);
     margin: 12px 0 12px 12px;
@@ -1172,7 +1184,6 @@
     flex-direction: column;
     gap: 16px;
     align-items: center;
-    touch-action: none;
   }
 
   .sidebar-item {

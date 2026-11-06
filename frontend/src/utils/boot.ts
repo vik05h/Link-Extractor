@@ -47,6 +47,15 @@ export const DEFAULT_BOOT_OPTIONS: BootOptions = {
 
 type Report = (progress: number, status: string) => void;
 
+/** The steps the splash reports, in plain words. utils/voice.ts gives each one the chosen voice. */
+export const BOOT_STATUS = {
+  starting: 'Starting up',
+  connecting: 'Connecting',
+  games: 'Loading community games',
+  covers: 'Loading covers',
+  ready: 'Ready',
+} as const;
+
 const COVERS_START = 0.55;
 const COVERS_RANGE = 0.42;
 
@@ -70,11 +79,11 @@ export function pickCovers(games: CoverSource[], count: number): string[] {
 }
 
 async function loadEverything(deps: BootDeps, report: Report, options: BootOptions): Promise<void> {
-  report(0.12, 'Connecting');
+  report(0.12, BOOT_STATUS.connecting);
   const ready = await withinTime(deps.waitForBridge(), options.bridgeWaitMs, false);
   if (!ready) return;
 
-  report(0.3, 'Loading community games');
+  report(0.3, BOOT_STATUS.games);
   let feed = await deps.loadFeed();
   if (feed?.syncing) {
     const synced = await withinTime(deps.waitForSync(), options.syncWaitMs, null);
@@ -84,13 +93,13 @@ async function loadEverything(deps: BootDeps, report: Report, options: BootOptio
   const covers = pickCovers(feed?.games || [], options.coverCount);
   if (covers.length === 0) return;
 
-  report(COVERS_START, 'Loading covers');
+  report(COVERS_START, BOOT_STATUS.covers);
   let done = 0;
   await Promise.all(
     covers.map(async (url) => {
       await withinTime(Promise.resolve().then(() => deps.preloadImage(url)), options.perImageMs, undefined);
       done += 1;
-      report(COVERS_START + (COVERS_RANGE * done) / covers.length, `Loading covers ${done} of ${covers.length}`);
+      report(COVERS_START + (COVERS_RANGE * done) / covers.length, `${BOOT_STATUS.covers} ${done} of ${covers.length}`);
     })
   );
 }
@@ -107,7 +116,7 @@ export async function runBoot(deps: BootDeps, onProgress: Report, options: Parti
     onProgress(progress, status);
   };
 
-  report(0.05, 'Starting up');
+  report(0.05, BOOT_STATUS.starting);
   const work = loadEverything(deps, report, settings).catch((error) => {
     console.error('[Boot] Startup step failed:', error);
   });
@@ -118,5 +127,5 @@ export async function runBoot(deps: BootDeps, onProgress: Report, options: Parti
     await new Promise((resolve) => setTimeout(resolve, remaining));
   }
   open = false;
-  onProgress(1, 'Ready');
+  onProgress(1, BOOT_STATUS.ready);
 }

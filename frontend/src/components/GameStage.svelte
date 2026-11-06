@@ -26,7 +26,8 @@
   export let demo: boolean = false;
 
   const VIEWS = ['mosaic', 'table', 'log'] as const;
-  let activeView: 'mosaic' | 'table' | 'log' = 'mosaic';
+  /** Bindable, so the real game's tab survives the tour swapping in the sample game. */
+  export let activeView: 'mosaic' | 'table' | 'log' = 'mosaic';
   $: viewIndex = VIEWS.indexOf(activeView);
 
   function selectView(index: number) {
@@ -182,9 +183,10 @@
   </div>
 
   <!-- Selective Filter Bar -->
-  <SelectiveFilter 
-    {parts} 
-    on:filterChange={(e) => { parts = e.detail.parts; }} 
+  <SelectiveFilter
+    {parts}
+    {demo}
+    on:filterChange={(e) => { parts = e.detail.parts; }}
   />
 
   <!-- View tabs, pinned under the URL bar so the parts scroll beneath the glass.

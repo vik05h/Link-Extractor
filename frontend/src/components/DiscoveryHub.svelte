@@ -290,7 +290,7 @@
   {#if isOffline}
     <div class="hub-offline-banner glass-panel" role="status" use:liquidGlass>
       <Icon name="alert-triangle" size={14} color="var(--status-aging)" />
-      <span>{$say('hub.offline')} {games.length > 0 ? $say('hub.offlineSaved') : ''}</span>
+      <span>Could not reach the community database. {games.length > 0 ? 'Showing the last saved list.' : ''}</span>
     </div>
   {/if}
   </div>
@@ -302,7 +302,7 @@
         <span class="loading-spin">
           <Icon name="refresh" size={18} color="var(--accent-primary)" />
         </span>
-        <span>{$say('hub.loading')}</span>
+        <span>QUERYING COMMUNITY CLOUD CACHE...</span>
       </div>
     </div>
   {:else if filteredGames.length === 0}

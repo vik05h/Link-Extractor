@@ -97,7 +97,8 @@ graph TD
 * **Measure before the reveal**: `.is-booting` hides things with opacity alone, because the splash measures the URL bar and sidebar logo to morph into them. A transform there would make it land in the wrong place.
 * **A bar's bubble lives beside the bar**: The bar's own `backdrop-filter` makes it a Backdrop Root, so a bubble inside it could only see the bar. `utils/glassBubble.ts` appends the bubble to a host element (the app root, or the sticky tab row) and positions it over the selected item. That is also why the sidebar's bubble has its own `.is-booting` and reveal rules.
 * **A short bubble needs a gentle rim**: On a 30 px capsule, a full rim bend pulls copies of the label to its edges. `liquidGlass.ts` caps the bend at a share of the height for the bubble and for its lens.
-* **The tour's sample game**: While the tour is open, MainApp shows `utils/sampleGame.ts` on the Stage with `demo` set, so Push, Copy and Export do nothing, and the real game and any running extraction carry on underneath. The tour restores the saved filter choice when it ends.
+* **The tour's sample game**: While the tour is open, MainApp shows `utils/sampleGame.ts` on the Stage with `demo` set, so Push, Copy and Export do nothing, the filter chips leave the saved choice alone, and the real game and any running extraction carry on underneath. The sample starts resolving when the tour first opens the Stage, so its blocks are still lighting up there.
+* **The tour plays once**: `utils/launch.ts` treats a profile with no `le_first_run_*` key as a new install. When the tour opens by itself it sets `le_tour_completed` at once, so quitting halfway does not replay it. Any earlier `le_first_run_*` key means an update, which opens What's New instead.
 
 ### Wording and frontend tests
 

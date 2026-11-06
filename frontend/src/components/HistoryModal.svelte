@@ -86,7 +86,7 @@
 
       <div class="modal-body">
         {#if isLoading}
-          <div class="loading-state">{$say('vault.loading')}</div>
+          <div class="loading-state">Loading history...</div>
         {:else if filteredRecords.length === 0}
           <div class="empty-state">{$say('vault.empty')}</div>
         {:else}

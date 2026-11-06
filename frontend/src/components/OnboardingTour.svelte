@@ -34,12 +34,15 @@
   let windowHeight = 840;
   let remeasureTimer: ReturnType<typeof setInterval> | null = null;
   let layoutToken = 0;
+  /** A step change asked to scroll its target into view. Whichever layout runs last carries it out. */
+  let scrollPending = false;
 
   $: step = TOUR_STEPS[index];
   $: isLast = index === TOUR_STEPS.length - 1;
 
+  // Typed as a template, so a step without its wording fails the type check.
   function wordingFor(current: TourStep, part: 'title' | 'body'): CopyKey {
-    return `tour.${current.id}.${part}` as CopyKey;
+    return `tour.${current.id}.${part}` as const;
   }
 
   const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -63,6 +66,7 @@
 
   /** Spotlights this step's targets and places the card beside them. Scrolls them into view only when asked. */
   async function layout(scrollIntoView: boolean) {
+    if (scrollIntoView) scrollPending = true;
     const token = ++layoutToken;
     await tick();
     await nextFrame();
@@ -71,7 +75,8 @@
 
     let targets = visible(step.targets);
     if (targets.length === 0) targets = visible(step.fallback);
-    if (scrollIntoView && targets[0]) targets[0].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (scrollPending && targets[0]) targets[0].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    scrollPending = false;
 
     const union = unionRect(targets.map((el) => {
       const r = el.getBoundingClientRect();
@@ -221,7 +226,7 @@
         <Icon name="sparkles" size={12} color="var(--accent-primary)" />
         <span>{$say('tour.step', { n: index + 1, total: TOUR_STEPS.length })}</span>
       </span>
-      <button type="button" class="tour-close" title="{$say('tour.skip')} (Esc)" aria-label={$say('tour.skip')} on:click={() => finish(false)}>
+      <button type="button" class="tour-close" title="Skip (Esc)" aria-label="Skip tour" on:click={() => finish(false)}>
         <Icon name="close" size={14} />
       </button>
     </div>
@@ -255,22 +260,23 @@
       </div>
 
       <div class="tour-buttons">
+        <!-- Buttons keep the same plain labels in both voices. -->
         {#if index === 0}
           <button type="button" class="btn-secondary btn-sm" on:click={() => finish(false)}>
-            <span>{$say('tour.skip')}</span>
+            <span>Skip</span>
           </button>
         {:else}
           <button type="button" class="btn-secondary btn-sm" on:click={handleBack}>
             <Icon name="arrow-left" size={12} />
-            <span>{$say('tour.back')}</span>
+            <span>Back</span>
           </button>
         {/if}
         <button type="button" class="btn-primary btn-sm tour-next" bind:this={primaryButton} on:click={handleNext}>
           {#if isLast}
             <Icon name="check" size={13} color="#ffffff" strokeWidth={2.5} />
-            <span>{$say('tour.finish')}</span>
+            <span>Let's go</span>
           {:else}
-            <span>{$say('tour.next')}</span>
+            <span>Next</span>
             <Icon name="arrow-right" size={12} color="#ffffff" />
           {/if}
         </button>
