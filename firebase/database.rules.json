@@ -9,8 +9,8 @@
         ".write": "newData.exists()",
         ".validate": "newData.hasChildren(['title', 'timestamp_utc'])",
         "title": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 300" },
-        "source_url": { ".validate": "newData.isString() && newData.val().length <= 2000 && newData.val().matches(/^$|^https?:\\/\\/(www\\.|paste\\.)?fitgirl-repacks\\.site\\/[^\\s]*$|^https?:\\/\\/(www\\.)?fuckingfast\\.co\\/[^\\s]*$/)" },
-        "image_url": { ".validate": "newData.isString() && newData.val().length <= 8000 && newData.val().matches(/^$|^https?:\\/\\/[^\\s]+$|^data:image\\/svg\\+xml/)" },
+        "source_url": { ".validate": "newData.isString() && newData.val().length <= 2000 && newData.val().matches(/^(https?:\\/\\/(www\\.|paste\\.)?fitgirl-repacks\\.site\\/[!-\ufffd]*|https?:\\/\\/(www\\.)?fuckingfast\\.co\\/[!-\ufffd]*)?$/)" },
+        "image_url": { ".validate": "newData.isString() && newData.val().length <= 8000 && newData.val().matches(/^(https?:\\/\\/[!-\ufffd]+|data:image\\/svg\\+xml.*)?$/)" },
         "timestamp_utc": { ".validate": "newData.isString() && newData.val().length <= 40" },
         "total_parts": { ".validate": "newData.isNumber() && newData.val() >= 0" },
         "resolved_count": { ".validate": "newData.isNumber() && newData.val() >= 0" },
@@ -37,7 +37,7 @@
         ".write": "newData.exists()",
         ".validate": "newData.hasChildren(['urls'])",
         "urls": {
-          "$index": { ".validate": "newData.isString() && newData.val().length <= 2000 && newData.val().matches(/^https:\\/\\/dl\\.fuckingfast\\.co\\/[^\\s]+$/)" }
+          "$index": { ".validate": "newData.isString() && newData.val().length <= 2000 && newData.val().matches(/^https:\\/\\/dl\\.fuckingfast\\.co\\/[!-\ufffd]+$/)" }
         },
         "updated_at": { ".validate": "newData.isString() && newData.val().length <= 40" },
         "$other": { ".validate": false }
