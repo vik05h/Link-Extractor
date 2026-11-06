@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import Icon from './icons/Icon.svelte';
   import { playClickSound } from '../utils/audio';
   import type { HistoryRecord } from '../types';
+  import { say } from '../utils/voice';
 
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
@@ -62,7 +64,7 @@
     aria-modal="true" 
     tabindex="-1"
   >
-    <div class="modal-card glass-panel" role="document">
+    <div class="modal-card glass-panel" use:liquidGlass={{ style: 'thick' }} role="document">
       <div class="modal-header">
         <div class="modal-title">
           <Icon name="history" size={16} color="var(--accent-primary)" />
@@ -86,7 +88,7 @@
         {#if isLoading}
           <div class="loading-state">Loading history...</div>
         {:else if filteredRecords.length === 0}
-          <div class="empty-state">No saved extractions found in database.</div>
+          <div class="empty-state">{$say('vault.empty')}</div>
         {:else}
           <div class="records-list">
             {#each filteredRecords as r (r.id)}
@@ -99,7 +101,11 @@
                 >
                   <div class="history-title">{r.game_title}</div>
                   <div class="history-meta">
-                    <span>{r.parts_count} Parts</span>
+                    {#if r.is_partial}
+                      <span class="meta-partial">{r.resolved_count} of {r.parts_count} Parts (incomplete)</span>
+                    {:else}
+                      <span>{r.parts_count} Parts</span>
+                    {/if}
                     <span>•</span>
                     <span class="meta-size">{r.total_size || '0 B'}</span>
                     <span>•</span>
@@ -135,18 +141,21 @@
 {/if}
 
 <style>
+  .meta-partial {
+    color: var(--status-aging);
+    font-weight: 600;
+  }
+
   .modal-backdrop {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(0, 0, 0, 0.75);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
-    animation: backdropFadeIn 0.22s ease-out;
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .modal-card {
@@ -155,15 +164,11 @@
     max-height: 80vh;
     display: flex;
     flex-direction: column;
-    background: rgba(14, 18, 27, 0.96);
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.8), 0 0 24px rgba(0, 0, 0, 0.5);
     overflow: hidden;
     animation: modalScaleIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes backdropFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   @keyframes modalScaleIn {

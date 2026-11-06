@@ -2,15 +2,18 @@
   import { onMount, onDestroy } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playBypassSound } from '../utils/audio';
-  import { generateProceduralBannerSvg } from '../utils/banner';
   import { waitForBridge } from '../utils/bridgeReady';
   import type { GameRecord } from '../types';
+  import { liquidGlass } from '../utils/liquidGlass';
+  import { say } from '../utils/voice';
 
   export let games: GameRecord[] = [];
   export let isLoading: boolean = false;
+  export let isOffline: boolean = false;
   export let onLoadRecord: (rec: GameRecord) => void = () => {};
   export let onReextract: (rec: GameRecord) => void = () => {};
   export let onPushJd2: (slug: string, title: string) => void = () => {};
+  export let onGrab: (rec: GameRecord) => boolean = () => false;
   export let onRefresh: () => void = () => {};
 
   let searchQuery = '';
@@ -18,6 +21,7 @@
   let liveGamers = 1;
   let totalGrabs = 0;
   let heartbeatInterval: any = null;
+  let floatingHeight = 62;
 
   // Generate unique session per window/instance using sessionStorage + high-entropy timestamp
   const sessionId = (typeof window !== 'undefined' && sessionStorage.getItem('le_window_session_id')) 
@@ -68,11 +72,15 @@
     }
   }
 
-  function handleImageError(e: Event, title: string) {
-    const target = e.currentTarget as HTMLImageElement;
-    if (target && !target.src.startsWith('data:')) {
-      target.src = generateProceduralBannerSvg(title);
-    }
+  let failedCovers = new Set<string>();
+
+  function handleImageError(url: string) {
+    failedCovers = new Set(failedCovers).add(url);
+  }
+
+  // Generated banners carry only the title, which the glass below already shows.
+  function hasRealCover(url: string, failed: Set<string>): boolean {
+    return /^https?:\/\//i.test(url) && !failed.has(url);
   }
 
   function fetchStats() {
@@ -159,19 +167,22 @@
 
   function handleCardPreview(rec: GameRecord) {
     playClickSound();
-    // Preview/load game into Stage without incrementing grab count
+    // Looking at a game is not a grab.
     onLoadRecord(rec);
+  }
+
+  function showGrab(rec: GameRecord) {
+    if (onGrab(rec)) {
+      rec.used_count = (rec.used_count || 0) + 1;
+      totalGrabs += 1;
+      games = [...games];
+    }
   }
 
   function handleInstantLoad(rec: GameRecord, e?: MouseEvent) {
     if (e) e.stopPropagation();
     playClickSound();
-    rec.used_count = (rec.used_count || 0) + 1;
-    totalGrabs += 1;
-    games = [...games];
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.track_game_usage) {
-      (window as any).pywebview.api.track_game_usage(rec.slug).catch(() => {});
-    }
+    showGrab(rec);
     onLoadRecord(rec);
   }
 
@@ -188,49 +199,23 @@
       onReextract(rec);
       return;
     }
-    rec.used_count = (rec.used_count || 0) + 1;
-    totalGrabs += 1;
-    games = [...games];
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.track_game_usage) {
-      (window as any).pywebview.api.track_game_usage(rec.slug).catch(() => {});
-    }
+    showGrab(rec);
     onPushJd2(rec.slug, rec.title);
   }
 
   let filteredGames: GameRecord[] = [];
 
-  // Filtered games with client-side canonical deduplication to prevent ghost duplicates
-  $: {
-    const rawList = games.filter(g => {
-      const matchesSearch = !searchQuery || g.title.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesFilter = selectedFilter === 'all' || (g.freshness || 'fresh') === selectedFilter;
-      return matchesSearch && matchesFilter;
-    });
-
-    const seen = new Map<string, GameRecord>();
-    for (const g of rawList) {
-      const norm = g.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '')
-        .replace(/(deluxeedition|completeedition|ultimateedition|bonusost|bonuscontent|repack|repak|v\d+.*)/g, '')
-        .slice(0, 24);
-      const key = norm.length > 5 ? `t:${norm}` : `s:${g.slug}`;
-      if (!seen.has(key)) {
-        seen.set(key, g);
-      } else {
-        const prev = seen.get(key)!;
-        if ((g.timestamp_utc || '') > (prev.timestamp_utc || '')) {
-          seen.set(key, g);
-        }
-      }
-    }
-    filteredGames = Array.from(seen.values());
-  }
+  $: filteredGames = games.filter(g => {
+    const matchesSearch = !searchQuery || g.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFilter = selectedFilter === 'all' || (g.freshness || 'fresh') === selectedFilter;
+    return matchesSearch && matchesFilter;
+  });
 </script>
 
-<div class="discovery-hub-container">
+<div class="discovery-hub-container" style="--hub-float-height: {floatingHeight}px">
+  <div class="hub-floating-stack" bind:clientHeight={floatingHeight}>
   <!-- Hub Search & Filters Bar -->
-  <div class="hub-header-bar glass-panel" id="tour-discovery-hub">
+  <div class="hub-header-bar glass-panel" id="tour-discovery-hub" use:liquidGlass>
     <div class="search-box-wrapper">
       <span class="search-icon">
         <Icon name="search" size={16} color="var(--text-muted)" />
@@ -302,6 +287,14 @@
     </div>
   </div>
 
+  {#if isOffline}
+    <div class="hub-offline-banner glass-panel" role="status" use:liquidGlass>
+      <Icon name="alert-triangle" size={14} color="var(--status-aging)" />
+      <span>Could not reach the community database. {games.length > 0 ? 'Showing the last saved list.' : ''}</span>
+    </div>
+  {/if}
+  </div>
+
   <!-- Cards Poster Grid -->
   {#if isLoading}
     <div class="hub-loading glass-panel">
@@ -314,7 +307,15 @@
     </div>
   {:else if filteredGames.length === 0}
     <div class="hub-empty glass-panel">
-      <span class="empty-msg">No community repacks found matching your search.</span>
+      <span class="empty-msg">
+        {#if games.length > 0}
+          {$say('hub.noMatch')}
+        {:else if isOffline}
+          {$say('hub.offlineEmpty')}
+        {:else}
+          {$say('hub.empty')}
+        {/if}
+      </span>
       <button 
         type="button" 
         class="btn-retry-fetch" 
@@ -326,8 +327,8 @@
     </div>
   {:else}
     <div class="games-poster-grid">
-      {#each filteredGames as rec (rec.slug)}
-        <div class="game-poster-card glass-card">
+      {#each filteredGames as rec, index (rec.slug)}
+        <div class="game-poster-card" id={index === 0 ? 'tour-hub-card' : undefined} style="--card-index: {Math.min(index, 11)}">
           <!-- Poster Image -->
           <div class="card-cover-container">
             <button 
@@ -336,13 +337,13 @@
               on:click={() => handleCardPreview(rec)}
               aria-label="Preview {rec.title}"
             >
-              {#if rec.image_url}
+              {#if hasRealCover(rec.image_url, failedCovers)}
                 <img
                   src={rec.image_url}
                   alt={rec.title}
                   class="card-cover"
                   loading="lazy"
-                  on:error={(e) => handleImageError(e, rec.title)}
+                  on:error={() => handleImageError(rec.image_url)}
                 />
               {:else}
                 <div class="card-cover-placeholder">
@@ -363,7 +364,7 @@
               <button 
                 type="button" 
                 class="btn-health-pill" 
-                style="color: {rec.health_color || 'var(--text-secondary)'};"
+                style="color: {rec.health_color || 'rgba(255, 255, 255, 0.94)'};"
                 on:click={(e) => handleHealthCheck(rec, e)}
               >
                 <Icon name="shield-check" size={12} color="currentColor" />
@@ -373,7 +374,7 @@
           </div>
 
           <!-- Card Content Body -->
-          <div class="card-body">
+          <div class="card-body" use:liquidGlass={{ bezel: 14, strength: 22 }}>
             <div class="card-meta-top">
               <span class="badge badge-{rec.freshness || 'fresh'}">
                 {(rec.freshness || 'fresh').toUpperCase()} ({formatUserRelativeAge(rec.timestamp_utc, rec.age_str)})
@@ -447,12 +448,22 @@
 
 <style>
   .discovery-hub-container {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
+    position: relative;
     width: 100%;
     height: 100%;
     min-height: 0;
+  }
+
+  /* These float above the grid, so game art passes through the glass as it scrolls. */
+  .hub-floating-stack {
+    position: absolute;
+    top: var(--deck-offset);
+    left: 0;
+    right: 6px;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
   .hub-header-bar {
@@ -460,8 +471,9 @@
     justify-content: space-between;
     align-items: center;
     gap: 14px;
-    padding: 12px 16px;
+    padding: 10px 14px;
     flex-wrap: wrap;
+    border-radius: 18px;
   }
 
   .search-box-wrapper {
@@ -563,18 +575,16 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 8px;
+    padding: 3px 9px;
     border-radius: 12px;
     font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: #ffffff;
-    background: rgba(10, 14, 22, 0.85);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(0, 240, 160, 0.4);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    background: var(--glass-sheen), var(--glass-tint-clear);
+    backdrop-filter: var(--glass-backdrop-clear);
+    box-shadow: var(--glass-chip-highlight), 0 0 0 1px rgba(255, 255, 255, 0.14), 0 2px 8px rgba(0, 0, 0, 0.4);
     z-index: 2;
     letter-spacing: 0.02em;
   }
@@ -590,23 +600,31 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-subtle);
+    color: rgba(255, 255, 255, 0.78);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--glass-chip-highlight);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 0.35s var(--glass-spring), background 0.2s ease, color 0.2s ease;
   }
 
   .filter-pill:hover {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.07));
+    transform: scale(1.04);
+  }
+
+  .filter-pill:active {
+    transform: scale(0.96);
   }
 
   .filter-pill.active {
     color: #ffffff;
-    background: var(--accent-gradient);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.04) 50%),
+      var(--accent-gradient);
     border-color: transparent;
-    box-shadow: 0 0 12px var(--accent-glow);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 6px 16px -6px var(--accent-primary);
   }
 
   .pill-dot {
@@ -619,61 +637,74 @@
   .dot-aging { background: var(--status-aging); }
   .dot-expired { background: var(--status-expired); }
 
-  /* Poster Grid */
+  /* Poster Grid: scrolls the full height, with its first row starting below the floating bars. */
   .games-poster-grid {
+    --grid-top: calc(var(--deck-offset) + var(--hub-float-height) + 12px);
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
     grid-auto-rows: min-content;
     gap: 18px;
-    flex: 1;
+    height: 100%;
     overflow-y: auto;
-    padding: 4px 6px 40px 2px;
-    min-height: 0;
+    padding: var(--grid-top) 6px 40px 2px;
+    scroll-padding-top: var(--grid-top);
   }
 
+  /* The art fills the whole card, and the details float on it as glass. */
   .game-poster-card {
+    position: relative;
     display: flex;
     flex-direction: column;
-    min-height: 330px;
-    height: auto;
+    justify-content: flex-end;
+    min-height: 348px;
     overflow: hidden;
     cursor: pointer;
-    background: var(--bg-surface);
-    border-radius: var(--radius-md);
+    background: #0b0e14;
+    border-radius: 20px;
     text-align: left;
-    padding: 0;
-    border: 1px solid var(--border-subtle);
-    flex-shrink: 0;
-    will-change: transform, box-shadow;
-    animation: cardEntrance 0.35s cubic-bezier(0.16, 1, 0.3, 1) backwards;
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease, box-shadow 0.25s ease;
+    padding: 8px;
+    box-shadow: var(--glass-shadow), 0 0 0 1px rgba(255, 255, 255, 0.09);
+    content-visibility: auto;
+    contain-intrinsic-size: auto 348px;
+    transition: transform 0.4s var(--glass-spring), box-shadow 0.25s ease;
   }
 
   .game-poster-card:hover {
-    transform: translate3d(0, -4px, 0);
-    border-color: var(--accent-primary);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6), 0 0 16px var(--accent-glow);
+    transform: translate3d(0, -4px, 0) scale(1.012);
+    box-shadow:
+      0 20px 40px -14px rgba(0, 0, 0, 0.7),
+      0 0 0 1px rgba(255, 255, 255, 0.24),
+      0 0 26px -6px var(--accent-glow);
+  }
+
+  /* Returning to the Hub or changing a filter should feel instant, and only the first screen needs this. */
+  .game-poster-card:nth-child(-n + 24) {
+    animation: cardEntrance 0.34s var(--glass-settle) backwards;
+    animation-delay: calc(var(--card-index) * 16ms);
+  }
+
+  /* At startup the cards wait for the splash to hand over. This ends before .is-revealing does. */
+  :global(.app-layout-root.is-revealing) .game-poster-card:nth-child(-n + 24) {
+    animation-duration: 0.62s;
+    animation-delay: calc(0.3s + var(--card-index) * 45ms);
+  }
+
+  :global(.app-layout-root.is-booting) .game-poster-card {
+    animation: none;
   }
 
   @keyframes cardEntrance {
     from {
       opacity: 0;
-      transform: translate3d(0, 14px, 0) scale(0.97);
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0) scale(1);
+      transform: translate3d(0, 26px, 0) scale(0.965);
     }
   }
 
   .card-cover-container {
-    position: relative;
-    width: 100%;
-    height: 160px;
-    min-height: 160px;
-    background: rgba(0, 0, 0, 0.4);
+    position: absolute;
+    inset: 0;
     overflow: hidden;
-    flex-shrink: 0;
+    background: #0b0e14;
   }
 
   .card-cover-action {
@@ -692,26 +723,29 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transition: transform 0.3s ease;
+    object-position: center 18%;
+    transition: transform 0.6s var(--glass-settle);
   }
 
   .game-poster-card:hover .card-cover {
-    transform: scale(1.05);
+    transform: scale(1.06);
   }
 
   .card-cover-placeholder {
     width: 100%;
     height: 100%;
+    padding-bottom: 168px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(16, 185, 129, 0.05);
+    background:
+      radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--accent-primary) 34%, transparent), transparent 60%),
+      radial-gradient(circle at 75% 60%, color-mix(in srgb, var(--accent-secondary) 26%, transparent), transparent 60%);
   }
 
   .card-cover-overlay {
     position: absolute;
-    bottom: 8px;
-    left: 8px;
+    top: 8px;
     right: 8px;
     display: flex;
     justify-content: flex-end;
@@ -721,29 +755,40 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 4px 9px;
+    padding: 4px 10px;
+    border: 0;
     border-radius: 12px;
     font-size: 10.5px;
     font-weight: 700;
-    background: rgba(10, 12, 18, 0.9);
-    backdrop-filter: blur(8px);
-    border: 1px solid var(--border-subtle);
+    background: var(--glass-sheen), var(--glass-tint-clear);
+    backdrop-filter: var(--glass-backdrop-clear);
+    box-shadow: var(--glass-chip-highlight), 0 0 0 1px rgba(255, 255, 255, 0.14), 0 2px 8px rgba(0, 0, 0, 0.4);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: transform 0.35s var(--glass-spring), filter 0.2s ease;
   }
 
   .btn-health-pill:hover {
-    border-color: #ffffff;
+    transform: scale(1.05);
     filter: brightness(1.2);
   }
 
   .card-body {
-    padding: 14px 16px;
+    /* Darker than the bars, because this glass often sits on bright art and carries small text. */
+    --glass-backdrop: blur(10px) saturate(170%) brightness(0.56);
+    position: relative;
+    z-index: 1;
+    padding: 12px 14px;
     display: flex;
     flex-direction: column;
-    gap: 9px;
-    flex: 1;
+    gap: 8px;
     width: 100%;
+    border-radius: 14px;
+    background: var(--glass-sheen), var(--glass-tint);
+    backdrop-filter: var(--glass-backdrop);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.13),
+      inset 0 1px 1px rgba(255, 255, 255, 0.28),
+      0 8px 20px -10px rgba(0, 0, 0, 0.7);
   }
 
   .card-meta-top {
@@ -757,7 +802,7 @@
     align-items: center;
     gap: 4px;
     font-size: 11.5px;
-    color: var(--text-muted);
+    color: rgba(255, 255, 255, 0.72);
     font-family: var(--font-mono);
   }
 
@@ -806,7 +851,7 @@
     justify-content: space-between;
     align-items: center;
     font-size: 11.5px;
-    color: var(--text-secondary);
+    color: rgba(255, 255, 255, 0.78);
   }
 
   .card-time {
@@ -838,6 +883,16 @@
     margin-top: 4px;
   }
 
+  .card-actions-row :global(.btn-primary) {
+    flex: 1;
+    white-space: nowrap;
+  }
+
+  .card-actions-row :global(.btn-secondary) {
+    flex: 0 0 auto;
+    padding: 6px 13px;
+  }
+
   .btn-sm {
     padding: 6px 10px;
     font-family: var(--font-display);
@@ -866,12 +921,23 @@
   }
 
   .hub-loading {
+    margin-top: calc(var(--deck-offset) + var(--hub-float-height) + 12px);
     padding: 40px;
     text-align: center;
     color: var(--text-secondary);
   }
 
+  .hub-offline-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+
   .hub-empty {
+    margin-top: calc(var(--deck-offset) + var(--hub-float-height) + 12px);
     display: flex;
     flex-direction: column;
     align-items: center;

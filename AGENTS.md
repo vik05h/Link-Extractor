@@ -25,17 +25,23 @@ This document defines repository standards, architectural boundaries, runtime co
 
 | Module | Responsibility | Critical Constraints |
 | :--- | :--- | :--- |
-| [`main.py`](file:///c:/Code/link/main.py) | Application entrypoint, pywebview WebView2 window initialization, and RPC bridge binding. | Keep modular and minimal (< 100 lines); delegate state and business logic to `bridge.py`. |
-| [`community.py`](file:///c:/Code/link/community.py) | Community Cloud Cache REST client (Firebase RTDB), local timezone intelligence, and 1-byte health checks. | Zero-SDK integration with standard `urllib`/`json`; enforce split metadata/payload schema and overwrite rules. |
-| [`utils.py`](file:///c:/Code/link/utils.py) | Path resolution (`get_app_data_dir`, `get_export_dir`), settings I/O, and Win32 icon binding. | Never hardcode local paths or `%TEMP%` when frozen. |
-| [`bridge.py`](file:///c:/Code/link/bridge.py) | High-speed RPC Bridge connecting Python workers to the hardware-accelerated WebView2 frontend. | Use private attributes (`self._window`) to prevent COM recursion during JS reflection. |
-| [`frontend/`](file:///c:/Code/link/frontend/) | Next-gen Astro + Svelte + Web Audio frontend (Living Canvas, Defrag Mosaic, Discovery Hub, Apple Liquid Glass). | Keep zero emojis, use `<Icon />` SVG components, and build to `dist_web/`. |
-| [`engine.py`](file:///c:/Code/link/engine.py) | Playwright asynchronous multi-tab worker pool & Cloudflare Turnstile bypass. | Share a single browser context across concurrent tabs to minimize memory footprint. Use detected browser channel (Chrome/Edge). |
-| [`scraper.py`](file:///c:/Code/link/scraper.py) | HTML parsing for FitGirl game pages, pastebins, cover art, and direct links. | Use `urllib.parse` and BeautifulSoup/lxml with defensive fallbacks for missing mirrors. |
-| [`validator.py`](file:///c:/Code/link/validator.py) | Rapid 1-byte HTTP Range GET requests to verify links and aggregate total repack sizes. | Always sanitize filenames extracted from `Content-Disposition`. |
-| [`history.py`](file:///c:/Code/link/history.py) | Embedded SQLite archive for saved extractions and link re-use. | Use 100% parameterized SQL queries (`?`). Never persist aborted extractions. |
-| [`integrations.py`](file:///c:/Code/link/integrations.py) | JDownloader 2 FlashGot HTTP API (port 9666), `.crawljob`, `.txt`, `.json` exporters. | Append `#filename.rar` fragments to all URLs so JD2 avoids triggering "Deep Link Analysis". |
-| [`updater.py`](file:///c:/Code/link/updater.py) | GitHub Releases API updater with semantic versioning comparisons. | Normalize version tuples to 3 parts (e.g. `v3.1` == `(3, 1, 0)`). |
+| [`main.py`](file:///c:/Code/link/main.py) | Entrypoint: pywebview WebView2 window and bridge binding. | Keep under 100 lines. |
+| [`bridge.py`](file:///c:/Code/link/bridge.py) | RPC adapter between the frontend and the modules below. | An adapter only: decisions live in the modules. Private attributes (`self._window`) prevent COM recursion during JS reflection. |
+| [`pipeline.py`](file:///c:/Code/link/pipeline.py) | Runs one extraction and decides what happens to the result. | The single source of truth for what gets saved and published. Reaches the browser and network only through `PipelinePorts`. |
+| [`links.py`](file:///c:/Code/link/links.py) | Which links are trusted. | Every link from the database, clipboard, or a web page passes through here. Hostnames compare exactly. |
+| [`game_records.py`](file:///c:/Code/link/game_records.py) | One definition of "the same game" and "expired"; cleans shared records. | Pure functions only. |
+| [`firebase_client.py`](file:///c:/Code/link/firebase_client.py) | Firebase REST calls. | Zero-SDK `urllib`/`json`. Failures raise `FirebaseError`. |
+| [`community.py`](file:///c:/Code/link/community.py) | Community Cloud Cache: feed, links, publishing, presence, usage. | Clients add and update game records; deleting belongs to the admin. |
+| [`issues.py`](file:///c:/Code/link/issues.py) | Community Issue Center: reports, votes, comments, moderation. | The server judges the admin key. Local reports are only an outbox. |
+| [`telemetry.py`](file:///c:/Code/link/telemetry.py) | Crash reports. | Everything goes through `report_crash_log`, which applies the opt-out and removes personal data. |
+| [`utils.py`](file:///c:/Code/link/utils.py) | Path resolution, settings I/O, logging, Win32 icon binding. | Never hardcode local paths or `%TEMP%` when frozen. |
+| [`frontend/`](file:///c:/Code/link/frontend/) | Astro + Svelte + Web Audio frontend. Liquid Glass lives in `styles/glass.css` and `utils/liquidGlass.ts`, the bars' bubble in `utils/glassBubble.ts`; startup in `utils/boot.ts`. | Use `<Icon />` SVG components for icons, and build to `dist_web/`. The splash must always end, so anything added to startup goes through `runBoot`. Lines in the tour, pop-ups and empty screens go through `utils/voice.ts` as a GenZ line with a classic twin; errors, buttons and Settings are written plain in place. |
+| [`engine.py`](file:///c:/Code/link/engine.py) | Playwright multi-tab worker pool & Cloudflare Turnstile bypass. | Share a single browser context across concurrent tabs. Use detected browser channel (Chrome/Edge). |
+| [`scraper.py`](file:///c:/Code/link/scraper.py) | Parsing of FitGirl game pages and pastebins, cover art. | Regular expressions with defensive fallbacks for missing mirrors. |
+| [`validator.py`](file:///c:/Code/link/validator.py) | 1-byte HTTP Range link checks and repack size totals. | Keep the three verdicts apart: alive, dead, unknown. Sanitize filenames from `Content-Disposition`. |
+| [`history.py`](file:///c:/Code/link/history.py) | SQLite archive of extractions. | 100% parameterized SQL (`?`). Cancelled runs are never persisted. |
+| [`integrations.py`](file:///c:/Code/link/integrations.py) | JDownloader 2 FlashGot HTTP API (port 9666), `.crawljob`, `.txt`, `.json` exporters. | Append `#filename.rar` fragments to all URLs so JD2 avoids "Deep Link Analysis". |
+| [`updater.py`](file:///c:/Code/link/updater.py) | GitHub Releases update check and installer. | Install only files that pass the source, size, SHA-256, and file type checks. Normalize version tuples to 3 parts. |
 
 ---
 
@@ -46,10 +52,25 @@ This document defines repository standards, architectural boundaries, runtime co
 python main.py
 ```
 
-### Validate Syntax Across Modules
+### Run the Checks
 ```powershell
-python -c "import main, bridge, engine, scraper, validator, history, integrations, updater, utils, community; print('All Phase 4 modules OK')"
+python -m pytest
+ruff check .
+pyright
+cd frontend; npm run check; npm test
 ```
+Tests run offline against a local Firebase stand-in. After changing `firebase/database.rules.json`, also run the emulator tests in [`firebase/README.md`](file:///c:/Code/link/firebase/README.md), because those rules protect every installed copy.
+
+### Validate Imports
+```powershell
+python -c "import main, bridge, pipeline, engine, scraper, validator, history, integrations, updater, utils, community, issues, telemetry, palette, links, firebase_client, game_records, version; print('All modules OK')"
+```
+
+### Change the Version
+```powershell
+python scripts/set_version.py 4.0.0
+```
+Then add a matching entry to `VERSION_CHANGELOGS` in `updater.py`.
 
 ### Build Standalone Executable
 ```powershell
@@ -58,12 +79,7 @@ Get-Process -Name LinkExtractor, main -ErrorAction SilentlyContinue | Stop-Proce
 Start-Sleep -Seconds 1
 pyinstaller LinkExtractor_Single.spec --noconfirm
 ```
-*Output binary:* `dist/LinkExtractor.exe`
-
-### Run Security Penetration Test Baseline
-```powershell
-python scratch/security_pen_test.py
-```
+*Output binary:* `dist/LinkExtractor.exe`. Add new modules to `hiddenimports` in the spec files.
 
 ---
 
@@ -72,12 +88,14 @@ python scratch/security_pen_test.py
 * **WebView2 RPC Bridge Reflection Recursion**: pywebview iterates over public attributes of the exposed API object when generating JavaScript bindings. Assigning the window instance directly as `self.window` triggered recursive COM interface inspection and crashed with `RecursionError` or thread deadlocks. Always store window references in private attributes (`self._window`).
 * **Off-Screen Headed Browser**: Launching visible browser instances (`headless=False`) causes Windows to steal foreground focus and throttle VSync frame delivery to the background application. Chromium/Edge must be launched with `--window-position=-3000,-3000` to maintain 100% Cloudflare Turnstile token resolution without stealing window focus.
 * **PyInstaller Single-File Web Assets**: PyInstaller single-file binaries unpack to `%TEMP%/_MEIxxxxxx`. The WebView2 frontend must be bundled via `('dist_web', 'dist_web')` in `LinkExtractor_Single.spec` and resolved at runtime via `utils.get_resource_path('dist_web')`.
-* **Legacy Flet UI Context (v3.5.0 and earlier)**: Prior to v3.8.0, Link Extractor used Python `flet` (Flutter runner). The legacy codebase suffered from thread buffer stalls, COM taskbar icon binding issues, and heavyweight memory usage. In v3.8.0, the entire `ui/` directory was deleted and replaced by Astro 5 + Svelte 5 + Windows WebView2, completely eliminating Flutter runner dependencies.
+* **Glass Sees Only As Far As Its Backdrop Root**: An ancestor with `backdrop-filter`, `filter`, `mask`, or opacity below 1 stops a surface sampling the page. Glass inside glass gets no refraction, and a dialog's scrim must fade its background color instead of its opacity.
+* **The database has no login**: Anyone can call Firebase directly, so server protection lives only in `firebase/database.rules.json`. Client checks in `links.py` protect the client itself.
 
 ---
 
 ## 5. Context Pointers
 
 * For persistent architectural decisions, technical traps, and historical context: See [`MEMORY.md`](file:///c:/Code/link/MEMORY.md).
-* For Phase 3 (Firebase Community Cloud Cache) specifications and roadmap: See [`PHASES.md`](file:///c:/Code/link/PHASES.md).
+* For the roadmap: See [`PHASES.md`](file:///c:/Code/link/PHASES.md).
+* For database rules and Admin Mode setup: See [`firebase/README.md`](file:///c:/Code/link/firebase/README.md).
 * For PR standards and local environment setup: See [`CONTRIBUTING.md`](file:///c:/Code/link/CONTRIBUTING.md).

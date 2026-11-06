@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import LivingCanvas from './LivingCanvas.svelte';
   import GameStage from './GameStage.svelte';
   import DiscoveryHub from './DiscoveryHub.svelte';
@@ -10,10 +10,34 @@
   import OnboardingTour from './OnboardingTour.svelte';
   import ReportIssueModal from './ReportIssueModal.svelte';
   import ClipboardSentinel from './ClipboardSentinel.svelte';
+  import SplashLoader from './SplashLoader.svelte';
+  import BrandLogo from './BrandLogo.svelte';
   import Icon from './icons/Icon.svelte';
   import type { PartItem, GameRecord } from '../types';
   import { playClickSound, playSuccessChime, toggleAudioMute, isAudioMuted } from '../utils/audio';
   import { waitForBridge } from '../utils/bridgeReady';
+  import { APP_VERSION, FIRST_RUN_KEY } from '../version';
+  import { runBoot } from '../utils/boot';
+  import { initLiquidGlass, liquidGlass, watchGlassPerformance } from '../utils/liquidGlass';
+  import { glassBubble } from '../utils/glassBubble';
+  import { say, sayNow } from '../utils/voice';
+  import { chooseLaunchScreen } from '../utils/launch';
+  import { advanceSample, createSampleGame, type SampleGame } from '../utils/sampleGame';
+
+  // Startup: the splash shows while loading, then plays into the app, then the rest settles.
+  const REVEAL_SETTLE_MS = 620;
+  let bootPhase: 'loading' | 'exiting' | 'settling' | 'done' = 'loading';
+  let bootProgress = 0.05;
+  let bootStatus = 'Starting up';
+  const afterBoot: (() => void)[] = [];
+
+  // Held so the browser keeps these decoded until the Hub shows them.
+  const preloadedCovers: HTMLImageElement[] = [];
+
+  let resolveFirstSync: (feed: any) => void = () => {};
+  const firstSyncEnded = new Promise<any>((resolve) => {
+    resolveFirstSync = resolve;
+  });
 
   // Navigation View: 'community' or 'stage'
   let currentView: 'community' | 'stage' = 'community';
@@ -26,11 +50,12 @@
   let isRunning = false;
   let statusMessage = 'Paste any FitGirl URL or click a Community Repack to begin.';
   let parts: PartItem[] = [];
-  let logs: string[] = ['[System] Link Extractor v3.8 Turbo Engine initialized.'];
+  let logs: string[] = [`[System] Link Extractor ${APP_VERSION} Turbo Engine initialized.`];
 
   // Community Feed State
   let communityGames: GameRecord[] = [];
   let isCommunityLoading = true;
+  let isCommunityOffline = false;
 
   // Modals & Sound
   let settingsOpen = false;
@@ -38,6 +63,8 @@
   let conflictModalOpen = false;
   let conflictRecord: any = null;
   let pendingTargetUrl = '';
+  let conflictFromPipeline = false;
+  let isCheckingCache = false;
   let audioMuted = false;
   let currentTheme = 'adaptive';
   let tourOpen = false;
@@ -47,10 +74,19 @@
   let updateModalOpen = false;
   let updateReleaseInfo: any = null;
   let isFrozenApp = false;
-  let appCurrentVersion = 'v3.8.1';
+  let appCurrentVersion = APP_VERSION;
   let hasUpdateAvailable = false;
-  let isFirstRunPendingTour = false;
+  /** What's New is showing because this version just arrived. */
+  let isFirstRunOfVersion = false;
 
+  function markVersionSeen() {
+    isFirstRunOfVersion = false;
+    try {
+      localStorage.setItem(FIRST_RUN_KEY, 'true');
+    } catch {}
+  }
+
+  // After an update, What's New is the whole welcome; the tour stays on its button.
   function handleCloseUpdateModal() {
     updateModalOpen = false;
     if (typeof window !== 'undefined' && updateReleaseInfo?.latest_version) {
@@ -58,26 +94,68 @@
         sessionStorage.setItem('le_dismissed_update_' + updateReleaseInfo.latest_version, 'true');
       } catch {}
     }
-    if (isFirstRunPendingTour) {
-      isFirstRunPendingTour = false;
-      try {
-        localStorage.setItem('le_first_run_v3.8.1', 'true');
-      } catch {}
-      setTimeout(() => {
-        tourOpen = true;
-      }, 350);
-    }
+    if (isFirstRunOfVersion) markVersionSeen();
   }
 
   function handleStartTourFromUpdate() {
     updateModalOpen = false;
-    isFirstRunPendingTour = false;
-    try {
-      localStorage.setItem('le_first_run_v3.8.1', 'true');
-    } catch {}
-    setTimeout(() => {
-      tourOpen = true;
-    }, 350);
+    markVersionSeen();
+    setTimeout(startTour, 350);
+  }
+
+  // The tour: while it is open the Stage shows a made-up sample game, and the real game,
+  // including a running extraction, carries on untouched underneath until it closes.
+  const SAMPLE_TICK_MS = 650;
+  let tourSample: SampleGame | null = null;
+  let sampleTimer: ReturnType<typeof setInterval> | null = null;
+  let viewBeforeTour: 'community' | 'stage' = 'community';
+  let scrollBeforeTour = 0;
+  /** The real game's Stage tab, kept while the tour rebuilds the Stage for the sample. */
+  let realStageView: 'mosaic' | 'table' | 'log' = 'mosaic';
+  let screenBody: HTMLElement;
+
+  function startTour() {
+    if (tourOpen) return;
+    viewBeforeTour = currentView;
+    scrollBeforeTour = screenBody?.scrollTop ?? 0;
+    historyOpen = false;
+    settingsOpen = false;
+    updateModalOpen = false;
+    reportModalOpen = false;
+    tourSample = createSampleGame();
+    tourOpen = true;
+  }
+
+  // The sample starts resolving when the tour first shows the Stage, so its blocks are still lighting up.
+  function showTourView(view: 'community' | 'stage') {
+    currentView = view;
+    if (view === 'stage' && !sampleTimer) {
+      sampleTimer = setInterval(() => {
+        if (tourSample) tourSample = { ...tourSample, parts: advanceSample(tourSample.parts) };
+      }, SAMPLE_TICK_MS);
+    }
+  }
+
+  function endTour() {
+    tourOpen = false;
+    if (sampleTimer) clearInterval(sampleTimer);
+    sampleTimer = null;
+    tourSample = null;
+    currentView = viewBeforeTour;
+    tick().then(() => {
+      if (screenBody) screenBody.scrollTop = scrollBeforeTour;
+    });
+  }
+
+  // One table, read both ways: which item is lit, and where a pick goes.
+  const NAV_TARGETS = ['community', 'stage', 'vault'] as const;
+  $: activeNavIndex = NAV_TARGETS.indexOf(historyOpen ? 'vault' : currentView);
+
+  function selectNav(index: number) {
+    playClickSound();
+    const target = NAV_TARGETS[index];
+    historyOpen = target === 'vault';
+    if (target !== 'vault') currentView = target;
   }
 
   // URL Input
@@ -109,86 +187,44 @@
     }
   }
 
-  function isRecordExpired(rec: any): boolean {
-    if (!rec) return false;
-    if (rec.is_expired) return true;
-    if (rec.freshness === 'expired') return true;
-    if (typeof rec.age_str === 'string' && (rec.age_str.includes('day') || rec.age_str.includes('week') || rec.age_str.includes('month'))) {
-      return true;
-    }
-    if (rec.timestamp_utc) {
-      try {
-        const t = new Date(rec.timestamp_utc).getTime();
-        if (!isNaN(t) && (Date.now() - t) >= 86400000) { // 24 hours
-          return true;
-        }
-      } catch {}
-    }
-    return false;
-  }
-
-  // Start Extraction with Duplicate Check
+  // Start Extraction with Duplicate Check. Python decides what counts as the same game.
   function startExtraction(urlToExtract?: string, forceFresh: boolean = false) {
     const target = (urlToExtract || inputUrl).trim();
     if (!target) {
       showToast('Please paste a valid FitGirl game or pastebin URL.');
       return;
     }
-
-    // Check if game already exists in DB before extracting, unless forceFresh is specified
-    if (!forceFresh) {
-      // 1. Fast client-side check against loaded community games
-      const slugMatch = target.includes('fitgirl-repacks.site')
-        ? target.split('/').filter(Boolean).pop()
-        : '';
-
-      const fastMatch = communityGames.find(g => 
-        (slugMatch && g.slug === slugMatch) ||
-        g.source_url === target ||
-        (slugMatch && g.source_url && g.source_url.includes(slugMatch))
-      );
-
-      if (fastMatch) {
-        if (isRecordExpired(fastMatch)) {
-          // Cached links are outdated (>24h). Do not suggest dead links; automatically extract fresh mirrors
-          const ageStr = fastMatch.age_str || '2+ days ago';
-          showToast(`Cached links for "${fastMatch.title}" are outdated (${ageStr}). Resolving fresh mirrors to update database...`);
-          executeExtraction(target, true);
-          return;
-        }
-        pendingTargetUrl = target;
-        conflictRecord = {
-          ...fastMatch,
-          source: 'community'
-        };
-        conflictModalOpen = true;
-        return;
-      }
-
-      // 2. Bridge check against Firebase RTDB & SQLite history
-      if (typeof window !== 'undefined' && (window as any).pywebview?.api?.check_existing_game) {
-        (window as any).pywebview.api.check_existing_game(target).then((res: any) => {
-          if (res && res.exists && res.record) {
-            if (res.is_expired || isRecordExpired(res.record)) {
-              const ageStr = res.record.age_str || '2+ days ago';
-              showToast(`Cached links for "${res.record.title}" are outdated (${ageStr}). Resolving fresh mirrors to update database...`);
-              executeExtraction(target, true);
-            } else {
-              pendingTargetUrl = target;
-              conflictRecord = res.record;
-              conflictModalOpen = true;
-            }
-          } else {
-            executeExtraction(target, false);
-          }
-        }).catch(() => {
-          executeExtraction(target, false);
-        });
-        return;
-      }
+    if (isRunning || isCheckingCache) {
+      showToast('An extraction is already running.');
+      return;
     }
 
-    executeExtraction(target, forceFresh);
+    if (forceFresh || !(window as any).pywebview?.api?.check_existing_game) {
+      executeExtraction(target, forceFresh);
+      return;
+    }
+
+    isCheckingCache = true;
+    (window as any).pywebview.api.check_existing_game(target).then((res: any) => {
+      isCheckingCache = false;
+      if (res && res.exists && res.record) {
+        if (res.is_expired) {
+          const ageStr = res.record.age_str || 'more than a day ago';
+          showToast(`Cached links for "${res.record.title}" are outdated (${ageStr}). Resolving fresh mirrors to update database...`);
+          executeExtraction(target, true);
+        } else {
+          pendingTargetUrl = target;
+          conflictFromPipeline = false;
+          conflictRecord = res.record;
+          conflictModalOpen = true;
+        }
+      } else {
+        executeExtraction(target, false);
+      }
+    }).catch(() => {
+      isCheckingCache = false;
+      executeExtraction(target, false);
+    });
   }
 
   function executeExtraction(target: string, forceFresh: boolean) {
@@ -196,20 +232,27 @@
     isRunning = true;
     currentView = 'stage';
     sourceUrl = target;
+    activeGameSlug = '';
     statusMessage = 'Connecting to high-speed resolution pool...';
     parts = [];
     logs = [`[Pipeline] Starting multi-tab extraction for: ${target} ${forceFresh ? '(Overwrite Mode)' : ''}`];
 
     if (typeof window !== 'undefined' && (window as any).pywebview) {
-      (window as any).pywebview.api.start_extraction(target, null, forceFresh);
+      (window as any).pywebview.api.start_extraction(target, null, forceFresh).then((res: any) => {
+        if (res && res.status === 'error') {
+          isRunning = false;
+          statusMessage = res.message;
+          showToast(res.message);
+        }
+      });
     }
   }
 
   function handleSelectInstantConflict() {
     conflictModalOpen = false;
     if (conflictRecord) {
-      if (typeof window !== 'undefined' && (window as any).pywebview?.api?.decide_duplicate) {
-        (window as any).pywebview.api.decide_duplicate('instant');
+      if (conflictFromPipeline) {
+        (window as any).pywebview?.api?.decide_duplicate('instant');
       }
       handleLoadCommunityRecord(conflictRecord);
     }
@@ -217,8 +260,10 @@
 
   function handleSelectFreshConflict() {
     conflictModalOpen = false;
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.decide_duplicate) {
-      (window as any).pywebview.api.decide_duplicate('fresh');
+    if (conflictFromPipeline) {
+      // The run that asked is still going and carries on from here.
+      (window as any).pywebview?.api?.decide_duplicate('fresh');
+      return;
     }
     const target = pendingTargetUrl || sourceUrl || inputUrl;
     if (target) {
@@ -230,8 +275,8 @@
     conflictModalOpen = false;
     conflictRecord = null;
     pendingTargetUrl = '';
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.decide_duplicate) {
-      (window as any).pywebview.api.decide_duplicate('cancel');
+    if (conflictFromPipeline) {
+      (window as any).pywebview?.api?.decide_duplicate('cancel');
     }
   }
 
@@ -245,8 +290,7 @@
   // Load Community Record directly into Stage
   function handleLoadCommunityRecord(rec: any) {
     if (!rec) return;
-    activeGameSlug = rec.slug || '';
-    trackActiveGameUsage();
+    activeGameSlug = rec.source === 'history' ? '' : (rec.slug || '');
 
     gameTitle = rec.title;
     coverUrl = rec.image_url;
@@ -269,8 +313,8 @@
         };
       });
 
-      logs = [`[Database] Loaded ${rec.urls.length} verified direct links for ${gameTitle} with 0s wait!`];
-      showToast(`Loaded ${rec.urls.length} parts for ${gameTitle} with 0s wait!`);
+      logs = [`[Database] Loaded ${rec.urls.length} cached direct links for ${gameTitle} with 0s wait!`];
+      showToast(sayNow('toast.loadedParts', { count: rec.urls.length, title: gameTitle }));
       return;
     }
 
@@ -321,8 +365,8 @@
             }
           }
 
-          logs = [`[Community] Loaded ${urls.length} verified direct links for ${gameTitle}`];
-          showToast(`Loaded ${urls.length} parts for ${gameTitle} with 0s wait!`);
+          logs = [`[Community] Loaded ${urls.length} cached direct links for ${gameTitle}`];
+          showToast(sayNow('toast.loadedParts', { count: urls.length, title: gameTitle }));
         } else {
           showToast(`No links cached for ${rec.title}. Try live extraction.`);
         }
@@ -335,13 +379,17 @@
 
   function handleReextractGame(rec: any) {
     if (!rec) return;
-    const target = rec.source_url || rec.slug;
-    showToast(`Cached links for "${rec.title}" are outdated (${rec.age_str || '2+ days ago'}). Resolving fresh mirrors...`);
-    startExtraction(target, true);
+    if (!rec.source_url) {
+      showToast(`"${rec.title}" has no source page saved. Paste its FitGirl link to extract it again.`);
+      return;
+    }
+    showToast(`Cached links for "${rec.title}" are outdated (${rec.age_str || 'more than a day ago'}). Resolving fresh mirrors...`);
+    startExtraction(rec.source_url, true);
   }
 
   // Load History Item directly into Stage
   function handleLoadHistoryRecord(rec: any) {
+    activeGameSlug = '';
     gameTitle = rec.game_title;
     coverUrl = '';
     sourceUrl = rec.source_url;
@@ -358,32 +406,42 @@
       size: rec.total_size || ''
     }));
     logs = [`[Archive] Loaded ${rec.resolved_links.length} links for ${rec.game_title}`];
-    showToast(`Loaded ${rec.game_title} from History!`);
+    showToast(rec.is_partial
+      ? `Loaded ${rec.game_title}. This record is incomplete: ${rec.resolved_count} of ${rec.parts_count} parts.`
+      : sayNow('toast.loadedFromVault', { title: rec.game_title }));
   }
 
   let activeGameSlug = '';
+  const countedGrabs = new Set<string>();
 
-  function trackActiveGameUsage() {
-    const slug = activeGameSlug || (sourceUrl ? sourceUrl.split('/').filter(Boolean).pop() : '') || gameTitle;
-    if (slug && typeof window !== 'undefined' && (window as any).pywebview?.api?.track_game_usage) {
+  // Counts one grab per game per session, however many ways its links get used.
+  function countGrab(slug: string): boolean {
+    if (!slug || countedGrabs.has(slug)) return false;
+    countedGrabs.add(slug);
+    if ((window as any).pywebview?.api?.track_game_usage) {
       (window as any).pywebview.api.track_game_usage(slug).catch(() => {});
     }
+    return true;
   }
 
-  // Push to JDownloader 2
-  function handlePushToJd2(urls: string[], title: string) {
-    trackActiveGameUsage();
+  function pushUrlsToJd2(urls: string[], title: string) {
     if (!urls || urls.length === 0) {
       showToast('No URLs available to push to JDownloader 2.');
       return;
     }
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.push_to_jd2(urls, title, sourceUrl).then((res: any) => {
-        showToast(res?.message || 'Pushed to JDownloader 2!');
+        showToast(res?.success ? sayNow('toast.pushed', { count: urls.length }) : res?.message || 'Error communicating with JDownloader 2');
       }).catch(() => {
         showToast('Error communicating with JDownloader 2');
       });
     }
+  }
+
+  // Push the game on the Stage to JDownloader 2
+  function handlePushToJd2(urls: string[], title: string) {
+    countGrab(activeGameSlug);
+    pushUrlsToJd2(urls, title);
   }
 
   // Push community game directly to JDownloader 2
@@ -391,7 +449,7 @@
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.get_game_urls(slug).then((urls: string[]) => {
         if (urls && urls.length > 0) {
-          handlePushToJd2(urls, title);
+          pushUrlsToJd2(urls, title);
         } else {
           showToast(`No cached direct links found for ${title}.`);
         }
@@ -403,87 +461,86 @@
 
   // Export URLs
   function handleExport(format: 'txt' | 'json' | 'crawljob', urls: string[], title: string) {
-    trackActiveGameUsage();
+    countGrab(activeGameSlug);
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.export_urls(format, urls, title, totalSizeStr).then((res: any) => {
-        showToast(res.message || 'Export complete!');
+        const file = String(res?.file_path || '').split(/[\\/]/).pop();
+        showToast(res?.success && file ? sayNow('toast.exported', { file }) : res?.message || 'Export failed.');
       });
     }
   }
 
   // Copy all direct URLs
   function handleCopyAll(urls: string[]) {
-    trackActiveGameUsage();
+    countGrab(activeGameSlug);
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.copy_to_clipboard(urls.join('\n')).then(() => {
-        showToast(`Copied all ${urls.length} direct links to clipboard!`);
+        showToast(sayNow('toast.copiedAll', { count: urls.length }));
       });
     }
   }
 
-  let isFetchingCommunity = false;
-  let hasStartupRetried = false;
+  // Load the community list. A forced refresh, or a list that is too old, downloads a new one
+  // in the background, and community:feed_updated calls this again when that ends.
+  async function refreshCommunity(force: boolean = false): Promise<any> {
+    const ready = await waitForBridge('get_community_feed', 7000);
+    if (!ready) {
+      isCommunityLoading = false;
+      return null;
+    }
+    try {
+      const feed = await (window as any).pywebview.api.get_community_feed(force);
+      communityGames = feed?.games || [];
+      isCommunityOffline = !!feed?.offline;
+      // Keep the loader up only while there is nothing to show and a download is running.
+      isCommunityLoading = communityGames.length === 0 && !!feed?.syncing;
+      return feed;
+    } catch (err) {
+      console.error('[Community] API error:', err);
+      isCommunityLoading = false;
+      return null;
+    }
+  }
 
-  // Refresh Community Feed
-  function refreshCommunity(force: boolean = false) {
-    if (isFetchingCommunity && !force) return;
-    isFetchingCommunity = true;
-    isCommunityLoading = true;
+  function preloadCover(url: string): Promise<void> {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    preloadedCovers.push(image);
+    return image.decode();
+  }
 
-    // Safety timeout: ensure loading state never hangs indefinitely under any circumstances
-    const safetyTimer = setTimeout(() => {
-      if (isCommunityLoading) {
-        console.warn('[Community] Safety fallback timeout hit, releasing loader');
-        isCommunityLoading = false;
-        isFetchingCommunity = false;
+  async function bootApp() {
+    await runBoot(
+      {
+        waitForBridge: () => waitForBridge('get_community_feed', 7000),
+        loadFeed: () => refreshCommunity(),
+        waitForSync: () => firstSyncEnded,
+        preloadImage: preloadCover,
+      },
+      (progress, status) => {
+        bootProgress = progress;
+        bootStatus = status;
       }
-    }, 12000);
+    );
+    // Let the bar visibly reach the end before the card starts moving.
+    setTimeout(() => {
+      bootPhase = 'exiting';
+    }, 260);
+  }
 
-    waitForBridge('get_community_feed', 7000).then((ready) => {
-      if (!ready || typeof window === 'undefined' || !(window as any).pywebview?.api?.get_community_feed) {
-        clearTimeout(safetyTimer);
-        isCommunityLoading = false;
-        isFetchingCommunity = false;
-        return;
-      }
+  function handleSplashFinished() {
+    bootPhase = 'settling';
+    setTimeout(() => {
+      bootPhase = 'done';
+      afterBoot.splice(0).forEach((run) => run());
+      watchGlassPerformance();
+    }, REVEAL_SETTLE_MS);
+  }
 
-      (window as any).pywebview.api.get_community_feed(force)
-        .then((data: GameRecord[]) => {
-          clearTimeout(safetyTimer);
-          if (data && Array.isArray(data) && data.length > 0) {
-            communityGames = data;
-            isCommunityLoading = false;
-            isFetchingCommunity = false;
-          } else if (!force && !hasStartupRetried) {
-            // Initial startup load was empty — perform one graceful background auto-retry after 2.5s
-            hasStartupRetried = true;
-            isFetchingCommunity = false;
-            setTimeout(() => {
-              refreshCommunity(true);
-            }, 2500);
-          } else {
-            if (data && Array.isArray(data)) {
-              communityGames = data;
-            }
-            isCommunityLoading = false;
-            isFetchingCommunity = false;
-          }
-        })
-        .catch((err: any) => {
-          clearTimeout(safetyTimer);
-          console.error('[Community] API error:', err);
-          if (!force && !hasStartupRetried) {
-            hasStartupRetried = true;
-            isFetchingCommunity = false;
-            setTimeout(() => {
-              refreshCommunity(true);
-            }, 2500);
-          } else {
-            isCommunityLoading = false;
-            isFetchingCommunity = false;
-          }
-        });
-    });
+  function whenBooted(run: () => void) {
+    if (bootPhase === 'done') run();
+    else afterBoot.push(run);
   }
 
   // Manual check for updates triggered from Settings
@@ -515,6 +572,8 @@
 
   // Global Keyboard Shortcuts
   function handleGlobalKeydown(e: KeyboardEvent) {
+    // The tour owns the keyboard while it is open, and moving views under it would lose its place.
+    if (tourOpen) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
       if (e.key === 'Escape') {
         settingsOpen = false;
@@ -542,10 +601,38 @@
     } else if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
       e.preventDefault();
       if (parts.length > 0) {
-        const resolved = parts.filter(p => !p.excluded && (p.direct_url || p.url)).map(p => p.direct_url || p.url);
+        const resolved = parts.filter(p => !p.excluded && p.status === 'resolved' && p.direct_url).map(p => p.direct_url as string);
         handlePushToJd2(resolved, gameTitle);
       }
     }
+  }
+
+  // Says only what is true about a finished run. "Verified" needs every part present and checked.
+  function describeCompletion(d: any): { status: string; toast: string } {
+    const size = d.total_size_str || '0 B';
+    if (d.status === 'partial') {
+      const missing = d.expected_parts - d.parts_count;
+      return {
+        status: `Only ${d.parts_count} of ${d.expected_parts} parts are ready. A multi-part archive will not extract with parts missing.`,
+        toast: `${missing} of ${d.expected_parts} parts failed. These links are incomplete.`
+      };
+    }
+    if (d.verified) {
+      return {
+        status: `Verified 100% of parts (${size})! Direct links ready.`,
+        toast: sayNow('toast.verified', { count: d.parts_count, size })
+      };
+    }
+    if (!d.validated) {
+      return {
+        status: `All ${d.parts_count} parts resolved. Link checking is off in Settings, so they are not verified.`,
+        toast: `${d.parts_count} parts ready (not verified)`
+      };
+    }
+    return {
+      status: `All ${d.parts_count} parts resolved, but ${d.unverified_count} could not be checked right now, so they are not verified.`,
+      toast: `${d.parts_count} parts ready. ${d.unverified_count} could not be checked.`
+    };
   }
 
   // Python Event Listeners
@@ -587,32 +674,46 @@
       logs = [...logs, `[Worker] ${p.part_name || 'Part'}: ${p.status?.toUpperCase()} (${p.avg_speed || ''} | ETA: ${p.eta || ''})`];
     });
 
+    window.addEventListener('pipeline:log' as any, (e: CustomEvent) => {
+      if (e.detail?.message) {
+        logs = [...logs, `[Engine] ${e.detail.message}`];
+      }
+    });
+
     window.addEventListener('pipeline:val_update' as any, (e: CustomEvent) => {
       const v = e.detail;
-      if (v) {
-        logs = [...logs, `[Validator] Verified: ${v.current}/${v.total} (${v.size})`];
-        parts = parts.map((p, idx) => {
-          if ((v.index !== undefined && v.index !== null && (idx === v.index || p.index === v.index + 1)) ||
-              p.direct_url === v.url || p.url === v.url || idx + 1 === v.current) {
-            return { ...p, size: v.size };
-          }
-          return p;
-        });
-      }
+      if (!v) return;
+      logs = [...logs, `[Validator] ${v.current}/${v.total} ${(v.verdict || '').toUpperCase()}: ${v.error || v.size}`];
+      parts = parts.map(p => {
+        if (p.direct_url !== v.url) return p;
+        return v.verdict === 'dead' ? { ...p, size: v.size, status: 'failed' } : { ...p, size: v.size };
+      });
     });
 
     window.addEventListener('pipeline:complete' as any, (e: CustomEvent) => {
       const d = e.detail;
       isRunning = false;
-      statusMessage = `Verified 100% of parts (${d.total_size_str})! Direct links ready.`;
       if (d.total_size_str) totalSizeStr = d.total_size_str;
-      logs = [...logs, `[Complete] Verified ${d.parts_count} direct download URLs! Total Repack Size: ${d.total_size_str}`];
-      playSuccessChime();
-      showToast(`100% Verified! ${d.parts_count} parts ready (${d.total_size_str})`);
+
+      const failed: { filename: string; reason: string }[] = d.failed_parts || [];
+      const failedNames = new Set(failed.map(f => f.filename));
+      parts = parts.map(p => (failedNames.has(p.filename || '') ? { ...p, status: 'failed' } : p));
+
+      const summary = describeCompletion(d);
+      statusMessage = summary.status;
+      logs = [
+        ...logs,
+        ...failed.map(f => `[Failed] ${f.filename}: ${f.reason}`),
+        ...(d.publish_error ? [`[Community] Not shared: ${d.publish_error}`] : []),
+        `[Complete] ${summary.status}`
+      ];
+      if (d.status === 'complete') playSuccessChime();
+      showToast(summary.toast);
     });
 
-    window.addEventListener('pipeline:cancelled' as any, () => {
+    window.addEventListener('pipeline:cancelled' as any, (e: CustomEvent) => {
       isRunning = false;
+      if (e.detail?.reason === 'instant') return;
       statusMessage = 'Extraction cancelled.';
       logs = [...logs, `[Cancelled] Stopped by user.`];
       showToast('Extraction cancelled.');
@@ -622,13 +723,14 @@
       const rec = e.detail;
       if (rec) {
         pendingTargetUrl = sourceUrl || inputUrl;
+        conflictFromPipeline = true;
         conflictRecord = rec;
         conflictModalOpen = true;
       }
     });
 
     window.addEventListener('community:feed_updated' as any, () => {
-      refreshCommunity(true);
+      refreshCommunity(false).then(resolveFirstSync);
     });
 
     window.addEventListener('updater:available' as any, (e: CustomEvent) => {
@@ -643,8 +745,10 @@
         const version = d.release_info.latest_version || '';
         const dismissed = typeof window !== 'undefined' && sessionStorage.getItem('le_dismissed_update_' + version);
         if (!dismissed) {
-          updateModalOpen = true;
-          showToast(`A new update (${version || 'v' + d.release_info.version}) is available!`);
+          whenBooted(() => {
+            updateModalOpen = true;
+            showToast(`A new update (${version || 'v' + d.release_info.version}) is available!`);
+          });
         }
       }
     });
@@ -661,7 +765,6 @@
     document.documentElement.setAttribute('data-theme', currentTheme);
   }
 
-  $: activeNavIndex = historyOpen ? 2 : (currentView === 'stage' ? 1 : 0);
 
   onMount(() => {
     if (typeof window !== 'undefined') {
@@ -669,10 +772,13 @@
       document.documentElement.setAttribute('data-theme', currentTheme);
       audioMuted = isAudioMuted();
 
+      initLiquidGlass();
       setupEventListeners();
       window.addEventListener('keydown', handleGlobalKeydown);
 
-      refreshCommunity();
+      bootApp();
+      // The loader must never hang, even if the sync's end event is somehow lost.
+      setTimeout(() => { isCommunityLoading = false; }, 20000);
 
       waitForBridge('get_update_status', 6000).then((ready) => {
         if (ready && (window as any).pywebview?.api?.get_update_status) {
@@ -685,19 +791,22 @@
         }
       });
 
-      // Check first-time launch for v3.8.1: show What's New first, then the interactive Tutorial!
-      const FIRST_RUN_KEY = 'le_first_run_v3.8.1';
-      const hasSeenFirstRun = localStorage.getItem(FIRST_RUN_KEY);
-
-      if (!hasSeenFirstRun) {
-        isFirstRunPendingTour = true;
-        setTimeout(() => {
+      // A new install gets the tour, once. After an update, What's New opens once instead.
+      const launch = chooseLaunchScreen({
+        tourShown: !!localStorage.getItem('le_tour_completed'),
+        seenThisVersion: !!localStorage.getItem(FIRST_RUN_KEY),
+        seenEarlierVersion: Object.keys(localStorage).some((key) => key.startsWith('le_first_run_') && key !== FIRST_RUN_KEY),
+      });
+      if (launch === 'tour') {
+        // Marked now, so closing the app halfway through does not replay it at the next launch.
+        localStorage.setItem('le_tour_completed', 'true');
+        localStorage.setItem(FIRST_RUN_KEY, 'true');
+        whenBooted(startTour);
+      } else if (launch === 'whats-new') {
+        isFirstRunOfVersion = true;
+        whenBooted(() => {
           updateModalOpen = true;
-        }, 600);
-      } else if (!localStorage.getItem('le_tour_completed')) {
-        setTimeout(() => {
-          tourOpen = true;
-        }, 700);
+        });
       }
 
       // Global Client-Side Crash Diagnostic Listener
@@ -730,81 +839,76 @@
   });
 </script>
 
-<div class="app-layout-root">
+<div
+  class="app-layout-root"
+  class:is-booting={bootPhase === 'loading'}
+  class:is-revealing={bootPhase === 'exiting' || bootPhase === 'settling'}
+>
   <!-- Living Canvas Ambient Color Bleed Background -->
   <LivingCanvas {coverUrl} theme={currentTheme} activeView={currentView} />
 
-  <!-- Hidden SVG Filter for Apple Liquid Glass Refraction Effect -->
-  <svg style="position: absolute; width: 0; height: 0; pointer-events: none;" aria-hidden="true">
-    <defs>
-      <filter id="apple-liquid-glass" color-interpolation-filters="sRGB">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="0.4" result="blurred" />
-        <feTurbulence type="fractalNoise" baseFrequency="0.035 0.035" numOctaves="2" result="noise" />
-        <feDisplacementMap in="blurred" in2="noise" scale="4" xChannelSelector="R" yChannelSelector="G" result="displaced" />
-        <feBlend in="SourceGraphic" in2="displaced" mode="normal" />
-      </filter>
-    </defs>
-  </svg>
-
-  <!-- Left Apple Liquid Glass Sidebar -->
-  <aside class="left-sidebar liquid-glass">
+  <!-- Sidebar: Liquid Glass, with a glass bubble over the selected item.
+       Click an item, drag from anywhere on the sidebar, or use the arrow keys (utils/glassBubble.ts). -->
+  <aside
+    class="left-sidebar glass-panel"
+    use:liquidGlass
+    use:glassBubble={{ axis: 'y', selected: activeNavIndex, onSelect: selectNav, host: '.app-layout-root', variant: 'glass-bubble--nav', size: 58 }}
+  >
     <!-- Brand Logo -->
-    <button 
-      type="button" 
-      class="sidebar-logo-btn" 
-      title="Link Extractor v3.8"
+    <button
+      type="button"
+      class="sidebar-logo-btn"
+      title="Link Extractor {APP_VERSION}"
+      aria-label="Link Extractor {APP_VERSION}"
       on:click={() => { currentView = 'community'; historyOpen = false; playClickSound(); }}
     >
       <div class="logo-mark">
-        <img src="/favicon.svg" alt="Link Extractor" class="brand-logo-img" />
+        <BrandLogo />
       </div>
     </button>
 
-    <!-- Navigation Icon Group with Liquid Glass Magnifying Lens -->
-    <nav class="sidebar-nav" style="--tab-offset: {activeNavIndex * 64}px">
-      <!-- Sliding Liquid Glass Lens Magnifier (kube.io liquid glass effect) -->
-      <div class="liquid-glass-lens" aria-hidden="true">
-        <div class="lens-specular-lip"></div>
-        <div class="lens-caustic-glare"></div>
-      </div>
-
-      <button 
+    <nav class="sidebar-nav" aria-label="Main">
+      <button
         type="button"
-        class="sidebar-item" 
-        class:active={currentView === 'community' && !historyOpen}
+        class="sidebar-item"
+        class:active={activeNavIndex === 0}
+        aria-current={activeNavIndex === 0 ? 'page' : undefined}
+        data-bubble-item
         title="Community Hub (Ctrl+1)"
-        on:click={() => { currentView = 'community'; historyOpen = false; playClickSound(); }}
       >
-        <div class="tab-content-zoom">
+        <span class="tab-content-zoom">
           <Icon name="globe" size={20} />
           <span class="nav-label">Hub</span>
-        </div>
+        </span>
       </button>
 
-      <button 
+      <button
         type="button"
-        class="sidebar-item" 
-        class:active={currentView === 'stage' && !historyOpen}
+        class="sidebar-item"
+        class:active={activeNavIndex === 1}
+        aria-current={activeNavIndex === 1 ? 'page' : undefined}
+        data-bubble-item
         title="Active Game Stage (Ctrl+2)"
-        on:click={() => { currentView = 'stage'; historyOpen = false; playClickSound(); }}
       >
-        <div class="tab-content-zoom">
+        <span class="tab-content-zoom">
           <Icon name="gamepad" size={20} />
           <span class="nav-label">Stage</span>
-        </div>
+        </span>
       </button>
 
-      <button 
+      <button
         type="button"
-        class="sidebar-item" 
-        class:active={historyOpen}
+        class="sidebar-item"
+        class:active={activeNavIndex === 2}
+        aria-current={activeNavIndex === 2 ? 'page' : undefined}
+        id="tour-nav-vault"
+        data-bubble-item
         title="Extraction Vault / History (Ctrl+3)"
-        on:click={() => { historyOpen = true; playClickSound(); }}
       >
-        <div class="tab-content-zoom">
+        <span class="tab-content-zoom">
           <Icon name="history" size={20} />
           <span class="nav-label">Vault</span>
-        </div>
+        </span>
       </button>
     </nav>
 
@@ -814,7 +918,8 @@
         type="button" 
         class="sidebar-icon-btn tour-trigger-btn" 
         title="Interactive Guided Tour"
-        on:click={() => { playClickSound(); tourOpen = true; }}
+        aria-label="Interactive Guided Tour"
+        on:click={() => { playClickSound(); startTour(); }}
       >
         <Icon name="help-circle" size={18} />
       </button>
@@ -864,7 +969,7 @@
   <!-- Main Viewport Area -->
   <div class="main-viewport">
     <!-- Top Command Deck (URL Input Bar) -->
-    <header class="top-command-deck glass-panel" id="tour-url-bar">
+    <header class="top-command-deck glass-panel" id="tour-url-bar" use:liquidGlass>
       <div class="input-field-container">
         <span class="input-leading-icon">
           <Icon name="link" size={16} color="var(--text-muted)" />
@@ -900,30 +1005,48 @@
     </header>
 
     <!-- Active Screen Body -->
-    <main class="active-screen-body">
+    <main class="active-screen-body" bind:this={screenBody}>
       {#if currentView === 'stage'}
-        <GameStage 
-          {gameTitle}
-          {coverUrl}
-          {sourceUrl}
-          {totalSizeStr}
-          {isRunning}
-          {statusMessage}
-          {parts}
-          {logs}
-          onPushJd2={handlePushToJd2}
-          onExport={handleExport}
-          onCopyAll={handleCopyAll}
-          onCancel={handleCancelExtraction}
-        />
+        <!-- Rebuilt when the tour starts or ends, so the sample never mixes with the real game. -->
+        {#key !!tourSample}
+          {#if tourSample}
+            <GameStage
+              demo
+              gameTitle={tourSample.title}
+              coverUrl={tourSample.coverUrl}
+              totalSizeStr={tourSample.totalSizeStr}
+              statusMessage={$say('tour.sampleStatus')}
+              parts={tourSample.parts}
+              logs={tourSample.logs}
+            />
+          {:else}
+            <GameStage
+              bind:activeView={realStageView}
+              {gameTitle}
+              {coverUrl}
+              {sourceUrl}
+              {totalSizeStr}
+              {isRunning}
+              {statusMessage}
+              {parts}
+              {logs}
+              onPushJd2={handlePushToJd2}
+              onExport={handleExport}
+              onCopyAll={handleCopyAll}
+              onCancel={handleCancelExtraction}
+            />
+          {/if}
+        {/key}
       {:else}
         <DiscoveryHub 
           games={communityGames}
           isLoading={isCommunityLoading}
           onLoadRecord={handleLoadCommunityRecord}
           onReextract={handleReextractGame}
+          isOffline={isCommunityOffline}
           onPushJd2={handlePushCommunityGameToJd2}
-          onRefresh={refreshCommunity}
+          onGrab={(rec) => countGrab(rec.slug)}
+          onRefresh={() => refreshCommunity(true)}
         />
       {/if}
     </main>
@@ -931,7 +1054,7 @@
 
   <!-- Global Toast Notification -->
   {#if toastMessage}
-    <div class="app-toast glass-panel">
+    <div class="app-toast glass-panel" use:liquidGlass={{ style: 'clear', bezel: 12, strength: 14 }}>
       <Icon name="sparkles" size={16} color="var(--accent-primary)" />
       <span>{toastMessage}</span>
     </div>
@@ -953,7 +1076,7 @@
     isOpen={historyOpen}
     onClose={() => historyOpen = false}
     onLoadHistoryItem={handleLoadHistoryRecord}
-    onPushJd2={handlePushToJd2}
+    onPushJd2={pushUrlsToJd2}
   />
 
   <SettingsModal 
@@ -961,7 +1084,7 @@
     onClose={() => settingsOpen = false}
     onThemeChange={(t) => currentTheme = t}
     onCheckUpdates={handleManualCheckUpdates}
-    onOpenTour={() => { tourOpen = true; }}
+    onOpenTour={startTour}
     onOpenIssueCenter={() => { reportModalOpen = true; }}
     currentVersion={appCurrentVersion}
   />
@@ -971,7 +1094,7 @@
     releaseInfo={updateReleaseInfo}
     isFrozen={isFrozenApp}
     currentVersion={appCurrentVersion}
-    isFirstRun={isFirstRunPendingTour}
+    isFirstRun={isFirstRunOfVersion}
     onClose={handleCloseUpdateModal}
     onStartTour={handleStartTourFromUpdate}
     onShowToast={showToast}
@@ -979,7 +1102,8 @@
 
   <OnboardingTour
     isOpen={tourOpen}
-    onClose={() => { tourOpen = false; }}
+    onClose={endTour}
+    onView={showTourView}
   />
 
   <ReportIssueModal
@@ -988,6 +1112,15 @@
     onShowToast={showToast}
     engineLogs={logs}
   />
+
+  {#if bootPhase === 'loading' || bootPhase === 'exiting'}
+    <SplashLoader
+      progress={bootProgress}
+      status={bootStatus}
+      exiting={bootPhase === 'exiting'}
+      onFinished={handleSplashFinished}
+    />
+  {/if}
 </div>
 
 <style>
@@ -1000,10 +1133,12 @@
     background: var(--bg-base);
   }
 
-  /* Apple Liquid Glass Navbar (Refraction + Specular Caustics) */
-  .left-sidebar.liquid-glass {
+  /* Sidebar: the shared Liquid Glass material from glass.css. The bubble over the selected
+     item comes from utils/glassBubble.ts and lives outside the sidebar so it can see through it. */
+  .left-sidebar {
     position: relative;
     z-index: 100;
+    touch-action: none;
     width: 72px;
     height: calc(100vh - 24px);
     margin: 12px 0 12px 12px;
@@ -1014,62 +1149,18 @@
     padding: 18px 0;
     border-radius: 24px;
     flex-shrink: 0;
-
-    /* Liquid Glass Core: Translucent multi-stop gradient + heavy blur */
-    background: linear-gradient(
-      140deg,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.03) 40%,
-      rgba(10, 14, 24, 0.55) 100%
-    );
-    backdrop-filter: blur(36px) saturate(220%) contrast(106%);
-    -webkit-backdrop-filter: blur(36px) saturate(220%) contrast(106%);
-    border: 1px solid rgba(255, 255, 255, 0.22);
-
-    /* Apple Specular Edge Highlights (Snell-Descartes Refraction Simulation) */
-    box-shadow: 
-      inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 0.65),
-      inset 0 0 20px 0 rgba(255, 255, 255, 0.05),
-      inset 0 -1.5px 1px 0 rgba(0, 0, 0, 0.5),
-      0 20px 40px -15px rgba(0, 0, 0, 0.8),
-      0 0 30px -5px rgba(16, 185, 129, 0.2);
-    overflow: hidden;
+    box-shadow: var(--glass-shadow), 0 0 30px -8px var(--accent-glow);
   }
 
-  /* Liquid Glass Curved Specular Lip (Upper Refractive Curve) */
-  .left-sidebar.liquid-glass::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 45%;
-    background: linear-gradient(
-      180deg, 
-      rgba(255, 255, 255, 0.25) 0%, 
-      rgba(255, 255, 255, 0.06) 50%, 
-      rgba(255, 255, 255, 0) 100%
-    );
-    border-top-left-radius: 24px;
-    border-top-right-radius: 24px;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  /* Liquid Glass Caustic Radial Sheen */
-  .left-sidebar.liquid-glass::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 24px;
-    background: radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.15), transparent 70%);
-    pointer-events: none;
-    z-index: 1;
+  /* Above the glass's rim and pointer highlight. */
+  .sidebar-logo-btn,
+  .sidebar-nav,
+  .sidebar-footer {
+    position: relative;
+    z-index: 4;
   }
 
   .sidebar-logo-btn {
-    position: relative;
-    z-index: 2;
     background: transparent;
     border: none;
     cursor: pointer;
@@ -1079,90 +1170,23 @@
   .logo-mark {
     width: 40px;
     height: 40px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    box-shadow: 
-      inset 0 1px 1px rgba(255, 255, 255, 0.4),
-      0 0 20px var(--accent-glow);
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
-  }
-
-  .brand-logo-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+    filter: drop-shadow(0 0 10px var(--accent-glow));
+    transition: transform 0.35s var(--glass-spring), filter 0.2s ease;
   }
 
   .sidebar-logo-btn:hover .logo-mark {
-    transform: scale(1.1);
-    filter: brightness(1.18);
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 14px var(--accent-glow)) brightness(1.12);
   }
 
   .sidebar-nav {
-    position: relative;
-    z-index: 2;
     display: flex;
     flex-direction: column;
     gap: 16px;
     align-items: center;
   }
 
-  /* Kube.io Liquid Glass Magnifying Lens */
-  .liquid-glass-lens {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 48px;
-    height: 48px;
-    border-radius: 14px;
-    pointer-events: none;
-    z-index: 0;
-    transform: translateY(var(--tab-offset));
-    transition: transform 0.44s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.6s ease;
-    background: 
-      radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.38) 0%, transparent 60%),
-      linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(0, 0, 0, 0.3) 100%),
-      var(--accent-gradient);
-    backdrop-filter: blur(28px) saturate(220%) contrast(110%);
-    -webkit-backdrop-filter: blur(28px) saturate(220%) contrast(110%);
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    box-shadow: 
-      inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.8),
-      inset 0 -1.5px 2px 0 rgba(0, 0, 0, 0.5),
-      0 8px 24px -6px rgba(0, 0, 0, 0.6),
-      0 0 24px var(--accent-glow);
-    overflow: hidden;
-  }
-
-  .lens-specular-lip {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 40%;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, transparent 100%);
-    border-radius: 14px 14px 50% 50%;
-    pointer-events: none;
-  }
-
-  .lens-caustic-glare {
-    position: absolute;
-    bottom: -10px;
-    left: 20%;
-    right: 20%;
-    height: 18px;
-    background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-    filter: blur(4px);
-    pointer-events: none;
-  }
-
   .sidebar-item {
-    position: relative;
-    z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1171,7 +1195,7 @@
     height: 48px;
     border-radius: 14px;
     background: transparent;
-    border: 1px solid transparent;
+    border: none;
     color: var(--text-muted);
     cursor: pointer;
     transition: color 0.25s ease;
@@ -1179,8 +1203,6 @@
 
   .sidebar-item:hover:not(.active) {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
   }
 
   .tab-content-zoom {
@@ -1189,16 +1211,15 @@
     align-items: center;
     justify-content: center;
     gap: 3px;
-    transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .sidebar-item.active {
     color: #ffffff;
   }
 
+  /* Keeps the label crisp over the bubble's tint. */
   .sidebar-item.active .tab-content-zoom {
-    transform: scale(1.15);
-    filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.5));
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
   }
 
   .nav-label {
@@ -1210,8 +1231,6 @@
   }
 
   .sidebar-footer {
-    position: relative;
-    z-index: 2;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1221,7 +1240,7 @@
   .sidebar-icon-btn {
     width: 38px;
     height: 38px;
-    border-radius: 10px;
+    border-radius: 12px;
     background: transparent;
     border: 1px solid transparent;
     color: var(--text-muted);
@@ -1229,13 +1248,15 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
+  /* A small piece of glass catches the light under the pointer. */
   .sidebar-icon-btn:hover {
     color: var(--text-primary);
-    background: var(--bg-surface-hover);
-    border-color: var(--border-hover);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: var(--glass-chip-highlight);
   }
 
   .sidebar-icon-btn.update-btn {
@@ -1285,8 +1306,9 @@
     }
   }
 
-  /* Main Viewport */
+  /* Main Viewport: content runs the full height and scrolls beneath the floating bars. */
   .main-viewport {
+    --deck-offset: 86px;
     position: relative;
     z-index: 10;
     flex: 1;
@@ -1294,20 +1316,21 @@
     flex-direction: column;
     min-width: 0;
     height: 100vh;
-    padding: 12px 16px 16px 14px;
     overflow: hidden;
   }
 
   /* Top Command Deck */
   .top-command-deck {
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    right: 16px;
+    z-index: 30;
     display: flex;
     align-items: center;
     gap: 12px;
     padding: 10px 14px;
-    background: var(--bg-surface);
-    border-radius: var(--radius-md);
-    margin-bottom: 12px;
-    flex-shrink: 0;
+    border-radius: 18px;
   }
 
   .input-field-container {
@@ -1315,10 +1338,11 @@
     flex: 1;
     display: flex;
     align-items: center;
-    background: rgba(10, 12, 18, 0.7);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
+    background: rgba(3, 5, 9, 0.34);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 11px;
     padding: 0 12px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
@@ -1429,18 +1453,7 @@
     overflow-y: auto;
     min-height: 0;
     display: flex;
-    animation: screenEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes screenEnter {
-    from {
-      opacity: 0;
-      transform: translate3d(0, 10px, 0);
-    }
-    to {
-      opacity: 1;
-      transform: translate3d(0, 0, 0);
-    }
+    padding: 0 10px 0 14px;
   }
 
   /* Toast */
@@ -1451,13 +1464,11 @@
     transform: translateX(-50%);
     z-index: 99999;
     padding: 10px 20px;
-    background: rgba(14, 18, 27, 0.95);
-    border: 1px solid var(--accent-primary);
     border-radius: 20px;
     font-size: 12px;
     font-weight: 600;
     color: var(--text-primary);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 16px var(--accent-glow);
+    box-shadow: var(--glass-shadow-lg);
     display: flex;
     align-items: center;
     gap: 8px;

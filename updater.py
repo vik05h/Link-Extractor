@@ -1,22 +1,67 @@
+"""GitHub Releases update check and in-app installer.
+
+An update replaces the running program, so a bad file would break the install.
+A download is only accepted after its source, size, SHA-256 and file type all check
+out, and the script that swaps the file keeps a backup and can put it back.
+"""
+
+import hashlib
+import http.client
+import logging
 import os
 import sys
 import json
 import time
 import subprocess
 import threading
+import urllib.error
 import urllib.request
-import urllib.parse
-import webbrowser
 from typing import Optional, Dict, Any, Tuple, Callable, List
 
 import utils
+from version import APP_VERSION
 
-CURRENT_VERSION = "v3.8.1"
+log = logging.getLogger(__name__)
+
+CURRENT_VERSION = APP_VERSION
 GITHUB_REPO = "vik05h/Link-Extractor"
 API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 FALLBACK_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
+RELEASE_DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
+UPDATE_FILE_NAME = "LinkExtractor_update.exe"
+BACKUP_FILE_NAME = "LinkExtractor_previous.exe"
+
+
+class UpdateError(Exception):
+    """The update could not be downloaded or did not pass its checks."""
+
+
+class UpdateCancelled(Exception):
+    """The user cancelled the download."""
 
 VERSION_CHANGELOGS: Dict[str, Dict[str, Any]] = {
+    "v3.9.0": {
+        "title": "Liquid Glass Interface, Glass Bubble Navigation, New Logo & Guided Tour Rework",
+        "highlights": [
+            "Liquid Glass surfaces with real refraction across the sidebar, top bars, game cards, Stage panels, dialogs and toasts, with a Settings switch for plain frosted glass and an automatic fallback on slower PCs.",
+            "Glass bubble navigation on the sidebar and the Stage tab bar: it springs between items, can be dragged like the iOS tab bar while it magnifies what is under it, and follows the arrow keys.",
+            "The Stage tab row stays pinned under the URL bar, so long part lists scroll beneath it with Push to JD2 always in reach.",
+            "New Bolt Tray logo across the app, splash, window, taskbar and .exe icon. Inside the app it takes the active theme's colors.",
+            "Glass startup splash that loads the community games and first covers with real progress, then morphs into the app.",
+            "Seven-step guided tour on a sample game, with hands-on Stage and filter steps. New installs start with the tour; updates open What's New, and the ? button replays the tour anytime.",
+            "GenZ wording by default in the tour, splash, pop-ups and empty screens, with a Classic Wording switch in Settings. Buttons, errors and update messages stay plain."
+        ],
+        "bug_fixes": [
+            "Links are judged by exact hostname, and shared records with any off-host link or out-of-scope source are rejected.",
+            "Updates install only after their source, size, SHA-256 and file type check out, and the swap keeps a backup that is restored on failure.",
+            "Admin rights are judged by the database; a local file no longer grants anything, and clients no longer delete shared game records.",
+            "Cancelled runs keep nothing, only complete verified runs are published, and Verified 100% appears only when it is true.",
+            "Dead links are told apart from links that could not be checked, and games are matched exactly instead of by substring.",
+            "The crash report opt-out now covers Python crashes, and reports no longer include user names or secrets.",
+            "The Hub heartbeat no longer downloads the whole feed, and report screenshots load only when asked.",
+            "Fixed multi-link paste, history overwrites, empty usage records, and the clipboard watcher reacting to the app's own copies."
+        ]
+    },
     "v3.8.1": {
         "title": "Community Discussion Threads, Release Update Auto-Popup & Cyber Concurrency Slider",
         "highlights": [
@@ -160,15 +205,22 @@ def parse_version(v_str: str) -> tuple:
     return tuple(parts)
 
 
+def _find_installer(assets: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    for asset in assets:
+        name = str(asset.get("name", ""))
+        url = str(asset.get("browser_download_url", ""))
+        if name.endswith(".exe") and url.startswith(RELEASE_DOWNLOAD_PREFIX):
+            return asset
+    return None
+
+
 def check_for_updates(
     current_version: str = CURRENT_VERSION,
     timeout: float = 5.0,
-    force_available: bool = False
 ) -> Tuple[bool, Optional[Dict[str, Any]], str]:
     """
-    Check GitHub Releases for newer version of the application.
-    Returns:
-      (has_update: bool, release_info: Optional[dict], message: str)
+    Check GitHub Releases for a newer version.
+    Returns (has_update, release_info, message).
     """
     req = urllib.request.Request(
         API_URL,
@@ -180,80 +232,35 @@ def check_for_updates(
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            if resp.status == 200:
-                data = json.loads(resp.read().decode("utf-8"))
-                latest_tag = data.get("tag_name", "")
-                release_name = data.get("name", latest_tag)
-                release_body = data.get("body", "No changelog provided.")
-                html_url = data.get("html_url", FALLBACK_RELEASES_URL)
-
-                # Check downloadable binary assets
-                assets = data.get("assets", [])
-                download_url = html_url
-                asset_size = 0
-                has_binary = False
-                for a in assets:
-                    if a.get("name", "").endswith(".exe"):
-                        download_url = a.get("browser_download_url", html_url)
-                        asset_size = a.get("size", 0)
-                        has_binary = True
-                        break
-
-                curr_tuple = parse_version(current_version)
-                latest_tuple = parse_version(latest_tag)
-
-                release_info = {
-                    "current_version": current_version,
-                    "latest_version": latest_tag,
-                    "tag_name": latest_tag,
-                    "name": release_name,
-                    "body": release_body,
-                    "html_url": html_url,
-                    "download_url": download_url,
-                    "asset_size": asset_size,
-                    "has_binary": has_binary,
-                    "published_at": data.get("published_at", "")
-                }
-
-                if latest_tuple > curr_tuple or force_available:
-                    if force_available and latest_tuple <= curr_tuple:
-                        release_info["latest_version"] = "v3.9.0"
-                        release_info["name"] = "Link Extractor v3.9.0"
-                    return True, release_info, f"New version {release_info['latest_version']} is available!"
-                else:
-                    return False, release_info, f"You are running the latest version ({current_version})."
-
-            return False, None, f"GitHub returned status {resp.status}."
-
+            data = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as he:
         if he.code == 404:
             return False, None, "No releases published yet on GitHub."
         return False, None, f"HTTP Error {he.code}: Could not check for updates."
-    except Exception as e:
+    except (OSError, ValueError, http.client.HTTPException) as e:
         return False, None, f"Update check failed: {e}"
 
+    latest_tag = data.get("tag_name", "")
+    html_url = data.get("html_url", FALLBACK_RELEASES_URL)
+    installer = _find_installer(data.get("assets", []))
 
-def get_version_changelog(version: str) -> Dict[str, Any]:
-    """Retrieve structured changelog for given version with offline fallback."""
-    clean_v = version if version.startswith("v") else f"v{version}"
-    if clean_v in VERSION_CHANGELOGS:
-        data = VERSION_CHANGELOGS[clean_v].copy()
-        data["version"] = clean_v
-        return data
-
-    # Fallback default
-    return {
-        "version": clean_v,
-        "title": f"Link Extractor {clean_v}",
-        "highlights": [
-            "Performance and stability enhancements.",
-            "Updated direct link extraction algorithms.",
-            "Refined user interface and workflow responsiveness."
-        ],
-        "bug_fixes": [
-            "General bug fixes and security improvements."
-        ]
+    release_info = {
+        "current_version": current_version,
+        "latest_version": latest_tag,
+        "tag_name": latest_tag,
+        "name": data.get("name", latest_tag),
+        "body": data.get("body", "No changelog provided."),
+        "html_url": html_url,
+        "download_url": installer.get("browser_download_url", "") if installer else "",
+        "asset_size": installer.get("size", 0) if installer else 0,
+        "asset_digest": installer.get("digest", "") if installer else "",
+        "has_binary": installer is not None,
+        "published_at": data.get("published_at", "")
     }
+
+    if parse_version(latest_tag) > parse_version(current_version):
+        return True, release_info, f"New version {latest_tag} is available!"
+    return False, release_info, f"You are running the latest version ({current_version})."
 
 
 def get_all_version_changelogs() -> List[Dict[str, Any]]:
@@ -285,64 +292,90 @@ def get_all_version_changelogs() -> List[Dict[str, Any]]:
     return results
 
 
+def _expected_sha256(release_info: Dict[str, Any]) -> str:
+    digest = str(release_info.get("asset_digest") or "")
+    algorithm, _, value = digest.partition(":")
+    if algorithm != "sha256" or len(value) != 64:
+        raise UpdateError("This release has no checksum, so it cannot be installed safely. Please use the release page.")
+    return value.lower()
+
+
+def _stream_download(
+    url: str,
+    target_path: str,
+    progress_callback: Optional[Callable[[int, int, float, float], None]],
+    cancel_event: Optional[threading.Event],
+) -> Tuple[int, int, str]:
+    """Save a URL to a file. Returns (bytes received, bytes announced, sha256)."""
+    req = urllib.request.Request(
+        url, headers={"User-Agent": f"FitGirlLinkExtractor/{CURRENT_VERSION}", "Accept": "application/octet-stream"}
+    )
+    hasher = hashlib.sha256()
+    with urllib.request.urlopen(req, timeout=30.0) as resp, open(target_path, "wb") as out_file:
+        announced = int(resp.headers.get("Content-Length") or 0)
+        downloaded = 0
+        last_time, last_bytes, speed = time.time(), 0, 0.0
+        while True:
+            if cancel_event and cancel_event.is_set():
+                raise UpdateCancelled()
+            chunk = resp.read(64 * 1024)
+            if not chunk:
+                break
+            out_file.write(chunk)
+            hasher.update(chunk)
+            downloaded += len(chunk)
+
+            now = time.time()
+            if now - last_time >= 0.25:
+                speed = (downloaded - last_bytes) / (now - last_time)
+                last_time, last_bytes = now, downloaded
+            if progress_callback:
+                percent = (downloaded / announced * 100.0) if announced > 0 else 0.0
+                progress_callback(downloaded, announced, percent, speed)
+    return downloaded, announced, hasher.hexdigest()
+
+
 def download_update(
-    download_url: str,
+    release_info: Dict[str, Any],
     progress_callback: Optional[Callable[[int, int, float, float], None]] = None,
     cancel_event: Optional[threading.Event] = None
 ) -> str:
     """
-    Download update binary from URL to app data updates directory.
-    Calculates dynamic speed in bytes/sec and passes to progress_callback.
-    Returns path to downloaded file.
+    Download and verify the release installer. Returns the path of the verified file.
+    Raises UpdateError or UpdateCancelled, and leaves any earlier good download in place.
     """
+    url = str(release_info.get("download_url") or "")
+    if not url.startswith(RELEASE_DOWNLOAD_PREFIX):
+        raise UpdateError("This release has no installer attached. Please use the release page.")
+    expected_digest = _expected_sha256(release_info)
+    expected_size = int(release_info.get("asset_size") or 0)
+
     updates_dir = os.path.join(utils.get_app_data_dir(), "updates")
     os.makedirs(updates_dir, exist_ok=True)
-    target_path = os.path.join(updates_dir, "LinkExtractor_update.exe")
+    target_path = os.path.join(updates_dir, UPDATE_FILE_NAME)
+    partial_path = f"{target_path}.part"
 
-    if os.path.exists(target_path):
+    try:
+        received, announced, actual_digest = _stream_download(url, partial_path, progress_callback, cancel_event)
+        if announced and received != announced:
+            raise UpdateError(f"The download stopped early ({received} of {announced} bytes). Please try again.")
+        if expected_size and received != expected_size:
+            raise UpdateError("The downloaded file has the wrong size. Please try again.")
+        if actual_digest != expected_digest:
+            raise UpdateError("The downloaded file failed its checksum, so it was not installed.")
+        with open(partial_path, "rb") as check:
+            if check.read(2) != b"MZ":
+                raise UpdateError("The downloaded file is not a Windows program, so it was not installed.")
+        os.replace(partial_path, target_path)
+    except (OSError, ValueError, http.client.HTTPException) as error:
+        raise UpdateError(f"The download failed: {error}") from error
+    finally:
         try:
-            os.remove(target_path)
-        except Exception:
+            os.remove(partial_path)
+        except FileNotFoundError:
             pass
-
-    req = urllib.request.Request(
-        download_url,
-        headers={
-            "User-Agent": f"FitGirlLinkExtractor/{CURRENT_VERSION}",
-            "Accept": "application/octet-stream"
-        }
-    )
-
-    with urllib.request.urlopen(req, timeout=30.0) as resp:
-        total_size = int(resp.headers.get("Content-Length", 0))
-        downloaded = 0
-        chunk_size = 64 * 1024  # 64 KB
-        start_time = time.time()
-        last_calc_time = start_time
-        last_calc_bytes = 0
-        speed = 0.0
-
-        with open(target_path, "wb") as out_file:
-            while True:
-                if cancel_event and cancel_event.is_set():
-                    raise RuntimeError("Download cancelled by user.")
-                chunk = resp.read(chunk_size)
-                if not chunk:
-                    break
-                out_file.write(chunk)
-                downloaded += len(chunk)
-
-                now = time.time()
-                time_diff = now - last_calc_time
-                if time_diff >= 0.25:
-                    speed = (downloaded - last_calc_bytes) / time_diff
-                    last_calc_time = now
-                    last_calc_bytes = downloaded
-
-                if progress_callback:
-                    pct = (downloaded / total_size * 100.0) if total_size > 0 else 0.0
-                    progress_callback(downloaded, total_size, pct, speed)
-
+        except OSError as error:
+            log.warning("Could not remove the partial download: %s", error)
     return target_path
 
 
@@ -371,58 +404,79 @@ def open_updates_folder() -> str:
     return updates_dir
 
 
-def apply_update_and_restart(downloaded_file_path: str) -> bool:
-    """
-    Spawn detached updater script to replace running binary and relaunch application.
-    Works for frozen Windows executables; for dev mode, notifies the user.
-    """
-    if sys.platform == "win32" and getattr(sys, "frozen", False):
-        dest_exe = sys.executable
-        current_pid = os.getpid()
-        updates_dir = os.path.dirname(downloaded_file_path)
-        bat_path = os.path.join(updates_dir, "apply_update.bat")
+def _batch_quote(path: str) -> str:
+    return path.replace("%", "%%")
 
-        bat_content = f"""@echo off
+
+def build_update_script(source: str, destination: str, backup: str, pid: int) -> str:
+    """The batch script that swaps the exe once this process has exited.
+
+    It backs up the old exe, retries while Windows still holds the file, compares the
+    result byte for byte, and restores the backup if anything went wrong. Either way
+    it starts the program again. The reset variable makes a PyInstaller one-file exe
+    start clean instead of looking for the temp folder of the process that just exited.
+    """
+    return f"""@echo off
 chcp 65001 > nul
-set PID={current_pid}
-set "SRC={downloaded_file_path}"
-set "DEST={dest_exe}"
+set "SRC={_batch_quote(source)}"
+set "DEST={_batch_quote(destination)}"
+set "BACKUP={_batch_quote(backup)}"
+set "PYINSTALLER_RESET_ENVIRONMENT=1"
+set /a WAITED=0
+set /a COPY_TRIES=0
 
-:wait_loop
-tasklist /fi "pid eq %PID%" 2>nul | find "%PID%" >nul
-if %ERRORLEVEL% == 0 (
-    timeout /t 1 /nobreak >nul
-    goto wait_loop
-)
+:wait_for_exit
+tasklist /fi "pid eq {pid}" 2>nul | find "{pid}" >nul
+if errorlevel 1 goto exited
+set /a WAITED+=1
+if %WAITED% GEQ 60 goto start_program
+ping -n 2 127.0.0.1 >nul
+goto wait_for_exit
 
-timeout /t 1 /nobreak >nul
+:exited
+ping -n 2 127.0.0.1 >nul
+if not exist "%SRC%" goto start_program
+copy /y "%DEST%" "%BACKUP%" >nul
+if errorlevel 1 goto start_program
 
+:copy_new
 copy /y "%SRC%" "%DEST%" >nul
-if errorlevel 1 (
-    move /y "%SRC%" "%DEST%" >nul
-)
+if not errorlevel 1 goto verify_copy
+set /a COPY_TRIES+=1
+if %COPY_TRIES% GEQ 5 goto restore
+ping -n 3 127.0.0.1 >nul
+goto copy_new
 
+:verify_copy
+fc /b "%SRC%" "%DEST%" >nul
+if errorlevel 1 goto restore
 del "%SRC%" >nul 2>&1
+goto start_program
 
+:restore
+copy /y "%BACKUP%" "%DEST%" >nul
+
+:start_program
 start "" "%DEST%"
-
-del "%~f0" >nul 2>&1
+(goto) 2>nul & del "%~f0"
 """
-        with open(bat_path, "w", encoding="utf-8") as f:
-            f.write(bat_content)
-
-        subprocess.Popen(
-            ["cmd.exe", "/c", bat_path],
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0,
-            close_fds=True
-        )
-        return True
-
-    return False
 
 
-def open_release_page(url: Optional[str] = None):
-    """Open release page or latest download URL in default web browser."""
-    target = url or FALLBACK_RELEASES_URL
-    webbrowser.open(target)
+def apply_update_and_restart(downloaded_file_path: str) -> bool:
+    """Start the swap script for a verified download. Returns False when not running as an exe."""
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        return False
 
+    updates_dir = os.path.dirname(downloaded_file_path)
+    bat_path = os.path.join(updates_dir, "apply_update.bat")
+    backup_path = os.path.join(updates_dir, BACKUP_FILE_NAME)
+    with open(bat_path, "w", encoding="utf-8") as f:
+        f.write(build_update_script(downloaded_file_path, sys.executable, backup_path, os.getpid()))
+
+    subprocess.Popen(
+        ["cmd.exe", "/c", bat_path],
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        close_fds=True,
+        cwd=updates_dir,
+    )
+    return True

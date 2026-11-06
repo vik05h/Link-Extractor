@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import Icon from './icons/Icon.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { playBypassSound, playClickSound } from '../utils/audio';
   import type { DetectedClip } from '../types';
+  import { say } from '../utils/voice';
 
   export let onResolveUrl: (url: string) => void = () => {};
 
@@ -45,12 +47,12 @@
 </script>
 
 {#if detectedItem}
-  <div class="sentinel-toast glass-panel">
+  <div class="sentinel-toast glass-panel glass-thick" use:liquidGlass={{ style: 'thick', bezel: 14 }}>
     <div class="toast-indicator">
       <Icon name="bolt" size={20} color="var(--accent-primary)" strokeWidth={2.5} />
     </div>
     <div class="toast-content">
-      <div class="toast-title">FitGirl Repack Link Detected in Clipboard!</div>
+      <div class="toast-title">{$say('clipboard.title')}</div>
       <div class="toast-url" title={detectedItem.url}>{detectedItem.url}</div>
     </div>
     <div class="toast-actions">
@@ -75,11 +77,9 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: rgba(16, 22, 34, 0.95);
-    border: 1px solid var(--accent-primary);
-    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6), 0 0 20px var(--accent-glow);
     border-radius: var(--radius-md);
     animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   .toast-indicator {

@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import history
 import scraper
-import community
+import game_records
 import validator
 import integrations
 
@@ -50,7 +50,7 @@ def test_sql_injection():
 def test_path_traversal():
     print("--> 3. Path Traversal Filename Sanitization")
     dirty_title = "../../Windows/System32/evil"
-    safe_slug = community.generate_game_slug("", dirty_title)
+    safe_slug = game_records.generate_game_slug("", dirty_title)
     assert ".." not in safe_slug and "/" not in safe_slug and "\\" not in safe_slug
     clean_title = re.sub(r'[^a-zA-Z0-9_-]', '_', dirty_title).strip('_')
     assert ".." not in clean_title and "/" not in clean_title and "\\" not in clean_title
@@ -76,7 +76,7 @@ def test_redos_protection():
 def test_community_schema_sanitization():
     print("--> 6. Community Cloud Schema & Slug Sanitization")
     bad_slug = "../../../secret-firebase-key"
-    sanitized = community.sanitize_slug(bad_slug)
+    sanitized = game_records.sanitize_slug(bad_slug)
     assert ".." not in sanitized and "/" not in sanitized
     assert sanitized == "secret-firebase-key"
     print("    [PASS] Community slug sanitizer verified.")

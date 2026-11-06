@@ -1,0 +1,36 @@
+[project]
+name = "link-extractor"
+description = "Direct link resolver and JDownloader 2 helper for FitGirl repacks"
+requires-python = ">=3.12"
+license = { text = "PolyForm-Noncommercial-1.0.0" }
+authors = [{ name = "Vikash (@vik05h)" }]
+dynamic = ["version"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning:webview.*"]
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["scratch", "frontend", "dist", "dist_web", "build", ".agents", ".claude"]
+
+[tool.ruff.lint]
+# F: real bugs such as undefined names. BLE: blind excepts that hide them. B: common traps.
+select = ["E9", "F", "B", "BLE"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["BLE"]
+# Each batch of workers is awaited inside the loop that defines it.
+"engine.py" = ["B023"]
+
+[tool.pyright]
+include = [
+  "main.py", "bridge.py", "pipeline.py", "community.py", "issues.py", "telemetry.py",
+  "firebase_client.py", "game_records.py", "links.py", "palette.py", "version.py",
+  "scraper.py", "engine.py", "validator.py", "history.py", "integrations.py",
+  "updater.py", "utils.py",
+]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingModuleSource = false

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../../utils/liquidGlass';
   import Icon from '../icons/Icon.svelte';
 
   export let imageUrl: string = '';
@@ -16,7 +17,7 @@
     tabindex="-1"
   >
     <div 
-      class="image-modal-card" 
+      class="image-modal-card glass-panel" use:liquidGlass={{ style: 'thick' }} 
     >
       <div class="image-modal-header">
         <span>Screenshot Evidence</span>
@@ -34,18 +35,12 @@
     position: fixed;
     inset: 0;
     z-index: 8700;
-    background: rgba(0, 0, 0, 0.92);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: fadeIn 0.2s ease-out;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .image-modal-card {
@@ -55,9 +50,9 @@
     flex-direction: column;
     border-radius: 14px;
     overflow: hidden;
-    background: #0d111a;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.9);
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   .image-modal-header {

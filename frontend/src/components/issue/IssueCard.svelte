@@ -7,14 +7,14 @@
   export let report: IssueReport;
   export let isAdminMode: boolean = false;
   export let isReporter: boolean = false;
-  export let sessionAdminPin: string = '';
+  export let sessionAdminKey: string = '';
   export let isUpvoted: boolean = false;
   export let engineLogs: string[] = [];
   export let onUpvote: (id: string) => void = () => {};
   export let onPreviewImage: (url: string) => void = () => {};
   export let onAdminSave: (id: string, status: string, remark: string) => Promise<void> | void = () => {};
   export let onAdminDelete: (id: string) => Promise<void> | void = () => {};
-  export let onAddComment: (payload: any) => Promise<void> | void = () => {};
+  export let onAddComment: (payload: any) => Promise<boolean> | boolean = () => false;
   export let onDeleteComment: (reportId: string, commentId: string) => Promise<void> | void = () => {};
   export let onShowToast: (msg: string) => void = () => {};
 
@@ -23,6 +23,24 @@
   let isSaving: boolean = false;
   let isDeleting: boolean = false;
   let threadOpen: boolean = false;
+  let loadedScreenshot: string = '';
+  let isLoadingScreenshot: boolean = false;
+
+  // Screenshots are stored apart from the report list and fetched only when someone asks.
+  async function viewStoredScreenshot() {
+    playClickSound();
+    if (!loadedScreenshot) {
+      isLoadingScreenshot = true;
+      const res = await (window as any).pywebview.api.get_report_screenshot(report.id, 'report');
+      isLoadingScreenshot = false;
+      if (!res?.success) {
+        onShowToast('Could not load the screenshot.');
+        return;
+      }
+      loadedScreenshot = res.screenshot_data;
+    }
+    onPreviewImage(loadedScreenshot);
+  }
 
   $: editingStatus = report.status || 'open';
   $: editingRemark = report.admin_remark || '';
@@ -98,6 +116,12 @@
     {#if report.app_version}
       <span class="meta-item version-tag">{report.app_version}</span>
     {/if}
+
+    {#if report.pending_upload}
+      <span class="meta-item delivery-tag" title="This report has not reached the server yet. It will be sent automatically.">Not sent yet</span>
+    {:else if report.local_only}
+      <span class="meta-item delivery-tag" title="This report exists only on this PC.">Saved on this PC only</span>
+    {/if}
   </div>
 
   <!-- Description -->
@@ -119,6 +143,11 @@
         </span>
       </button>
     </div>
+  {:else if report.has_screenshot}
+    <button type="button" class="btn-load-screenshot" disabled={isLoadingScreenshot} on:click={viewStoredScreenshot}>
+      <Icon name="image" size={13} />
+      <span>{isLoadingScreenshot ? 'Loading Screenshot...' : 'View Screenshot'}</span>
+    </button>
   {/if}
 
   <!-- Official Admin Remark Callout -->
@@ -199,7 +228,7 @@
             id="remark-input-{report.id}"
             type="text" 
             class="glass-input admin-text"
-            placeholder="e.g. Fixed in v3.8.1, or workaround: disable VPN..."
+            placeholder="e.g. Fixed in the next release, or workaround: disable VPN..."
             bind:value={editingRemark}
           />
         </div>
@@ -224,7 +253,7 @@
       comments={commentsList}
       {isAdminMode}
       {isReporter}
-      {sessionAdminPin}
+      {sessionAdminKey}
       {engineLogs}
       {onPreviewImage}
       {onAddComment}
@@ -235,6 +264,25 @@
 </div>
 
 <style>
+  .delivery-tag {
+    color: var(--status-aging);
+    font-weight: 600;
+  }
+
+  .btn-load-screenshot {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
   .report-card {
     padding: 16px;
     border-radius: 14px;

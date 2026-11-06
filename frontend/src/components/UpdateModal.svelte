@@ -1,12 +1,16 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import { onMount, onDestroy } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../utils/audio';
+  import { waitForBridge } from '../utils/bridgeReady';
+  import { APP_VERSION } from '../version';
+  import { say } from '../utils/voice';
 
   export let isOpen: boolean = false;
   export let releaseInfo: any = null;
   export let isFrozen: boolean = false;
-  export let currentVersion: string = 'v3.8.1';
+  export let currentVersion: string = APP_VERSION;
   export let isFirstRun: boolean = false;
   export let onClose: () => void = () => {};
   export let onStartTour: (() => void) | undefined = undefined;
@@ -26,155 +30,6 @@
   let selectedVersionIndex: number = 0;
   let isChecking: boolean = false;
 
-  const FALLBACK_CHANGELOGS = [
-    {
-      version: 'v3.8.1',
-      title: 'Community Discussion Threads, Release Update Auto-Popup & Cyber Concurrency Slider',
-      is_current: true,
-      previous_version: 'v3.8.0',
-      highlights: [
-        'Interactive Community Discussion Thread drawer on Issue Center tickets with badge attribution (Official Admin, Original Reporter, Community Gamer).',
-        'One-click Engine Telemetry Log dumping directly into discussion replies for rapid collaborative bug diagnosis.',
-        'Full screenshot attachment pipeline supporting file dropzone, file picker, and clipboard Ctrl+V pasting with client-side canvas compression.',
-        'Administrative comment moderation and ticket status management protected by secure passkey authorization.',
-        'Automatic release update popup notification on startup with session-based dismissal suppression to prevent repetitive popups.',
-        'Cyberpunk animated concurrency slider in Settings with glowing thumb halo and tactile stepped performance tiers (Eco, Balanced, Turbo).'
-      ],
-      bug_fixes: [
-        'Fixed terminal hanging and application freeze when clicking Telemetry & Terminal tab by virtualizing log stream updates.',
-        'Resolved content.d.ts type generation issue by configuring glob paths in tsconfig.json.',
-        'Fixed comment normalization and timestamp sorting across Firebase Realtime Database and local JSON cache.',
-        'Enforced constant-time cryptographic verification for Admin passkey authentication in AppData.'
-      ]
-    },
-    {
-      version: 'v3.8.0',
-      title: 'Next-Gen Gaming Hub UI/UX Overhaul, Live Guided Tour & Community Issue Center',
-      is_current: false,
-      previous_version: 'v3.5.0',
-      highlights: [
-        'Complete architectural migration from legacy Flet UI to hardware-accelerated desktop web architecture powered by Astro, Svelte, and Windows native WebView2.',
-        'Interactive Live In-App Guided Tour actively spotlighting the URL bar, Community Vault, Defrag Stage, and Quick Actions with step-by-step onboarding.',
-        'Community Issue Center featuring public issue tracking, smart duplicate prevention with affected-user count incrementing, and passkey-protected Admin remarks.',
-        'Automated Firebase Crash Log capture intercepting unhandled Python and JavaScript errors with in-memory deduplication.',
-        'Living Canvas dynamic ambient backlighting with mathematical vibrancy boosting extracting dominant colors from game cover art.',
-        'Interactive Defrag Mosaic visualizer for real-time multi-part status tracking replacing static data tables.',
-        'In-app automatic updater with live download speed HUD, percentage tracking, and detached Windows restart script.',
-        'Multi-tier authoritative game artwork cascade extracting high-resolution FitGirl covers with procedural neon SVG fallback.',
-        'Automated Pastebin metadata resolution extracting game names from archive filenames with FitGirl site search.',
-        'Live concurrent gamer presence pulse indicator powered by zero-cost lightweight Firebase REST heartbeats.',
-        'Selective Repack Filter saving tens of gigabytes by filtering optional language and bonus packs.',
-        'Background Clipboard Sentinel auto-detecting copied FitGirl links and Web Audio API synthesized gaming sound haptics.'
-      ],
-      bug_fixes: [
-        'Completely eliminated legacy Flet runtime thread blocking, socket buffering, and window focus stealing.',
-        'Fixed ambient mode text darkness with mathematical vibrancy boosting in HLS color space.',
-        'Fixed 0 B repack size aggregation by aligning validator progress callback signature.',
-        'Fixed Steam store 404 artwork failure on recent releases with authoritative FitGirl page parser.',
-        'Fixed duplicate cache freshness logic ensuring cached mirrors older than 24 hours trigger fresh extractions.'
-      ]
-    },
-    {
-      version: 'v3.5.0',
-      title: 'Interactive Live In-App Guided Tour, Spotlight Highlighting & Rebranding (Legacy Flet UI)',
-      is_current: false,
-      previous_version: 'v3.2.0',
-      highlights: [
-        'Interactive Live In-App Guided Tour actively navigating across Extractor, Community Hub, History Archive, and Settings in real-time.',
-        'Dynamic Spotlight Box Highlighting with glowing theme borders and soft shadows illuminating the exact target cards on each step.',
-        'Complete Rebranding to Link Extractor across window titles, PE resource headers, and in-app components.',
-        'Display Framerate Selector toggling between 60 FPS (Balanced) and 120 FPS (Ultra Fluid) in real-time.',
-        'Community Hub View Switcher with responsive Poster Grid View and Compact Feed List.',
-        'Interactive Game Details Modal popup displaying all split repack archive parts with individual copy links.',
-        'Enhanced Card Hover animations with theme-colored glowing borders, elevation pop, and smooth poster zoom.',
-        'Expanded 8 dynamic Material 3 theme presets (Deep Violet, Emerald, Cyber Sapphire, Amber Gold, Neon Rose, Synthwave, Matrix, Crimson).',
-        'Enhanced 1-Click Health Check with clear Part 1 verification badge and detailed tooltip.'
-      ],
-      bug_fixes: [
-        'Fixed Icon missing positional argument in tour controller.',
-        'Fixed typing import for Callable in state controller.',
-        'Fixed shadow smudge glitch on lighter themes using native Material 3 elevation.',
-        'Added automatic SQLite History archive deduplication and smart upsert updates.',
-        'Enforced pure-white high-contrast text and icons on floating status notifications.'
-      ]
-    },
-    {
-      version: 'v3.2.0',
-      title: 'Community Cloud Cache, Pixel Dino Loader & 3D Repack Hub',
-      is_current: false,
-      previous_version: 'v3.1.1',
-      highlights: [
-        'Decentralized Community Cloud Cache powered by Firebase Realtime Database lightweight REST API.',
-        'Retro 8-bit Arcade Pixel Dino running loading animation with live cloud status updates.',
-        'Interactive 3D-styled Game Cards with cover thumbnails, depth glow, and local timezone intelligence.',
-        'Automatic instant pre-fetched link detection on Extractor screen with 1-click skip browser option.',
-        '1-Click Health Check executing rapid 1-byte verification on Part 1 of any community repack.',
-        'Automated background cloud publishing with privacy opt-out toggle in Settings & Tweaks.',
-        'Freshness color badges (Fresh <12h, Aging 12-36h, Expired >36h) with local time display.'
-      ],
-      bug_fixes: [
-        'Enforced strict overwrite logic to ensure newest extraction timestamps update cloud records.',
-        'Added graceful offline fallback with built-in community cache when Firebase is unreachable.',
-        'Added full entity unescaping and cover image extraction for FitGirl game pages.'
-      ]
-    },
-    {
-      version: 'v3.1.1',
-      title: 'Startup Auto-Updater, Real-Time Async UI & In-App Installer',
-      is_current: false,
-      previous_version: 'v3.1.0',
-      highlights: [
-        'Automatic silent update check on application startup with user confirmation prompt.',
-        'In-app background download progress dialog displaying live speed and percentage.',
-        'Automated Windows binary replacement and seamless application restart launcher.',
-        'Interactive What\'s New & Bug Fixes release notes popup dialog on updated version launch.',
-        'Off-screen headed Playwright browser engine preventing OS window focus theft.'
-      ],
-      bug_fixes: [
-        'Fixed real-time UI freezing by transitioning to native async event loop.',
-        'Fixed DataTable child mutation rendering using state model rebuild pattern.',
-        'Fixed SegmentedButton JSON serialization error with set-to-list conversion.',
-        'Improved detached updater batch script cleanup and process PID tracking on Windows.'
-      ]
-    },
-    {
-      version: 'v3.1.0',
-      title: 'Material 3 Engine, 1-Byte Size Validation & SQLite History Archive',
-      is_current: false,
-      previous_version: 'v3.0.0',
-      highlights: [
-        'Full Material 3 UI migration with Flutter hardware acceleration (60-120 FPS).',
-        'Rapid concurrent 1-byte HTTP Range size validation and live total repack calculation.',
-        'Integrated local SQLite download archive with instant search and 1-click re-export.',
-        'JDownloader 2 FlashGot HTTP API push with #filename.rar zero-prompt anchors.',
-        'Dynamic Material 3 theme seeds, branding logo switcher, and transition presets.',
-        'Automatic startup update checker and automated in-app update installer.'
-      ],
-      bug_fixes: [
-        'Fixed PyInstaller icons.json missing resource crash on standalone Windows binary.',
-        'Fixed window and taskbar icon binding to eliminate Flutter runner default icon.',
-        'Fixed cross-platform export directory path resolution on non-standard Windows drives.',
-        'Fixed race conditions during mid-extraction cancellations.'
-      ]
-    },
-    {
-      version: 'v3.0.0',
-      title: 'High-Speed Playwright Multi-Tab Engine & Turnstile Solver',
-      is_current: false,
-      previous_version: null,
-      highlights: [
-        'Parallel multi-tab browser pool resolving parts concurrently (3x-6x speedup).',
-        'Automatic Cloudflare Turnstile captcha solver and response header interceptor.',
-        'Automated retry engine with jitter delays for dropped links.',
-        'Direct FitGirl game page and pastebin auto-detection.'
-      ],
-      bug_fixes: [
-        'Resolved browser memory leak by sharing a single context across worker tabs.',
-        'Fixed link parser edge cases on multi-mirror pastebins.'
-      ]
-    }
-  ];
-
   $: hasUpdate = Boolean(
     releaseInfo && (
       releaseInfo.has_update || 
@@ -182,6 +37,9 @@
       (releaseInfo.latest_version && releaseInfo.latest_version !== currentVersion)
     )
   );
+
+  // Only a release with a verifiable installer can be installed from inside the app.
+  $: canInstall = hasUpdate && !!releaseInfo?.has_binary;
 
   $: activeEntry = changelogs[selectedVersionIndex] || changelogs[0] || null;
 
@@ -212,24 +70,15 @@
   }
 
   function loadChangelogs() {
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.get_changelogs) {
+    waitForBridge('get_changelogs').then((ready) => {
+      if (!ready) return;
       (window as any).pywebview.api.get_changelogs()
         .then((data: any[]) => {
-          if (data && Array.isArray(data) && data.length > 0) {
-            changelogs = data;
-          } else {
-            changelogs = FALLBACK_CHANGELOGS;
-          }
+          changelogs = Array.isArray(data) ? data : [];
           syncReleaseToChangelogs();
         })
-        .catch(() => {
-          changelogs = FALLBACK_CHANGELOGS;
-          syncReleaseToChangelogs();
-        });
-    } else {
-      changelogs = FALLBACK_CHANGELOGS;
-      syncReleaseToChangelogs();
-    }
+        .catch((err: any) => console.error('Could not load changelogs:', err));
+    });
   }
 
   function syncReleaseToChangelogs() {
@@ -360,8 +209,12 @@
     percent = 1;
     speedStr = 'Connecting to GitHub CDN...';
     if (typeof window !== 'undefined' && (window as any).pywebview?.api?.start_update_download) {
-      const url = releaseInfo?.download_url || '';
-      (window as any).pywebview.api.start_update_download(url);
+      (window as any).pywebview.api.start_update_download().then((res: any) => {
+        if (res && res.status === 'error') {
+          step = 'error';
+          errorMessage = res.message;
+        }
+      });
     }
   }
 
@@ -398,12 +251,7 @@
 
   function openReleasePage() {
     playClickSound();
-    const url = releaseInfo?.html_url || 'https://github.com/vik05h/Link-Extractor/releases';
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.open_external_url) {
-      (window as any).pywebview.api.open_external_url(url);
-    } else {
-      window.open(url, '_blank');
-    }
+    window.open(releaseInfo?.html_url || 'https://github.com/vik05h/Link-Extractor/releases', '_blank');
   }
 </script>
 
@@ -416,7 +264,7 @@
     on:click|self={onClose}
     on:keydown={(e) => e.key === 'Escape' && step !== 'downloading' && onClose()}
   >
-    <div class="modal-card glass-panel" role="document">
+    <div class="modal-card glass-panel" use:liquidGlass={{ style: 'thick' }} role="document">
       <!-- Modal Header -->
       <div class="modal-header">
         <div class="header-left">
@@ -424,13 +272,20 @@
             <Icon name="sparkles" size={18} color="var(--accent-primary)" />
           </div>
           <div>
+            <!-- With an update waiting this is the updater, which stays plain. -->
             <div class="modal-title">
-              {isFirstRun ? "WELCOME TO LINK EXTRACTOR v3.8" : "WHAT'S NEW & UPDATES"}
+              {#if hasUpdate}
+                WHAT'S NEW & UPDATES
+              {:else}
+                {isFirstRun ? $say('whatsNew.firstRunTitle', { version: currentVersion }) : $say('whatsNew.title')}
+              {/if}
             </div>
             <div class="modal-subtitle">
-              {isFirstRun 
-                ? "Explore new features, highlights & quick interactive tutorial" 
-                : "Version comparison, release highlights & auto-updater"}
+              {#if hasUpdate}
+                Version comparison, release highlights & auto-updater
+              {:else}
+                {isFirstRun ? $say('whatsNew.firstRunIntro') : $say('whatsNew.intro')}
+              {/if}
             </div>
           </div>
         </div>
@@ -449,7 +304,7 @@
             <span class="status-dot"></span>
             <span class="status-text">
               {#if hasUpdate}
-                Update Ready: {releaseInfo?.latest_version || 'New Release'}
+                {canInstall ? 'Update Ready' : 'New Version'}: {releaseInfo?.latest_version || 'New Release'}
               {:else if isFirstRun}
                 {currentVersion} Installed & Ready
               {:else}
@@ -461,11 +316,13 @@
         </div>
 
         <div class="status-actions">
-          {#if hasUpdate && step === 'overview'}
+          {#if canInstall && step === 'overview'}
             <button type="button" class="btn-update-cta" on:click={startDownload}>
               <Icon name="download" size={14} color="#060d17" strokeWidth={2.5} />
               <span>Download Update</span>
             </button>
+          {:else if hasUpdate && step === 'overview'}
+            <span class="no-installer-note">No installer attached yet. See GitHub Releases.</span>
           {/if}
 
           <button 
@@ -597,7 +454,7 @@
             </div>
 
             <div class="download-tip font-mono">
-              Binary is securely verified and cached to %APPDATA%\FitGirlLinkExtractor\updates\
+              The file's size and SHA-256 are checked against GitHub before it is installed.
             </div>
           </div>
 
@@ -690,10 +547,12 @@
             <Icon name="external-link" size={14} />
             <span>View Releases</span>
           </button>
-          <button type="button" class="btn-primary" on:click={startDownload}>
-            <Icon name="refresh" size={15} />
-            <span>Retry Download</span>
-          </button>
+          {#if canInstall}
+            <button type="button" class="btn-primary" on:click={startDownload}>
+              <Icon name="refresh" size={15} />
+              <span>Retry Download</span>
+            </button>
+          {/if}
         {/if}
       </div>
     </div>
@@ -701,31 +560,35 @@
 {/if}
 
 <style>
+  .no-installer-note {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+
   .modal-backdrop {
     position: fixed;
     inset: 0;
     z-index: 10000;
-    background: rgba(4, 6, 10, 0.75);
-    backdrop-filter: blur(14px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: fadeIn 0.2s ease-out;
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .modal-card {
     width: 680px;
     max-width: 95vw;
     max-height: 88vh;
-    background: var(--bg-surface-elevated, #0c0f17);
-    border: 1px solid var(--border-hover, rgba(255, 255, 255, 0.14));
     border-radius: var(--radius-lg, 16px);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px var(--accent-glow, rgba(16, 185, 129, 0.25));
     display: flex;
     flex-direction: column;
     overflow: hidden;
     animation: scaleIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   .modal-header {
@@ -1288,6 +1151,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 14px;
     padding: 14px 22px;
     border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     background: rgba(0, 0, 0, 0.2);
@@ -1301,7 +1165,12 @@
   .footer-btn-group {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     gap: 10px;
+  }
+
+  .footer-btn-group button {
+    white-space: nowrap;
   }
 
   .btn-primary {
@@ -1365,11 +1234,6 @@
   @keyframes pulseGlow {
     0%, 100% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.6; transform: scale(1.15); }
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
   }
 
   @keyframes scaleIn {

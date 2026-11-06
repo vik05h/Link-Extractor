@@ -187,6 +187,8 @@
     };
   }
 
+  $: wallpaperUrl = activeView === 'stage' && /^https?:\/\//i.test(coverUrl) ? coverUrl : '';
+
   // Reactive Theme & View Binding
   $: {
     if (activeView === 'stage' && coverUrl) {
@@ -237,6 +239,12 @@
       background: radial-gradient(circle at 50% 35%, var(--adaptive-color, #10b981) 0%, transparent 60%);
     "
   ></div>
+
+  {#if wallpaperUrl}
+    {#key wallpaperUrl}
+      <img class="cover-wallpaper" src={wallpaperUrl} alt="" />
+    {/key}
+  {/if}
 
   <!-- Soft Vignette Overlay -->
   <div class="vignette-overlay"></div>
@@ -299,6 +307,25 @@
     }
     100% {
       transform: scale(1) translate(0, 0);
+    }
+  }
+
+  /* The game's art behind the Stage, so its glass panels have something to bend. */
+  .cover-wallpaper {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 22%;
+    opacity: 0.36;
+    animation: wallpaperIn 0.9s ease-out;
+  }
+
+  @keyframes wallpaperIn {
+    from {
+      opacity: 0;
+      transform: scale(1.04);
     }
   }
 

@@ -1,0 +1,365 @@
+/* =========================================================
+   Liquid Glass: the app's material, modeled on Expo's GlassView.
+
+   regular  reads well over anything, for bars and panels
+   clear    shows more of what is behind, for small pills on artwork
+   thick    keeps long text readable, for dialogs
+   bubble   a see-through lens over a bar's selected item (utils/glassBubble.ts)
+
+   Blur and tint live here. Refraction comes from use:liquidGlass in
+   utils/liquidGlass.ts, which adds a lens to the same backdrop.
+   An ancestor with backdrop-filter, filter, opacity below 1, or a mask
+   stops a surface seeing the page, so nested surfaces only get the rim.
+   ========================================================= */
+
+:root {
+  --glass-tint: color-mix(in srgb, var(--accent-primary) 7%, rgba(9, 12, 19, 0.46));
+  --glass-tint-clear: color-mix(in srgb, var(--accent-primary) 6%, rgba(8, 11, 17, 0.36));
+  --glass-tint-thick: color-mix(in srgb, var(--accent-primary) 5%, rgba(9, 12, 19, 0.7));
+
+  --glass-backdrop: blur(9px) saturate(190%) brightness(0.82);
+  --glass-backdrop-clear: blur(4px) saturate(180%) brightness(0.72);
+  --glass-backdrop-thick: blur(20px) saturate(170%) brightness(0.74);
+  /* No blur: the bubble sits over its own label, which has to stay sharp. */
+  --glass-backdrop-bubble: saturate(165%) brightness(1.12);
+
+  --glass-sheen: linear-gradient(
+    168deg,
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.03) 34%,
+    rgba(255, 255, 255, 0) 58%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  --glass-rim: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(255, 255, 255, 0.16) 26%,
+    rgba(255, 255, 255, 0.05) 56%,
+    rgba(255, 255, 255, 0.3) 100%
+  );
+  --glass-shadow:
+    0 14px 34px -12px rgba(0, 0, 0, 0.6),
+    0 2px 6px rgba(0, 0, 0, 0.22),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1),
+    inset 0 0 22px rgba(255, 255, 255, 0.03);
+  --glass-shadow-lg:
+    0 34px 70px -18px rgba(0, 0, 0, 0.75),
+    0 0 40px -8px var(--accent-glow),
+    inset 0 1px 1px rgba(255, 255, 255, 0.12),
+    inset 0 0 30px rgba(255, 255, 255, 0.03);
+  --glass-chip-highlight:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+
+  --glass-scrim: rgba(3, 5, 9, 0.46);
+  --glass-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --glass-settle: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Without refraction, a stronger tint and blur keep text just as readable. */
+[data-glass='lite'] {
+  --glass-backdrop: blur(16px) saturate(170%) brightness(0.78);
+  --glass-backdrop-clear: blur(8px) saturate(170%) brightness(0.84);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass-tint: rgba(14, 18, 27, 0.96);
+    --glass-tint-clear: rgba(14, 18, 27, 0.9);
+    --glass-tint-thick: rgba(14, 18, 27, 0.98);
+    --glass-scrim: rgba(3, 5, 9, 0.8);
+  }
+}
+
+/* =========================================================
+   Surfaces
+   ========================================================= */
+.glass-panel,
+.glass-card {
+  position: relative;
+  background: var(--glass-sheen), var(--glass-tint);
+  backdrop-filter: var(--glass-backdrop);
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow);
+  transition: transform 0.35s var(--glass-spring), box-shadow 0.25s ease;
+}
+
+.glass-thick {
+  background: var(--glass-sheen), var(--glass-tint-thick);
+  backdrop-filter: var(--glass-backdrop-thick);
+  box-shadow: var(--glass-shadow-lg);
+}
+
+.glass-clear {
+  background: var(--glass-sheen), var(--glass-tint-clear);
+  backdrop-filter: var(--glass-backdrop-clear);
+}
+
+/* The bright rim where light catches the glass's curved edge. */
+.glass-panel::before,
+.glass-card::before,
+.glass-rim::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  padding: 1px;
+  border-radius: inherit;
+  background: var(--glass-rim);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* The soft highlight that follows the pointer, like isInteractive on GlassView. */
+.glass-panel::after,
+.glass-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  background: radial-gradient(
+    260px circle at var(--glass-x, 50%) var(--glass-y, 0%),
+    rgba(255, 255, 255, 0.11),
+    transparent 68%
+  );
+  opacity: var(--glass-glare, 0);
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.glass-card:hover {
+  transform: translateY(-2px);
+}
+
+/* Glass inside glass cannot see the page, so it stays a light layer with a rim. */
+.glass-panel .glass-panel,
+.glass-panel .glass-card,
+.glass-card .glass-panel,
+.glass-card .glass-card {
+  background: rgba(255, 255, 255, 0.035);
+  backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.glass-panel .glass-panel::before,
+.glass-panel .glass-card::before {
+  opacity: 0.45;
+}
+
+/* =========================================================
+   Controls: they catch the light without sampling the page
+   ========================================================= */
+.btn-primary {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.06) 46%, rgba(0, 0, 0, 0.06) 100%),
+    var(--accent-gradient);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.16),
+    0 8px 20px -8px var(--accent-primary);
+  transition: transform 0.35s var(--glass-spring), filter 0.2s ease, box-shadow 0.25s ease;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+  transform: scale(1.025);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.16),
+    0 12px 26px -8px var(--accent-primary);
+}
+
+.btn-primary:active {
+  transform: scale(0.97);
+  filter: brightness(0.96);
+}
+
+.btn-primary:disabled {
+  filter: saturate(0.5) brightness(0.7);
+  transform: none;
+  cursor: not-allowed;
+}
+
+.btn-secondary,
+.btn-icon,
+.btn-icon-sm {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--glass-chip-highlight), 0 4px 12px -6px rgba(0, 0, 0, 0.5);
+  transition: transform 0.35s var(--glass-spring), background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.btn-secondary:hover,
+.btn-icon:hover,
+.btn-icon-sm:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.07));
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: scale(1.03);
+}
+
+.btn-secondary:active,
+.btn-icon:active,
+.btn-icon-sm:active {
+  transform: scale(0.96);
+}
+
+.glass-input {
+  background: rgba(3, 5, 9, 0.34);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.4),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.badge {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* =========================================================
+   The bubble over a bar's selected item (utils/glassBubble.ts)
+   ========================================================= */
+.glass-bubble {
+  --bubble-clear: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  transform-origin: center;
+  will-change: transform;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.04) 52%, rgba(255, 255, 255, 0.08) 100%);
+  backdrop-filter: var(--glass-backdrop-bubble);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.75),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 0 14px rgba(255, 255, 255, 0.1),
+    0 8px 22px -8px rgba(0, 0, 0, 0.75),
+    0 0 24px -6px var(--accent-glow);
+}
+
+/* The theme's tint, which clears while the bubble moves or is held, so it reads as a lens. */
+.glass-bubble::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent-gradient);
+  opacity: calc(0.36 - var(--bubble-clear) * 0.28);
+}
+
+.glass-bubble::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.2) 30%, rgba(255, 255, 255, 0.06) 60%, rgba(255, 255, 255, 0.5));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Above the sidebar it rides on, below every dialog. */
+.glass-bubble--nav {
+  z-index: 101;
+  border-radius: 19px;
+}
+
+.glass-bubble--tabs {
+  z-index: 2;
+  border-radius: 999px;
+  transition: width 0.4s var(--glass-spring), height 0.4s var(--glass-spring);
+}
+
+.is-dragging,
+.is-dragging * {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* While dragging, the item under the bubble lights up and the old one waits for the drop. */
+.is-dragging [data-bubble-item].active:not(.is-peek) {
+  color: var(--text-muted);
+}
+
+.is-dragging [data-bubble-item].is-peek {
+  color: #ffffff;
+}
+
+/* Tour targets scroll into view below the floating URL bar, not under it. */
+[id^='tour-'] {
+  scroll-margin-top: calc(var(--deck-offset, 86px) + 52px);
+  scroll-margin-bottom: 24px;
+}
+
+/* =========================================================
+   Moving from the startup splash into the app
+   ========================================================= */
+
+/* Hidden with opacity alone, so the splash can measure where things really are. */
+.is-booting .left-sidebar,
+.is-booting .glass-bubble--nav,
+.is-booting .top-command-deck,
+.is-booting .hub-floating-stack,
+.is-booting .game-stage-container,
+.is-booting .hub-loading,
+.is-booting .hub-empty,
+.is-booting .game-poster-card {
+  opacity: 0;
+}
+
+@keyframes revealFromSide {
+  from {
+    opacity: 0;
+    transform: translate3d(-30px, 0, 0) scale(0.97);
+  }
+}
+
+@keyframes revealRise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0) scale(0.985);
+  }
+}
+
+@keyframes revealFade {
+  from {
+    opacity: 0;
+  }
+}
+
+.is-revealing .left-sidebar {
+  animation: revealFromSide 0.72s var(--glass-settle) 0.1s both;
+}
+
+.is-revealing .top-command-deck {
+  animation: revealFade 0.26s ease-out 0.5s both;
+}
+
+/* The sidebar's bubble lives outside the sidebar, so it fades in once the sidebar has landed. */
+.is-revealing .glass-bubble--nav {
+  animation: revealFade 0.3s ease-out 0.62s both;
+}
+
+.is-revealing .hub-floating-stack,
+.is-revealing .game-stage-container,
+.is-revealing .hub-loading,
+.is-revealing .hub-empty {
+  animation: revealRise 0.62s var(--glass-settle) 0.22s both;
+}
+
+/* The flying logo lands exactly here, then swaps with the real one. */
+.is-revealing .logo-mark {
+  opacity: 0;
+}
+
+@keyframes glassScrimIn {
+  from {
+    background-color: transparent;
+  }
+}

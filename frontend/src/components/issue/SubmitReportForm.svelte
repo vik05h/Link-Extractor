@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { APP_VERSION } from '../../version';
   import { onMount } from 'svelte';
   import Icon from '../icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../../utils/audio';
@@ -343,7 +344,7 @@
     <div class="submit-footer-row">
       <div class="telemetry-pill">
         <Icon name="shield-check" size={13} color="#00f0a0" />
-        <span>Non-sensitive diagnostic telemetry (v3.8.1, Windows) will be included.</span>
+        <span>Non-sensitive diagnostic telemetry ({APP_VERSION}, Windows) will be included.</span>
       </div>
 
       <button 

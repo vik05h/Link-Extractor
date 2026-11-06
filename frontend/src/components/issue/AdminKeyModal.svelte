@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../../utils/liquidGlass';
   import Icon from '../icons/Icon.svelte';
   import { playSuccessChime } from '../../utils/audio';
 
@@ -6,50 +7,50 @@
   export let onClose: () => void = () => {};
   export let onSuccess: (pin: string) => void = () => {};
 
-  let pinInput: string = '';
-  let pinError: string = '';
+  let keyInput: string = '';
+  let keyError: string = '';
   let isVerifying: boolean = false;
 
-  function focusPinInput(el: HTMLElement) {
+  function focusKeyInput(el: HTMLElement) {
     setTimeout(() => el.focus(), 60);
   }
 
-  async function verifyAdminPin() {
-    const candidate = pinInput.trim();
+  async function verifyAdminKey() {
+    const candidate = keyInput.trim();
     if (!candidate) {
-      pinError = 'Please enter the admin passkey.';
+      keyError = 'Please paste the admin key.';
       return;
     }
 
     isVerifying = true;
-    pinError = '';
+    keyError = '';
 
-    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.verify_admin_pin) {
+    if (typeof window !== 'undefined' && (window as any).pywebview?.api?.verify_admin_key) {
       try {
-        const res = await (window as any).pywebview.api.verify_admin_pin(candidate);
+        const res = await (window as any).pywebview.api.verify_admin_key(candidate);
         if (res && res.success) {
           playSuccessChime();
-          pinError = '';
-          pinInput = '';
+          keyError = '';
+          keyInput = '';
           onSuccess(candidate);
         } else {
-          pinError = res?.message || 'Invalid admin passkey.';
+          keyError = res?.message || 'The database did not accept this key.';
         }
       } catch (err) {
-        pinError = 'Authentication service unavailable.';
+        keyError = 'Authentication service unavailable.';
       } finally {
         isVerifying = false;
       }
     } else {
       // Standalone browser preview mode without pywebview bridge
-      pinError = 'Admin authorization requires running inside the Link Extractor application.';
+      keyError = 'Admin authorization requires running inside the Link Extractor application.';
       isVerifying = false;
     }
   }
 
   $: if (!isOpen) {
-    pinInput = '';
-    pinError = '';
+    keyInput = '';
+    keyError = '';
     isVerifying = false;
   }
 </script>
@@ -61,30 +62,29 @@
     on:keydown={(e) => { if (e.key === 'Escape') onClose(); }}
     role="dialog"
     aria-modal="true"
-    aria-label="Admin PIN Dialog"
+    aria-label="Admin Key Dialog"
     tabindex="-1"
   >
     <div 
-      class="modal-card pin-card glass-panel" 
+      class="modal-card pin-card glass-panel" use:liquidGlass={{ style: 'thick' }} 
     >
       <div class="pin-header">
         <Icon name="lock" size={20} color="var(--accent-primary)" />
         <h3 id="admin-pin-title">ADMIN MODE UNLOCK</h3>
       </div>
-      <p class="pin-subtext">Enter administrator passkey to update ticket statuses and write official remarks.</p>
+      <p class="pin-subtext">Paste the Firebase database secret. The database itself checks it on every change, and it is kept only until you lock Admin Mode or close the app.</p>
 
-      <form on:submit|preventDefault={verifyAdminPin}>
+      <form on:submit|preventDefault={verifyAdminKey}>
         <input 
-          use:focusPinInput
+          use:focusKeyInput
           type="password" 
           class="glass-input pin-input" 
-          placeholder="Enter Admin PIN..." 
-          bind:value={pinInput}
-          maxlength="20"
+          placeholder="Paste admin key..."
+          bind:value={keyInput}
         />
 
-        {#if pinError}
-          <div class="pin-error">{pinError}</div>
+        {#if keyError}
+          <div class="pin-error">{keyError}</div>
         {/if}
 
         <div class="pin-actions">
@@ -105,18 +105,12 @@
     position: fixed;
     inset: 0;
     z-index: 8600;
-    background: rgba(4, 7, 13, 0.9);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: fadeIn 0.2s ease-out;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .pin-card {
@@ -127,10 +121,10 @@
     flex-direction: column;
     gap: 12px;
     border-radius: 18px;
-    background: rgba(13, 17, 26, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.8), 0 0 32px rgba(0, 240, 160, 0.15);
     animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   @keyframes popIn {

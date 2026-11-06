@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
+  import { glassBubble } from '../utils/glassBubble';
+  import { say } from '../utils/voice';
   import DefragMosaic from './DefragMosaic.svelte';
   import type { PartItem } from '../types';
   import SelectiveFilter from './SelectiveFilter.svelte';
@@ -19,14 +22,25 @@
   export let onExport: (format: 'txt' | 'json' | 'crawljob', urls: string[], title: string) => void = () => {};
   export let onCopyAll: (urls: string[]) => void = () => {};
   export let onCancel: () => void = () => {};
+  /** The tour's sample game: everything can be clicked, but nothing is pushed, copied or exported. */
+  export let demo: boolean = false;
 
-  let activeView: 'mosaic' | 'table' | 'log' = 'mosaic';
+  const VIEWS = ['mosaic', 'table', 'log'] as const;
+  /** Bindable, so the real game's tab survives the tour swapping in the sample game. */
+  export let activeView: 'mosaic' | 'table' | 'log' = 'mosaic';
+  $: viewIndex = VIEWS.indexOf(activeView);
+
+  function selectView(index: number) {
+    activeView = VIEWS[index];
+    playClickSound();
+  }
   let exportMenuOpen = false;
   let logsCopied = false;
   let copyTimeout: any = null;
 
   function handleCopyLogs() {
     playClickSound();
+    if (demo) return;
     const text = logs.join('\n');
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.copy_to_clipboard(text);
@@ -71,12 +85,13 @@
 
   function getActiveUrls(): string[] {
     return parts
-      .filter(p => !p.excluded && (p.direct_url || p.url))
-      .map(p => p.direct_url || p.url);
+      .filter(p => !p.excluded && p.status === 'resolved' && p.direct_url)
+      .map(p => p.direct_url as string);
   }
 
   function handlePushJd2() {
     playClickSound();
+    if (demo) return;
     const urls = getActiveUrls();
     onPushJd2(urls, gameTitle);
   }
@@ -84,17 +99,20 @@
   function handleExport(format: 'txt' | 'json' | 'crawljob') {
     playClickSound();
     exportMenuOpen = false;
+    if (demo) return;
     const urls = getActiveUrls();
     onExport(format, urls, gameTitle);
   }
 
   function handleCopyAll() {
     playClickSound();
+    if (demo) return;
     const urls = getActiveUrls();
     onCopyAll(urls);
   }
 
   function handleCopySinglePart(url: string, index: number) {
+    if (demo) return;
     if (typeof window !== 'undefined' && (window as any).pywebview) {
       (window as any).pywebview.api.copy_to_clipboard(url);
     } else {
@@ -105,11 +123,13 @@
   $: resolvedPartsCount = parts.filter(p => p.status === 'resolved').length;
   $: activePartsCount = parts.filter(p => !p.excluded).length;
   $: hasParts = parts.length > 0;
+  $: hasUsableLinks = parts.some(p => !p.excluded && p.status === 'resolved' && p.direct_url);
+  $: showSourceLink = /^https?:\/\/(www\.)?fitgirl-repacks\.site\/\S+$/.test(sourceUrl);
 </script>
 
 <div class="game-stage-container" id="tour-game-stage">
   <!-- Top Hero Header -->
-  <div class="stage-hero glass-panel">
+  <div class="stage-hero glass-panel" use:liquidGlass>
     <div class="hero-cover-wrapper">
       {#if coverUrl}
         <img
@@ -149,7 +169,7 @@
           <Icon name="hard-drive" size={13} color="var(--accent-primary)" />
           <span>Total Size: <strong>{totalSizeStr}</strong></span>
         </span>
-        {#if sourceUrl}
+        {#if showSourceLink}
           <a href={sourceUrl} target="_blank" rel="noreferrer" class="meta-pill source-pill" title="Open source FitGirl repack page">
             <Icon name="external-link" size={12} color="var(--accent-primary)" />
             <span>FitGirl Page</span>
@@ -163,37 +183,52 @@
   </div>
 
   <!-- Selective Filter Bar -->
-  <SelectiveFilter 
-    {parts} 
-    on:filterChange={(e) => { parts = e.detail.parts; }} 
+  <SelectiveFilter
+    {parts}
+    {demo}
+    on:filterChange={(e) => { parts = e.detail.parts; }}
   />
 
-  <!-- View Switcher Tabs -->
+  <!-- View tabs, pinned under the URL bar so the parts scroll beneath the glass.
+       Click, drag or use the arrow keys; utils/glassBubble.ts moves the bubble. -->
   <div class="stage-tabs-row">
-    <div class="segmented-tabs">
-      <button 
+    <div
+      class="segmented-tabs glass-panel"
+      id="tour-stage-tabs"
+      role="tablist"
+      aria-label="Stage views"
+      use:liquidGlass={{ bezel: 14, strength: 18 }}
+      use:glassBubble={{ axis: 'x', selected: viewIndex, onSelect: selectView, host: '.stage-tabs-row', variant: 'glass-bubble--tabs', pad: 6 }}
+    >
+      <button
         type="button"
-        class="tab-btn" 
+        class="tab-btn"
         class:active={activeView === 'mosaic'}
-        on:click={() => { activeView = 'mosaic'; playClickSound(); }}
+        role="tab"
+        aria-selected={activeView === 'mosaic'}
+        data-bubble-item
       >
         <Icon name="grid" size={14} />
         <span>Defrag Matrix</span>
       </button>
-      <button 
+      <button
         type="button"
-        class="tab-btn" 
+        class="tab-btn"
         class:active={activeView === 'table'}
-        on:click={() => { activeView = 'table'; playClickSound(); }}
+        role="tab"
+        aria-selected={activeView === 'table'}
+        data-bubble-item
       >
         <Icon name="table" size={14} />
         <span>Direct URLs Table ({activePartsCount})</span>
       </button>
-      <button 
+      <button
         type="button"
-        class="tab-btn" 
+        class="tab-btn"
         class:active={activeView === 'log'}
-        on:click={() => { activeView = 'log'; playClickSound(); }}
+        role="tab"
+        aria-selected={activeView === 'log'}
+        data-bubble-item
       >
         <Icon name="terminal" size={14} />
         <span>Telemetry & Terminal ({logs.length})</span>
@@ -211,7 +246,7 @@
         <button 
           type="button" 
           class="btn-primary" 
-          disabled={!hasParts}
+          disabled={!hasUsableLinks}
           on:click={handlePushJd2}
         >
           <Icon name="bolt" size={15} color="#ffffff" strokeWidth={2.5} />
@@ -221,7 +256,7 @@
         <button 
           type="button" 
           class="btn-secondary" 
-          disabled={!hasParts}
+          disabled={!hasUsableLinks}
           on:click={handleCopyAll}
         >
           <Icon name="copy" size={14} />
@@ -233,14 +268,14 @@
             type="button" 
             class="btn-icon" 
             title="Export Direct URLs"
-            disabled={!hasParts}
+            disabled={!hasUsableLinks}
             on:click={() => exportMenuOpen = !exportMenuOpen}
           >
             <Icon name="download" size={16} />
           </button>
 
           {#if exportMenuOpen}
-            <div class="export-menu glass-panel">
+            <div class="export-menu glass-panel" use:liquidGlass={{ style: 'thick' }}>
               <button type="button" class="export-item" on:click={() => handleExport('txt')}>
                 Export as .txt
               </button>
@@ -258,15 +293,15 @@
   </div>
 
   <!-- Tab Contents -->
-  <div class="stage-view-body">
+  <div class="stage-view-body" id="tour-stage-view">
     {#if !hasParts && !isRunning}
       <!-- Empty Stage Placeholder -->
       <div class="empty-stage-cockpit glass-panel">
         <div class="cockpit-icon-halo">
           <Icon name="gamepad" size={42} color="var(--accent-primary)" strokeWidth={1.5} />
         </div>
-        <h3>Cockpit Ready</h3>
-        <p>Paste a FitGirl game URL in the bar above or choose a pre-fetched game from the Community Hub.</p>
+        <h3>{$say('stage.emptyTitle')}</h3>
+        <p>{$say('stage.emptyBody')}</p>
       </div>
     {:else if activeView === 'mosaic'}
       <DefragMosaic {parts} onCopyUrl={handleCopySinglePart} />
@@ -352,10 +387,11 @@
     width: 100%;
     min-height: 100%;
     flex: 1;
+    padding: var(--deck-offset) 6px 16px 0;
   }
 
   .stage-view-body {
-    flex: 1;
+    flex: 1 0 auto;
     display: flex;
     flex-direction: column;
     min-height: 440px;
@@ -367,7 +403,7 @@
     align-items: center;
     gap: 20px;
     padding: 16px 20px;
-    background: var(--bg-surface);
+    border-radius: 18px;
   }
 
   .hero-cover-wrapper {
@@ -435,12 +471,13 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    border-radius: 6px;
     font-family: var(--font-mono);
     font-size: 11.5px;
     font-variant-numeric: tabular-nums;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border-subtle);
+    border-radius: 9px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--glass-chip-highlight);
   }
 
   .meta-pill strong {
@@ -451,7 +488,18 @@
     color: var(--accent-secondary);
   }
 
+  .source-pill {
+    color: rgba(255, 255, 255, 0.86);
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+
+  .source-pill:hover {
+    color: #ffffff;
+  }
+
   .meta-status {
+    color: rgba(255, 255, 255, 0.74);
     font-family: var(--font-display);
     font-size: 11px;
     font-weight: 600;
@@ -460,8 +508,11 @@
     color: var(--text-muted);
   }
 
-  /* Segmented View Row */
+  /* View row: pinned just under the floating URL bar, so the parts scroll beneath its glass. */
   .stage-tabs-row {
+    position: sticky;
+    top: calc(var(--deck-offset) - 4px);
+    z-index: 25;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -472,19 +523,20 @@
   .segmented-tabs {
     display: flex;
     align-items: center;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-sm);
     padding: 3px;
     gap: 2px;
+    border-radius: 999px;
+    touch-action: none;
   }
 
+  /* The bubble is drawn by utils/glassBubble.ts; the tabs only change color. */
   .tab-btn {
+    position: relative;
+    z-index: 4;
     display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 6px 14px;
-    border-radius: 6px;
     font-family: var(--font-display);
     font-size: 11.5px;
     font-weight: 700;
@@ -494,17 +546,17 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.25s ease;
+    border-radius: 999px;
+    white-space: nowrap;
   }
 
-  .tab-btn:hover {
+  .tab-btn:hover:not(.active) {
     color: var(--text-primary);
   }
 
   .tab-btn.active {
     color: #ffffff;
-    background: var(--accent-gradient);
-    box-shadow: 0 0 12px var(--accent-glow);
   }
 
   /* Action Buttons */
@@ -538,14 +590,12 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), 0 0 20px rgba(0, 240, 160, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: var(--radius-sm);
-    background: rgba(13, 17, 26, 0.98);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
     transform-origin: top right;
     animation: dropdownSlideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   @keyframes dropdownSlideDown {
@@ -611,13 +661,10 @@
     max-width: 440px;
   }
 
-  /* Table View */
+  /* Table View: it grows with the page, so long games scroll beneath the pinned tab row. */
   .urls-table-container {
-    flex: 1;
+    flex: 1 0 auto;
     min-height: 420px;
-    max-height: 580px;
-    overflow-y: auto;
-    background: var(--bg-surface);
   }
 
   .urls-table {
@@ -701,13 +748,12 @@
     min-height: 420px;
     max-height: 580px;
     padding: 14px 16px;
-    background: rgba(8, 10, 15, 0.94);
-    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-md);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.5);
+    background: var(--glass-sheen), rgba(5, 7, 11, 0.6);
   }
 
   .terminal-header {

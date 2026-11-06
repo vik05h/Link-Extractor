@@ -2,26 +2,31 @@
   import { createEventDispatcher } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import type { PartItem } from '../types';
+  import { classifyPart } from '../utils/partCategory';
 
   export let parts: PartItem[] = [];
+  /** The tour's sample game: the chips work, but the user's saved choice is left alone. */
+  export let demo: boolean = false;
   const dispatch = createEventDispatcher();
+
+  const STORAGE_KEY = 'le_selective_filter';
 
   let keepOnlyEnglish = true;
   let excludeBonuses = false;
 
-  // Classify a filename
-  export function classifyPart(filename: string): 'core' | 'language' | 'optional' {
-    const fn = (filename || '').toLowerCase();
-    if (fn.includes('fg-selective-english') || fn.includes('selective-english')) {
-      return 'core'; // English is treated as core for English users
-    }
-    if (fn.includes('fg-selective-') || fn.includes('selective-')) {
-      return 'language';
-    }
-    if (fn.includes('fg-optional-') || fn.includes('optional-') || fn.includes('soundtrack') || fn.includes('bonus')) {
-      return 'optional';
-    }
-    return 'core';
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      keepOnlyEnglish = saved.keepOnlyEnglish ?? true;
+      excludeBonuses = saved.excludeBonuses ?? false;
+    } catch {}
+  }
+
+  function saveChoices() {
+    if (demo) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ keepOnlyEnglish, excludeBonuses }));
+    } catch {}
   }
 
   function applyFilter() {
@@ -47,6 +52,15 @@
     });
   }
 
+  // Apply the chips as they appear whenever a new set of parts arrives, so what the
+  // chips show is always what gets pushed, copied and exported.
+  let appliedTo = '';
+  $: signature = parts.map(p => p.filename || '').join('|');
+  $: if (signature && signature !== appliedTo) {
+    appliedTo = signature;
+    applyFilter();
+  }
+
   // Count categories
   $: languagePacksCount = parts.filter(p => classifyPart(p.filename || '') === 'language').length;
   $: bonusPacksCount = parts.filter(p => classifyPart(p.filename || '') === 'optional').length;
@@ -54,7 +68,7 @@
 </script>
 
 {#if hasFilterableParts}
-  <div class="selective-filter-bar glass-panel">
+  <div class="selective-filter-bar glass-panel" id="tour-filter">
     <div class="filter-heading">
       <Icon name="filter" size={14} color="var(--accent-primary)" />
       <span class="filter-label">BANDWIDTH SAVER & SELECTIVE DOWNLOAD:</span>
@@ -66,7 +80,7 @@
           type="button"
           class="filter-chip" 
           class:active={keepOnlyEnglish}
-          on:click={() => { keepOnlyEnglish = !keepOnlyEnglish; applyFilter(); }}
+          on:click={() => { keepOnlyEnglish = !keepOnlyEnglish; saveChoices(); applyFilter(); }}
         >
           <span class="chip-status">
             {#if keepOnlyEnglish}
@@ -84,7 +98,7 @@
           type="button"
           class="filter-chip" 
           class:active={excludeBonuses}
-          on:click={() => { excludeBonuses = !excludeBonuses; applyFilter(); }}
+          on:click={() => { excludeBonuses = !excludeBonuses; saveChoices(); applyFilter(); }}
         >
           <span class="chip-status">
             {#if excludeBonuses}
@@ -108,10 +122,8 @@
     flex-wrap: wrap;
     gap: 10px;
     padding: 10px 16px;
-    background: rgba(16, 22, 34, 0.7);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    border-radius: var(--radius-sm);
     margin-bottom: 12px;
+    border-radius: 14px;
   }
 
   .filter-heading {
@@ -139,11 +151,12 @@
     border-radius: 20px;
     font-size: 11px;
     font-weight: 600;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border-subtle);
     color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: var(--glass-chip-highlight);
   }
 
   .filter-chip:hover {
@@ -153,9 +166,9 @@
   }
 
   .filter-chip.active {
-    background: rgba(16, 185, 129, 0.18);
     border-color: var(--accent-primary);
     color: var(--accent-primary);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 55%), color-mix(in srgb, var(--accent-primary) 24%, transparent);
   }
 
   .chip-status {

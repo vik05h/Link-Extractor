@@ -36,9 +36,10 @@
   $: resolvedCount = parts.filter(p => p.status === 'resolved').length;
   $: activeCount = parts.filter(p => p.status === 'decrypting').length;
   $: excludedCount = parts.filter(p => p.excluded).length;
+  $: failedCount = parts.filter(p => p.status === 'failed').length;
 </script>
 
-<div class="mosaic-container" role="region" aria-label="Repack Defrag Matrix" on:mousemove={handleMouseMove}>
+<div class="mosaic-container glass-panel" role="region" aria-label="Repack Defrag Matrix" on:mousemove={handleMouseMove}>
   <!-- Stats Header Pill -->
   <div class="mosaic-header">
     <div class="mosaic-title-group">
@@ -50,6 +51,9 @@
         {/if}
         {#if excludedCount > 0}
           <span class="excluded-badge">• {excludedCount} Filtered Out</span>
+        {/if}
+        {#if failedCount > 0}
+          <span class="failed-badge">• {failedCount} Failed</span>
         {/if}
       </span>
     </div>
@@ -115,9 +119,6 @@
     display: flex;
     flex-direction: column;
     padding: 16px;
-    background: var(--bg-surface);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
   }
 
@@ -160,6 +161,11 @@
   .active-badge {
     color: var(--accent-secondary);
     animation: pulse 1.2s infinite;
+  }
+
+  .failed-badge {
+    color: var(--status-expired);
+    font-weight: 600;
   }
 
   .excluded-badge {
@@ -207,8 +213,8 @@
     overflow-y: auto;
     padding: 10px;
     background: rgba(0, 0, 0, 0.22);
-    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
+    box-shadow: inset 0 1px 5px rgba(0, 0, 0, 0.45), inset 0 -1px 0 rgba(255, 255, 255, 0.05);
   }
 
   .mosaic-grid.is-decrypting::after {
@@ -245,11 +251,9 @@
   .mosaic-block {
     position: relative;
     height: 44px;
-    border-radius: 8px;
     padding: 0;
     margin: 0;
     line-height: 1;
-    border: 1px solid var(--border-subtle);
     background: rgba(255, 255, 255, 0.04);
     color: var(--text-secondary);
     display: flex;
@@ -258,6 +262,9 @@
     cursor: pointer;
     overflow: visible;
     transition: transform 0.12s ease, border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
   }
 
   .mosaic-block:hover {
@@ -295,12 +302,12 @@
   }
 
   .mosaic-block.resolved {
-    background: var(--accent-primary);
-    border-color: var(--accent-primary);
     color: #060d17;
     font-weight: 700;
-    box-shadow: 0 0 12px var(--accent-glow);
     animation: popIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.04) 55%), var(--accent-primary);
+    border-color: rgba(255, 255, 255, 0.24);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 -1px 0 rgba(0, 0, 0, 0.14), 0 5px 14px -5px var(--accent-primary);
   }
 
   @keyframes popIn {
@@ -318,9 +325,9 @@
   }
 
   .mosaic-block.failed {
-    background: rgba(244, 63, 94, 0.25);
     border-color: var(--status-expired);
     color: #ffffff;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 55%), rgba(244, 63, 94, 0.3);
   }
 
   .mosaic-block.excluded {

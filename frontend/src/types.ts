@@ -25,6 +25,9 @@ export interface GameRecord {
   health_status?: string;
   health_color?: string;
   used_count?: number;
+  is_expired?: boolean;
+  urls?: string[];
+  source?: 'community' | 'history';
 }
 
 export interface HistoryRecord {
@@ -32,6 +35,8 @@ export interface HistoryRecord {
   game_title: string;
   source_url?: string;
   parts_count?: number;
+  resolved_count?: number;
+  is_partial?: boolean;
   total_size?: string;
   created_at?: string;
   resolved_links: string[];
@@ -58,6 +63,7 @@ export interface IssueComment {
   author_type: 'admin' | 'reporter' | 'gamer';
   text: string;
   screenshot_data?: string;
+  has_screenshot?: boolean;
   created_at: string;
   app_version?: string;
 }
@@ -68,6 +74,9 @@ export interface IssueReport {
   category: string;
   description: string;
   screenshot_data?: string;
+  has_screenshot?: boolean;
+  pending_upload?: boolean;
+  local_only?: boolean;
   status: 'open' | 'investigating' | 'fixed' | 'closed';
   affected_users_count: number;
   admin_remark?: string;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import { onMount } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, playSuccessChime } from '../utils/audio';
@@ -7,7 +8,7 @@
   import IssueCard from './issue/IssueCard.svelte';
   import SubmitReportForm from './issue/SubmitReportForm.svelte';
   import DuplicateInterceptModal from './issue/DuplicateInterceptModal.svelte';
-  import AdminPinModal from './issue/AdminPinModal.svelte';
+  import AdminKeyModal from './issue/AdminKeyModal.svelte';
   import ImagePreviewModal from './issue/ImagePreviewModal.svelte';
 
   export let isOpen: boolean = false;
@@ -26,7 +27,7 @@
 
   // Admin Mode State
   let isAdminMode: boolean = false;
-  let sessionAdminPin: string = '';
+  let sessionAdminKey: string = '';
   let showPinModal: boolean = false;
 
   // Sub-modal states
@@ -137,8 +138,8 @@
           }
           duplicateModalOpen = false;
           pendingReportPayload = null;
-          playSuccessChime();
-          onShowToast('Report submitted successfully! Thank you for helping improve Link Extractor.');
+          if (!res.queued) playSuccessChime();
+          onShowToast(res.message);
           submitFormRef?.resetForm();
           activeTab = 'tracker';
           loadReports();
@@ -192,16 +193,16 @@
   }
 
   // Admin Pin Authentication (Session-based, no hardcoded PIN in frontend)
-  function handleAdminUnlockSuccess(pin: string) {
+  function handleAdminUnlockSuccess(key: string) {
     isAdminMode = true;
-    sessionAdminPin = pin;
+    sessionAdminKey = key;
     showPinModal = false;
     onShowToast('Admin Mode unlocked! You can now update ticket statuses and post official remarks.');
   }
 
   function handleExitAdminMode() {
     isAdminMode = false;
-    sessionAdminPin = '';
+    sessionAdminKey = '';
     onShowToast('Admin Mode locked.');
   }
 
@@ -214,7 +215,7 @@
           report_id: reportId,
           status: newStatus,
           admin_remark: newRemark,
-          admin_pin: sessionAdminPin
+          admin_key: sessionAdminKey
         });
 
         if (res && res.success) {
@@ -242,7 +243,7 @@
       try {
         const res = await (window as any).pywebview.api.admin_delete_report({
           report_id: reportId,
-          admin_pin: sessionAdminPin
+          admin_key: sessionAdminKey
         });
 
         if (res && res.success) {
@@ -265,8 +266,8 @@
     author_type: string;
     author_name: string;
     screenshot_data?: string;
-    admin_pin?: string;
-  }) {
+    admin_key?: string;
+  }): Promise<boolean> {
     if (typeof window !== 'undefined' && (window as any).pywebview?.api?.add_report_comment) {
       try {
         const res = await (window as any).pywebview.api.add_report_comment(payload);
@@ -287,15 +288,16 @@
             }
             return r;
           });
-        } else {
-          onShowToast(res?.message || 'Failed to post comment.');
+          return true;
         }
+        onShowToast(res?.message || 'Failed to post comment.');
       } catch (err) {
         onShowToast('Network error posting comment.');
       }
     } else {
       onShowToast('Reporting bridge unavailable in preview mode.');
     }
+    return false;
   }
 
   // Discussion Comments: Admin delete comment
@@ -305,7 +307,7 @@
         const res = await (window as any).pywebview.api.delete_report_comment({
           report_id: reportId,
           comment_id: commentId,
-          admin_pin: sessionAdminPin
+          admin_key: sessionAdminKey
         });
         if (res && res.success) {
           playSuccessChime();
@@ -353,7 +355,7 @@
     tabindex="-1"
   >
     <div 
-      class="modal-card glass-panel" 
+      class="modal-card glass-panel" use:liquidGlass={{ style: 'thick' }} 
     >
       <!-- Modal Header -->
       <div class="modal-header">
@@ -502,7 +504,7 @@
                   report={r}
                   isAdminMode={isAdminMode}
                   isReporter={myReportIds.has(r.id)}
-                  sessionAdminPin={sessionAdminPin}
+                  sessionAdminKey={sessionAdminKey}
                   isUpvoted={upvotedIds.has(r.id)}
                   engineLogs={engineLogs}
                   onUpvote={handleUpvote}
@@ -545,7 +547,7 @@
 />
 
 <!-- Admin Secret PIN Modal -->
-<AdminPinModal 
+<AdminKeyModal 
   isOpen={showPinModal}
   onClose={() => showPinModal = false}
   onSuccess={handleAdminUnlockSuccess}
@@ -562,18 +564,12 @@
     position: fixed;
     inset: 0;
     z-index: 8500;
-    background: rgba(4, 7, 13, 0.82);
-    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 24px;
-    animation: fadeIn 0.2s ease-out;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .modal-card {
@@ -583,10 +579,10 @@
     display: flex;
     flex-direction: column;
     border-radius: 20px;
-    background: rgba(13, 17, 26, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.8), 0 0 32px rgba(0, 240, 160, 0.15);
     overflow: hidden;
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   .modal-header {

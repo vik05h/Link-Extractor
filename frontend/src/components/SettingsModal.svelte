@@ -1,9 +1,13 @@
 <script lang="ts">
+  import { liquidGlass } from '../utils/liquidGlass';
   import { onMount } from 'svelte';
   import Icon from './icons/Icon.svelte';
   import { playClickSound, toggleAudioMute, isAudioMuted } from '../utils/audio';
   import { waitForBridge } from '../utils/bridgeReady';
+  import { isRefractionOn, setRefractionChoice } from '../utils/liquidGlass';
+  import { setVoice, voice } from '../utils/voice';
   import type { AppSettings } from '../types';
+  import { APP_VERSION } from '../version';
 
   export let isOpen: boolean = false;
   export let onClose: () => void = () => {};
@@ -11,7 +15,7 @@
   export let onCheckUpdates: () => void = () => {};
   export let onOpenTour: () => void = () => {};
   export let onOpenIssueCenter: () => void = () => {};
-  export let currentVersion: string = 'v3.8.1';
+  export let currentVersion: string = APP_VERSION;
 
   let currentTheme = 'cyber';
   let isCheckingUpdates = false;
@@ -22,6 +26,7 @@
   let clipboardSentinel = true;
   let autoCrashReporting = true;
   let soundEnabled = true;
+  let glassRefraction = true;
 
   // Slider interactive drag state
   let isSliderActive = false;
@@ -30,6 +35,7 @@
     if (typeof window !== 'undefined') {
       currentTheme = localStorage.getItem('app_theme') || 'cyber';
       soundEnabled = !isAudioMuted();
+      glassRefraction = isRefractionOn();
 
       waitForBridge('get_settings').then((ready) => {
         if (ready && (window as any).pywebview?.api?.get_settings) {
@@ -73,6 +79,19 @@
     playClickSound();
     soundEnabled = !soundEnabled;
     toggleAudioMute();
+  }
+
+  function handleGlassToggle() {
+    playClickSound();
+    glassRefraction = !glassRefraction;
+    setRefractionChoice(glassRefraction);
+  }
+
+  $: classicWording = $voice === 'classic';
+
+  function handleWordingToggle() {
+    playClickSound();
+    setVoice(classicWording ? 'genz' : 'classic');
   }
 
   function handleConcurrencySelect(step: number) {
@@ -122,7 +141,7 @@
     aria-modal="true" 
     tabindex="-1"
   >
-    <div class="modal-card glass-panel" role="document">
+    <div class="modal-card glass-panel" use:liquidGlass={{ style: 'thick' }} role="document">
       <!-- Modal Header -->
       <div class="modal-header">
         <div class="modal-title-wrapper">
@@ -352,6 +371,55 @@
               </div>
             </div>
 
+            <!-- Liquid Glass -->
+            <div
+              class="toggle-card glass-panel"
+              on:click={handleGlassToggle}
+              role="button"
+              tabindex="0"
+              on:keydown={(e) => (e.key === ' ' || e.key === 'Enter') && handleGlassToggle()}
+            >
+              <div class="toggle-card-left">
+                <div class="toggle-icon-wrap" class:active={glassRefraction}>
+                  <Icon name="sparkles" size={16} color={glassRefraction ? 'var(--accent-primary)' : 'var(--text-muted)'} />
+                </div>
+                <div class="toggle-content">
+                  <div class="toggle-title">Liquid Glass Refraction</div>
+                  <div class="setting-subtext">Bends what is behind the glass at its edges. Turn off for plain frosted glass on slower PCs</div>
+                </div>
+              </div>
+              <div class="cyber-switch" class:checked={glassRefraction}>
+                <div class="switch-track">
+                  <div class="switch-thumb"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Classic Wording -->
+            <div
+              class="toggle-card glass-panel"
+              on:click={handleWordingToggle}
+              role="switch"
+              aria-checked={classicWording}
+              tabindex="0"
+              on:keydown={(e) => (e.key === ' ' || e.key === 'Enter') && handleWordingToggle()}
+            >
+              <div class="toggle-card-left">
+                <div class="toggle-icon-wrap" class:active={classicWording}>
+                  <Icon name="message-square" size={16} color={classicWording ? 'var(--accent-primary)' : 'var(--text-muted)'} />
+                </div>
+                <div class="toggle-content">
+                  <div class="toggle-title">Classic Wording</div>
+                  <div class="setting-subtext">Plain wording instead of the GenZ lines in the tour, pop-ups and empty screens. Buttons and errors are always plain</div>
+                </div>
+              </div>
+              <div class="cyber-switch" class:checked={classicWording}>
+                <div class="switch-track">
+                  <div class="switch-thumb"></div>
+                </div>
+              </div>
+            </div>
+
             <!-- Clipboard Sentinel -->
             <div 
               class="toggle-card glass-panel" 
@@ -557,14 +625,12 @@
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: rgba(4, 7, 12, 0.82);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
-    animation: backdropFadeIn 0.22s ease-out;
+    background: var(--glass-scrim);
+    animation: -global-glassScrimIn 0.22s ease-out;
   }
 
   .modal-card {
@@ -573,17 +639,12 @@
     max-height: 88vh;
     display: flex;
     flex-direction: column;
-    background: rgba(11, 15, 25, 0.95);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 32px 64px -12px rgba(0, 0, 0, 0.85), 0 0 36px var(--accent-glow);
     border-radius: var(--radius-lg);
     overflow: hidden;
     animation: modalScaleIn 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  @keyframes backdropFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    background: var(--glass-sheen), var(--glass-tint-thick);
+    backdrop-filter: var(--glass-backdrop-thick);
+    box-shadow: var(--glass-shadow-lg);
   }
 
   @keyframes modalScaleIn {
